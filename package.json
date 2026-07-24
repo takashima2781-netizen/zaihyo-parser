@@ -1,0 +1,10 @@
+{
+  "name": "zaihyo-parser",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "PDF教材構造を保持したまま中間JSONへ解析し、既存CSV形式へExportするParser",
+  "scripts": {
+    "parse": "node src/cli/run.mjs"
+  }
+}
