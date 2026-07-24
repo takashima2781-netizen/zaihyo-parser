@@ -8,13 +8,13 @@
 # 原本PDF(会員番号・氏名が透かしとして埋め込まれている)。
 /input/
 
-# 既存の参照用CSV(問題文・解答・解説を含む)と、そのUTF-8変換版。
+# 既存の参照用CSV(問題文・解答・解説を含む)。
 /reference/current_csv/
-/work/csv_utf8/
 
-# 調査用の使い捨てスクリプト・中間ダンプ(実データの抽出結果を含む)。
-/work/analysis/
-/work/parser/
+# 作業用ディレクトリ全体(CSVのUTF-8変換版、調査用スクリプト・中間ダンプなど、
+# 実データの抽出結果を含みうる)。個別サブディレクトリではなくディレクトリ単位で
+# 除外し、今後の新規サブディレクトリの誤登録を防ぐ。
+/work/
 
 # Parser/BSM/Exercise View等の生成物一式(教材の問題文・解答・解説を含む)。
 # src/cli/*.mjsで再生成可能。GitHub Pagesでの実機確認にはローカルで
@@ -31,9 +31,9 @@
 # SSOTではない旧実験版(reference/current_app/index.htmlが正)。
 /html-v2/
 
-# ローカル環境固有の設定・一時パスを含み他環境では動作しないファイル。
-/.claude/settings.local.json
-/.claude/launch.json
+# ローカル環境固有の設定・一時パスを含み他環境では動作しないファイル一式。
+# ディレクトリ単位で除外し、今後の新規ファイルの誤登録を防ぐ。
+/.claude/
 
 # OS/エディタ生成物
 .DS_Store
