@@ -5,6 +5,8 @@
   "type": "module",
   "description": "PDF教材構造を保持したまま中間JSONへ解析し、既存CSV形式へExportするParser",
   "scripts": {
-    "parse": "node src/cli/run.mjs"
+    "parse": "node src/cli/run.mjs",
+    "app:sync-data": "node src/cli/sync-exercise-view-to-app.mjs",
+    "app:serve": "node html-v2/serve.mjs"
   }
 }

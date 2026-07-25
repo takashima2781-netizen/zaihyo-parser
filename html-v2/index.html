@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>財表ドリル</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header>
+  <h1>財表ドリル</h1>
+  <p class="disclaimer">
+    財務諸表論ポイントチェックの問題を解いて学習履歴を記録します。学習履歴はこの端末のブラウザ内にのみ保存されます。
+  </p>
+</header>
+
+<section class="controls">
+  <details class="control-row data-source-details">
+    <summary>データソースを変更する（通常は操作不要）</summary>
+    <div class="control-row">
+      <label for="ev-file-input">Exercise View JSON（例: output/exercise_view_full.json）を選択:</label>
+    </div>
+    <div class="control-row">
+      <input type="file" id="ev-file-input" accept="application/json,.json">
+    </div>
+    <div class="control-row">
+      <button type="button" id="fetch-sample-btn">./data/exercise_view_full.json を再読み込み（HTTPサーバー経由時のみ動作）</button>
+    </div>
+  </details>
+  <div class="control-row">
+    <label for="type-filter">表示形式フィルタ:</label>
+    <select id="type-filter">
+      <option value="all">全て</option>
+      <option value="true_false">true_false</option>
+      <option value="single_blank">single_blank</option>
+      <option value="multi_blank">multi_blank</option>
+      <option value="ordering">ordering（item-1090限定）</option>
+      <option value="unsupported">未対応形式のみ</option>
+    </select>
+  </div>
+  <div class="control-row">
+    <label for="study-mode-filter">出題モード:</label>
+    <select id="study-mode-filter">
+      <option value="all">全ての問題</option>
+      <option value="unmastered">未修得の問題</option>
+      <option value="checked">チェック問題</option>
+    </select>
+  </div>
+</section>
+
+<div id="error-panel" class="error-panel" hidden></div>
+
+<!-- v2-5: 診断パネル一式。通常利用時は非表示（?debug=1のときのみ表示、app.js側で制御）。 -->
+<div id="debug-panels">
+  <div id="meta-panel" class="meta-panel"></div>
+  <div id="timing-panel" class="timing-panel"></div>
+  <div id="answer-form-panel" class="diagnostic-panel"></div>
+  <div id="progress-key-panel" class="diagnostic-panel"></div>
+  <div id="multi-blank-panel" class="diagnostic-panel"></div>
+  <div id="progress-storage-panel" class="diagnostic-panel"></div>
+</div>
+
+<div class="control-row settings-row">
+  <button type="button" id="reset-progress-btn" class="danger-btn">学習履歴をリセット</button>
+</div>
+
+<div id="empty-state" class="empty-state" hidden></div>
+<main id="exercise-list" class="exercise-list"></main>
+
+<button type="button" id="load-more-btn" class="load-more-btn" hidden>さらに読み込む</button>
+
+<script src="js/debugMode.js"></script>
+<script src="js/evLoader.js"></script>
+<script src="js/progressKey.js"></script>
+<script src="js/progressStore.js"></script>
+<script src="js/orderingAdapter.js"></script>
+<script src="js/registry.js"></script>
+<script src="js/render.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
