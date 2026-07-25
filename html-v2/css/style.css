@@ -64,6 +64,11 @@ header h1 {
   color: #555;
   margin-bottom: 8px;
 }
+.study-setup-count {
+  font-size: 0.95rem;
+  font-weight: bold;
+  margin: 12px 0 4px;
+}
 .initial-setup-desc {
   font-size: 0.95rem;
 }

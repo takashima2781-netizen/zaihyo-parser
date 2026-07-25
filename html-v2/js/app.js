@@ -12,6 +12,7 @@
     filtered: [],
     renderedCount: 0,
     batchSize: 30,
+    themeHierarchy: [], // 学習設定のテーマ→節→論点カスケード選択用（buildThemeHierarchyが構築）
   };
 
   // 1問ずつ学習するセッション画面専用の状態（一覧表示state.filteredとは独立）。
@@ -27,8 +28,12 @@
     initialError: document.getElementById("initial-setup-error"),
     mainApp: document.getElementById("main-app"),
     studySetup: document.getElementById("study-setup"),
+    studySetupThemeFilter: document.getElementById("study-setup-theme-filter"),
+    studySetupSectionFilter: document.getElementById("study-setup-section-filter"),
+    studySetupTopicFilter: document.getElementById("study-setup-topic-filter"),
     studySetupTypeFilter: document.getElementById("study-setup-type-filter"),
     studySetupModeFilter: document.getElementById("study-setup-mode-filter"),
+    studySetupCount: document.getElementById("study-setup-count"),
     studySetupEmpty: document.getElementById("study-setup-empty"),
     startStudyBtn: document.getElementById("start-study-btn"),
     openBrowseViewBtn: document.getElementById("open-browse-view-btn"),
@@ -98,6 +103,8 @@
     els.studySetup.hidden = false;
     els.studySession.hidden = true;
     els.browseView.hidden = true;
+    // 学習セッション終了直後などは修得状態が変わっている可能性があるため、都度再計算する。
+    if (state.data) updateStudySetupCount();
   }
   function showStudySession() {
     els.studySetup.hidden = true;
@@ -159,6 +166,13 @@
     state.baseExercises = state.orderingView ? parsed.data.exercises.concat([state.orderingView]) : parsed.data.exercises;
     console.log("[EVv2 orderingAdapter]", { applied: !!state.orderingView, view: state.orderingView });
 
+    // v1.7.0のExercise View(structurePath/structure)を使い、学習設定のテーマ→節→論点
+    // カスケード選択肢を構築する。データ再読み込み時にも毎回作り直す。
+    state.themeHierarchy = buildThemeHierarchy(state.baseExercises);
+    populateThemeSelect();
+    populateSectionSelect("all");
+    populateTopicSelect("all", "all");
+
     var t2 = performance.now();
 
     renderMeta(parsed, sourceLabel);
@@ -172,6 +186,8 @@
     if (isFirstLoad) {
       setInitialSetupLoading(false);
       showMainApp();
+    } else {
+      updateStudySetupCount();
     }
 
     var msg =
@@ -443,17 +459,109 @@
   }
 
   // ---- 学習セッション（1問ずつ学習する画面）。一覧表示(state.filtered)とは独立して
-  // studySession.queueを持つ。今回のスコープは問題形式・出題モードの2項目のみ
-  // （出題範囲・学習スタイル・出題順は未定義のため対象外）。 ----
+  // studySession.queueを持つ。出題テーマ(theme→section→topic)・問題形式・出題モードの
+  // 3軸で絞り込む（学習スタイル・出題順は未定義のため引き続き対象外）。 ----
+
+  // Exercise Viewのstructure(v1.7.0、theme/section/topic)から、テーマ→節→論点の
+  // カスケード選択肢を構築する。ex.structureにtopic(またはsection)が無い項目もある
+  // （BSM上、checkSectionが直接section配下に付く等、階層の深さが一定でないため。原則6・7、
+  // 推測で埋めない）。その場合はそのexerciseを該当する上位階層までのみ登録し、
+  // 存在しない下位階層は持たせない（matchesThemeHierarchyが「その階層を指定されたら除外」する）。
+  function buildThemeHierarchy(exercises) {
+    var themes = [];
+    var themeMap = {};
+    exercises.forEach(function (ex) {
+      var s = ex.structure;
+      if (!s || !s.theme) return;
+      var themeEntry = themeMap[s.theme.structureNodeId];
+      if (!themeEntry) {
+        themeEntry = { id: s.theme.structureNodeId, title: s.theme.titleRaw.text, sectionsOrder: [], sectionsMap: {} };
+        themeMap[themeEntry.id] = themeEntry;
+        themes.push(themeEntry);
+      }
+      if (!s.section) return;
+      var sectionEntry = themeEntry.sectionsMap[s.section.structureNodeId];
+      if (!sectionEntry) {
+        sectionEntry = { id: s.section.structureNodeId, title: s.section.titleRaw.text, topicsOrder: [], topicsMap: {} };
+        themeEntry.sectionsMap[sectionEntry.id] = sectionEntry;
+        themeEntry.sectionsOrder.push(sectionEntry);
+      }
+      if (!s.topic) return;
+      if (!sectionEntry.topicsMap[s.topic.structureNodeId]) {
+        var topicEntry = { id: s.topic.structureNodeId, title: s.topic.titleRaw.text };
+        sectionEntry.topicsMap[topicEntry.id] = topicEntry;
+        sectionEntry.topicsOrder.push(topicEntry);
+      }
+    });
+    return themes;
+  }
+
+  function findTheme(themeId) {
+    return state.themeHierarchy.filter(function (t) { return t.id === themeId; })[0] || null;
+  }
+  function findSection(themeId, sectionId) {
+    var theme = findTheme(themeId);
+    return (theme && theme.sectionsMap[sectionId]) || null;
+  }
+
+  function populateSelectOptions(selectEl, items) {
+    selectEl.innerHTML = "";
+    var allOpt = document.createElement("option");
+    allOpt.value = "all";
+    allOpt.textContent = "すべて";
+    selectEl.appendChild(allOpt);
+    items.forEach(function (item) {
+      var opt = document.createElement("option");
+      opt.value = item.id;
+      opt.textContent = item.title;
+      selectEl.appendChild(opt);
+    });
+    selectEl.disabled = items.length === 0;
+  }
+
+  function populateThemeSelect() {
+    populateSelectOptions(els.studySetupThemeFilter, state.themeHierarchy);
+  }
+  function populateSectionSelect(themeId) {
+    var theme = findTheme(themeId);
+    populateSelectOptions(els.studySetupSectionFilter, theme ? theme.sectionsOrder : []);
+  }
+  function populateTopicSelect(themeId, sectionId) {
+    var section = findSection(themeId, sectionId);
+    populateSelectOptions(els.studySetupTopicFilter, section ? section.topicsOrder : []);
+  }
+
+  // themeId/sectionId/topicIdはそれぞれ"all"または具体的なstructureNodeId。
+  // 該当する階層情報を持たないExercise（buildThemeHierarchyのコメント参照）は、
+  // 具体的なIDを指定された時点で該当なしとして除外する（推測で一致させない）。
+  function matchesThemeHierarchy(ex, themeId, sectionId, topicId) {
+    var s = ex.structure;
+    if (themeId !== "all" && (!s || !s.theme || s.theme.structureNodeId !== themeId)) return false;
+    if (sectionId !== "all" && (!s || !s.section || s.section.structureNodeId !== sectionId)) return false;
+    if (topicId !== "all" && (!s || !s.topic || s.topic.structureNodeId !== topicId)) return false;
+    return true;
+  }
 
   function buildStudyQueue() {
     var type = els.studySetupTypeFilter.value;
     var studyMode = els.studySetupModeFilter.value;
+    var themeId = els.studySetupThemeFilter.value;
+    var sectionId = els.studySetupSectionFilter.value;
+    var topicId = els.studySetupTopicFilter.value;
     var all = state.baseExercises || state.data.exercises;
     var byType = filterByType(all, type);
     return byType.filter(function (ex) {
-      return matchesStudyMode(ex, studyMode);
+      return matchesStudyMode(ex, studyMode) && matchesThemeHierarchy(ex, themeId, sectionId, topicId);
     });
+  }
+
+  // 設定変更のたびに対象問題数を再計算し、0件なら「学習を始める」を無効化する。
+  function updateStudySetupCount() {
+    var count = buildStudyQueue().length;
+    els.studySetupCount.textContent = "対象問題数：" + count + "問";
+    els.startStudyBtn.disabled = count === 0;
+    els.studySetupEmpty.hidden = count !== 0;
+    if (count === 0) els.studySetupEmpty.textContent = "条件に該当する問題がありません。";
   }
 
   function renderStudySessionCard() {
@@ -490,12 +598,7 @@
   els.startStudyBtn.addEventListener("click", function () {
     if (!state.data) return;
     var queue = buildStudyQueue();
-    if (queue.length === 0) {
-      els.studySetupEmpty.hidden = false;
-      els.studySetupEmpty.textContent = "条件に一致する問題がありません。設定を変更してください。";
-      return;
-    }
-    els.studySetupEmpty.hidden = true;
+    if (queue.length === 0) return; // ボタンは既に無効化されているはずのフェイルセーフ
     studySession.queue = queue;
     studySession.index = 0;
     showStudySession();
@@ -505,6 +608,20 @@
   els.endStudyBtn.addEventListener("click", function () {
     showStudySetup();
   });
+
+  // テーマ→節→論点のカスケード。上位を変更したら下位の選択肢を作り直し、"すべて"に戻す。
+  els.studySetupThemeFilter.addEventListener("change", function () {
+    populateSectionSelect(els.studySetupThemeFilter.value);
+    populateTopicSelect(els.studySetupThemeFilter.value, "all");
+    updateStudySetupCount();
+  });
+  els.studySetupSectionFilter.addEventListener("change", function () {
+    populateTopicSelect(els.studySetupThemeFilter.value, els.studySetupSectionFilter.value);
+    updateStudySetupCount();
+  });
+  els.studySetupTopicFilter.addEventListener("change", updateStudySetupCount);
+  els.studySetupTypeFilter.addEventListener("change", updateStudySetupCount);
+  els.studySetupModeFilter.addEventListener("change", updateStudySetupCount);
 
   els.openBrowseViewBtn.addEventListener("click", function () {
     showBrowseView();

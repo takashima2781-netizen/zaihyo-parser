@@ -35,6 +35,18 @@
 <section id="study-setup">
   <h2>学習設定</h2>
   <div class="control-row">
+    <label for="study-setup-theme-filter">テーマ:</label>
+    <select id="study-setup-theme-filter"></select>
+  </div>
+  <div class="control-row">
+    <label for="study-setup-section-filter">節:</label>
+    <select id="study-setup-section-filter"></select>
+  </div>
+  <div class="control-row">
+    <label for="study-setup-topic-filter">論点:</label>
+    <select id="study-setup-topic-filter"></select>
+  </div>
+  <div class="control-row">
     <label for="study-setup-type-filter">問題形式:</label>
     <select id="study-setup-type-filter">
       <option value="all">全て</option>
@@ -53,6 +65,7 @@
       <option value="checked">チェック問題</option>
     </select>
   </div>
+  <p id="study-setup-count" class="study-setup-count"></p>
   <div id="study-setup-empty" class="empty-state" hidden></div>
   <div class="control-row">
     <button type="button" id="start-study-btn" class="next-btn">学習を始める</button>

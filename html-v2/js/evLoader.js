@@ -5,8 +5,8 @@
 var EVv2 = window.EVv2 || {};
 window.EVv2 = EVv2;
 
-// Exercise View本体側は2026-07-24時点でv1.6.0（bodySegments追加、Phase 2C）。
-EVv2.EXPECTED_SCHEMA_VERSION = "exercise-view-schema-v1.6.0";
+// Exercise View本体側は2026-07-25時点でv1.7.0（structurePath/structure追加、出題テーマ絞り込み向け）。
+EVv2.EXPECTED_SCHEMA_VERSION = "exercise-view-schema-v1.7.0";
 
 // jsonText を Exercise View として解釈する。
 // 戻り値: { data, schemaWarning }。schemaWarning は想定外バージョンの場合のみ文字列、それ以外はnull。

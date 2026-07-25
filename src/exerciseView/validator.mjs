@@ -342,7 +342,7 @@ function isRawSpanRefV1(v) {
 // であることをスキーマレベルで確認する。
 export function validateSchemaShapeV1(exerciseView) {
   const issues = [];
-  if (!exerciseView.meta || exerciseView.meta.schemaVersion !== "exercise-view-schema-v1.6.0") {
+  if (!exerciseView.meta || exerciseView.meta.schemaVersion !== "exercise-view-schema-v1.7.0") {
     issues.push({ check: "schema-shape-v1", path: "meta.schemaVersion", detail: `想定外の値: ${exerciseView.meta?.schemaVersion}` });
   }
   if (exerciseView.meta?.exerciseCount !== exerciseView.exercises.length) {

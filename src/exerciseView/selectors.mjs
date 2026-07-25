@@ -44,16 +44,25 @@ export function findTargetCheckSections(bsm) {
 // Phase 3B-1（全件展開）向け。PHASE3A_TARGET_CHECKBLOCK_IDSのような固定リストによるフィルタは行わない。
 // 出現順を保つため、findCheckSectionByIdのようなstack(pop)方式ではなく再帰で辿る
 // （stack/pop方式は兄弟の順序が反転するため、決定論的な出力順としては採用しない）。
+// v1.7.0(テーマ/節/論点の階層情報追加、docs/以降の設計レポート参照)。各checkSectionについて、
+// 祖先StructureNode列(kindを持つノードのみ、例: theme→section→topic)をstructurePathとして
+// 一緒に返す。階層の深さは固定しない(将来kindの種類・段数が変わっても、そのまま祖先分だけ積む)。
+// 生のBSMノード参照(node.id/node.raw/node.parsed.kind.code)をそのまま返すだけで、
+// RawSpanRef化(toRef)はbuildExerciseView.mjs側の責務とする(既存の分担と同じ)。
 export function findAllCheckSections(bsm) {
   const results = [];
-  function walk(node) {
+  function walk(node, structurePath) {
+    const kind = node.parsed?.kind?.code ?? null;
+    const nextPath = kind
+      ? structurePath.concat([{ kind, structureNodeId: node.id, raw: node.raw }])
+      : structurePath;
     for (const cs of node.checkSections ?? []) {
-      results.push({ checkBlockId: cs.id.replace(/^cs-/, ""), checkSection: cs });
+      results.push({ checkBlockId: cs.id.replace(/^cs-/, ""), checkSection: cs, structurePath: nextPath });
     }
-    for (const child of node.children ?? []) walk(child);
+    for (const child of node.children ?? []) walk(child, nextPath);
   }
   for (const book of bsm.books) {
-    for (const sn of book.structure) walk(sn);
+    for (const sn of book.structure) walk(sn, []);
   }
   return results;
 }

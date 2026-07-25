@@ -72,6 +72,29 @@ function buildWithheldAnswerContent(answer, bsmNodeId) {
   };
 }
 
+// v1.7.0(テーマ/節/論点の階層情報追加)。selectors.mjs::findAllCheckSectionsが返す生の祖先
+// StructureNode列(structurePath、{kind, structureNodeId, raw}の配列)を、Exercise View出力用に
+// RawSpanRef化(toRef)するだけで、新しい語彙・階層の推測は行わない(kindはBSMのparsed.kind.code
+// をそのまま転記する)。階層の深さは固定しない（配列の長さをtheme/section/topicの3段に決め打ちしない）。
+function buildStructurePath(rawStructurePath) {
+  return rawStructurePath.map((node) => ({
+    kind: node.kind,
+    structureNodeId: node.structureNodeId,
+    titleRaw: toRef(node.raw, node.structureNodeId, { inherited: false }),
+  }));
+}
+
+// UI側がtheme/section/topicへ配列探索なしで直接アクセスできるよう、buildStructurePathと同じ内容を
+// kind別のオブジェクトとしても持たせる(ユーザー指示)。未知のkindが将来増えても、そのkindがキーとして
+// 追加されるだけで、既存のtheme/section/topicへのアクセス方法は変わらない。
+function buildStructureIndex(builtStructurePath) {
+  const structure = {};
+  for (const node of builtStructurePath) {
+    structure[node.kind] = node;
+  }
+  return structure;
+}
+
 // v2-1(docs/v2_1_data_contract_investigation.md、answerFormデータ契約)。
 // BSMのleaf QuestionUnitが既に持つ`parsed.unitKind.code`（"blank"|"subQuestion"|"unknown"等、
 // src/bookStructureMaster/mappings.mjs::determineUnitKind()が算出済み）を、そのままコピーする。
@@ -235,7 +258,7 @@ function buildBodySegments(majorUnit, leaves) {
   return segments;
 }
 
-function buildMultiBlankExercise(majorUnit, leaves, checkSectionId, ctx) {
+function buildMultiBlankExercise(majorUnit, leaves, checkSectionId, ctx, structurePath = [], structure = {}) {
   const ownResult = classifyUnitEligibility(majorUnit.id, ctx.anomaliesByUnitId);
   const leafResults = leaves.map((l) => classifyUnitEligibility(l.id, ctx.anomaliesByUnitId));
   const combined = combineEligibility([ownResult, ...leafResults]);
@@ -304,6 +327,8 @@ function buildMultiBlankExercise(majorUnit, leaves, checkSectionId, ctx) {
     structureType, // v1.5.0で追加。"shared_body_blanks" | "independent_subquestions" | "unknown"
     subQuestions, // v1.5.0で追加。independent_subquestions構造かつeligibleの場合のみ非null
     bodySegments, // v1.6.0で追加。shared_body_blanks構造かつeligibleの場合のみ非null
+    structurePath, // v1.7.0で追加。祖先StructureNode列(theme→section→topic等、RawSpanRef化済み)
+    structure, // v1.7.0で追加。structurePathと同内容をkind別(theme/section/topic等)にアクセスしやすくしたもの
     generationRule: finalizeGenerationRule(attemptedRule, combined.eligibility),
     eligibility: combined.eligibility,
     ineligibilityReasons: combined.reasons,
@@ -312,7 +337,7 @@ function buildMultiBlankExercise(majorUnit, leaves, checkSectionId, ctx) {
   };
 }
 
-function buildSingleBlankExercise(leaf, majorUnit, checkSectionId, ctx) {
+function buildSingleBlankExercise(leaf, majorUnit, checkSectionId, ctx, structurePath = [], structure = {}) {
   // majorUnit自身がstableItemIdを持つ(=leafとmajorUnitが同一ノード、子への分解が無いケース)場合は
   // ownResult側にもoverrideが及ぶ必要がある。真の集約ノード(複数子を持つ、provenance:null)では
   // getStableItemIdがnullを返すため、ここでoverrideを通しても常にno-opであり安全(構造的異常は
@@ -375,6 +400,8 @@ function buildSingleBlankExercise(leaf, majorUnit, checkSectionId, ctx) {
     structureType: null, // v1.5.0で追加。multi_blank専用の軸のため、single_blankは常にnull
     subQuestions: null, // v1.5.0で追加。multi_blank専用の軸のため、single_blankは常にnull
     bodySegments: null, // v1.6.0で追加。shared_body_blanks専用の軸のため、single_blankは常にnull
+    structurePath, // v1.7.0で追加。祖先StructureNode列(theme→section→topic等、RawSpanRef化済み)
+    structure, // v1.7.0で追加。structurePathと同内容をkind別(theme/section/topic等)にアクセスしやすくしたもの
     generationRule: finalizeGenerationRule(attemptedRule, combined.eligibility),
     eligibility: combined.eligibility,
     ineligibilityReasons: combined.reasons,
@@ -383,7 +410,7 @@ function buildSingleBlankExercise(leaf, majorUnit, checkSectionId, ctx) {
   };
 }
 
-function buildTrueFalseExercise(leaf, majorUnit, checkSectionId, ctx) {
+function buildTrueFalseExercise(leaf, majorUnit, checkSectionId, ctx, structurePath = [], structure = {}) {
   const { result: ownResult } = resolveLeafEligibilityWithOverride(majorUnit, ctx.anomaliesByUnitId, ctx.approvedOverrides);
   const { result: leafResult, override } = resolveLeafEligibilityWithOverride(leaf, ctx.anomaliesByUnitId, ctx.approvedOverrides);
   const combined = combineEligibility([ownResult, leafResult]);
@@ -438,6 +465,8 @@ function buildTrueFalseExercise(leaf, majorUnit, checkSectionId, ctx) {
     structureType: null, // v1.5.0で追加。multi_blank専用の軸のため、true_falseは常にnull
     subQuestions: null, // v1.5.0で追加。multi_blank専用の軸のため、true_falseは常にnull
     bodySegments: null, // v1.6.0で追加。shared_body_blanks専用の軸のため、true_falseは常にnull
+    structurePath, // v1.7.0で追加。祖先StructureNode列(theme→section→topic等、RawSpanRef化済み)
+    structure, // v1.7.0で追加。structurePathと同内容をkind別(theme/section/topic等)にアクセスしやすくしたもの
     generationRule: finalizeGenerationRule(attemptedRule, combined.eligibility),
     eligibility: combined.eligibility,
     ineligibilityReasons: combined.reasons,
@@ -462,7 +491,9 @@ export function isEmptyQuestionSubtree(majorUnit) {
 //   「失敗」として返す（全件展開時に1件の未知パターンで全体が止まらないようにするため。
 //   src/bookStructureMaster/buildBookStructureMaster.mjsのbuilderErrors設計と同じ考え方）。
 // 呼び出し側が失敗/スキップの扱いを決める。
-function generateExercisesForMajorQuestion(majorUnit, checkSectionId, checkBlockId, ctx) {
+// structurePath/structure: v1.7.0で追加。省略時(既定は空配列/空オブジェクト)は
+// buildExerciseViewPhase3A(試作記録、変更しない)からの呼び出しと同じ挙動を保つ。
+function generateExercisesForMajorQuestion(majorUnit, checkSectionId, checkBlockId, ctx, structurePath = [], structure = {}) {
   if (isEmptyQuestionSubtree(majorUnit)) {
     return { exercises: [], failure: null, emptyQuestionSkipped: { checkBlockId, majorUnitId: majorUnit.id } };
   }
@@ -473,14 +504,14 @@ function generateExercisesForMajorQuestion(majorUnit, checkSectionId, checkBlock
 
     if (pattern === "fillBlank") {
       if (leaves.length > 1) {
-        exercises.push(buildMultiBlankExercise(majorUnit, leaves, checkSectionId, ctx));
+        exercises.push(buildMultiBlankExercise(majorUnit, leaves, checkSectionId, ctx, structurePath, structure));
       }
       for (const leaf of leaves) {
-        exercises.push(buildSingleBlankExercise(leaf, majorUnit, checkSectionId, ctx));
+        exercises.push(buildSingleBlankExercise(leaf, majorUnit, checkSectionId, ctx, structurePath, structure));
       }
     } else if (pattern === "trueFalse") {
       for (const leaf of leaves) {
-        exercises.push(buildTrueFalseExercise(leaf, majorUnit, checkSectionId, ctx));
+        exercises.push(buildTrueFalseExercise(leaf, majorUnit, checkSectionId, ctx, structurePath, structure));
       }
     } else {
       return {
@@ -562,13 +593,18 @@ export function buildExerciseViewV1(bsm, { targets, anomaliesByUnitId, generated
   const generationFailures = [];
   const emptyQuestionsSkipped = [];
 
-  for (const { checkBlockId, checkSection } of targets) {
+  for (const { checkBlockId, checkSection, structurePath: rawStructurePath } of targets) {
+    // v1.7.0。checkBlock単位で一度だけ変換する(このcheckBlock配下の全Exerciseで共通のため)。
+    const structurePath = buildStructurePath(rawStructurePath ?? []);
+    const structure = buildStructureIndex(structurePath);
     for (const majorUnit of collectMajorQuestionUnits(checkSection)) {
       const { exercises: generated, failure, emptyQuestionSkipped } = generateExercisesForMajorQuestion(
         majorUnit,
         checkSection.id,
         checkBlockId,
-        ctx
+        ctx,
+        structurePath,
+        structure
       );
       allExercises.push(...generated);
       if (failure) generationFailures.push(failure);
@@ -591,9 +627,12 @@ export function buildExerciseViewV1(bsm, { targets, anomaliesByUnitId, generated
         // shared_body_blanksへbodySegmentsフィールド追加。本文中の空欄位置をHTML側が
         // 再判定せずに済むよう、Parser/BSMが確定済みの位置情報から生成した
         // text/blankセグメント配列。既存body.text/expectedAnswer[]は無変更、追加フィールドのみ)。
+        // v1.7.0(出題テーマ絞り込み機能向け、Exercise Viewへ祖先StructureNode列を追加。
+        // structurePath(theme→section→topic等、深さ固定なし)とstructure(kind別アクセス用)を
+        // 全Exercise/withheldExerciseへ追加。既存フィールドは無変更、追加フィールドのみ)。
         // GENERATOR_VERSION_V1は意図的に変更していない(上部のコメント参照。
         // フィールド追加のみで既存値は一切変わらないため、47件の承認済みレビューへ影響しない)。
-        schemaVersion: "exercise-view-schema-v1.6.0",
+        schemaVersion: "exercise-view-schema-v1.7.0",
         status: "provisional-phase3b1-full",
         generatedAt,
         sourceBookStructureMasterPath: sourceBsmFile,
