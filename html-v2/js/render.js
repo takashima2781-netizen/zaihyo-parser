@@ -57,15 +57,21 @@ EVv2.createSourceLine = function (sourceRefs) {
   return el;
 };
 
-// 「次の問題へ」導線。DOM上で現在のカードの次の.ex-cardへスムーズスクロールするだけの
-// 軽量な機能（一覧表示という現行の画面構成自体は変更しない）。次のカードが無い場合は
+// 「次の問題へ」導線。onNextが渡された場合はそれを呼ぶ（1問ずつ学習するセッション画面が
+// 「次の問題を描画し直す」処理を注入するために使う）。onNext省略時は従来どおり、
+// DOM上で現在のカードの次の.ex-cardへスムーズスクロールするだけの軽量な機能
+// （一覧表示という現行の画面構成はこちらを使う限り変更しない）。次のカードが無い場合は
 // 「さらに読み込む」を先に実行してからスクロールする。
-EVv2.createNextButton = function (card) {
+EVv2.createNextButton = function (card, onNext) {
   var btn = document.createElement("button");
   btn.type = "button";
   btn.className = "next-btn";
   btn.textContent = "次の問題へ ↓";
   btn.addEventListener("click", function () {
+    if (typeof onNext === "function") {
+      onNext();
+      return;
+    }
     var next = card.nextElementSibling;
     if (!next) {
       var loadMoreBtn = document.getElementById("load-more-btn");
@@ -84,12 +90,12 @@ EVv2.createNextButton = function (card) {
 // 学習状態（progressPanel）＋「次の問題へ」を、回答が確定した瞬間に1回だけカード末尾へ追加する
 // （未回答状態ではこの2つはDOMに存在しない＝誤って次へ進めない、という設計をそのまま満たす）。
 // 再挑戦等で複数回呼ばれても、2回目以降はprogressPanelの表示更新のみ行い、DOMの二重追加はしない。
-EVv2.finalizeAnsweredCard = function (card, progressPanel, rec) {
+EVv2.finalizeAnsweredCard = function (card, progressPanel, rec, onNext) {
   if (progressPanel && rec) progressPanel.update(rec);
   if (card.dataset.trailingAppended === "1") return;
   card.dataset.trailingAppended = "1";
   if (progressPanel) card.appendChild(progressPanel.el);
-  card.appendChild(EVv2.createNextButton(card));
+  card.appendChild(EVv2.createNextButton(card, onNext));
 };
 
 // true_false/single_blankの共通choice/revealループ専用。正解/不正解バナー→正しい解答→解説→出典、
@@ -154,7 +160,7 @@ EVv2.createProgressPanel = function (exerciseKey, exerciseType) {
 
 // revealモード専用: 開示済みの解答に対して「正解だった」「不正解だった」の自己採点を行う
 // ボタンを追加する。single_blankのreveal・multi_blankのreveal両方から共有して呼ばれる。
-EVv2.appendSelfGradeButtons = function (container, exerciseKey, exerciseType, progressPanel, card) {
+EVv2.appendSelfGradeButtons = function (container, exerciseKey, exerciseType, progressPanel, card, onNext) {
   var wrap = document.createElement("div");
   wrap.className = "self-grade";
 
@@ -173,7 +179,7 @@ EVv2.appendSelfGradeButtons = function (container, exerciseKey, exerciseType, pr
     wrongBtn.disabled = true;
     if (!exerciseKey) return;
     var rec = EVv2.recordAnswer(exerciseKey, exerciseType, isCorrect);
-    if (card) EVv2.finalizeAnsweredCard(card, progressPanel, rec);
+    if (card) EVv2.finalizeAnsweredCard(card, progressPanel, rec, onNext);
     else if (rec && progressPanel) progressPanel.update(rec);
   }
 
@@ -189,7 +195,10 @@ EVv2.appendSelfGradeButtons = function (container, exerciseKey, exerciseType, pr
   container.appendChild(wrap);
 };
 
-EVv2.createExerciseCard = function (ex, context) {
+// onNext: 省略可。渡された場合、回答確定後の「次の問題へ」ボタンはこれを呼ぶ
+// （1問ずつ学習するセッション画面が「次の問題を描画し直す」処理を注入するために使う）。
+// 省略時は従来どおりcreateNextButtonのデフォルト挙動（次の.ex-cardへスクロール）を使う。
+EVv2.createExerciseCard = function (ex, context, onNext) {
   var card = document.createElement("article");
   card.className = "ex-card";
 
@@ -245,7 +254,7 @@ EVv2.createExerciseCard = function (ex, context) {
   // 形式は、下のchoice/reveal二値ループ（true_false/single_blank用）とは独立した専用の描画を持つ。
   // ハンドラがrenderInteractiveを持つ場合はそちらへ完全に委譲する。
   if (typeof handler.renderInteractive === "function") {
-    handler.renderInteractive(ex, context, card, progressPanel, exerciseKey);
+    handler.renderInteractive(ex, context, card, progressPanel, exerciseKey, onNext);
     return card;
   }
 
@@ -276,7 +285,7 @@ EVv2.createExerciseCard = function (ex, context) {
         revealBox.hidden = false;
         fillRevealBox(revealBox, ex, handler, correct);
         var rec = exerciseKey ? EVv2.recordAnswer(exerciseKey, ex.exerciseType, correct) : null;
-        EVv2.finalizeAnsweredCard(card, progressPanel, rec);
+        EVv2.finalizeAnsweredCard(card, progressPanel, rec, onNext);
       });
       choicesWrap.appendChild(btn);
     });
@@ -293,7 +302,7 @@ EVv2.createExerciseCard = function (ex, context) {
       revealBtn.disabled = true;
       revealBox.hidden = false;
       fillRevealBox(revealBox, ex, handler, null);
-      EVv2.appendSelfGradeButtons(revealBox, exerciseKey, ex.exerciseType, progressPanel, card);
+      EVv2.appendSelfGradeButtons(revealBox, exerciseKey, ex.exerciseType, progressPanel, card, onNext);
     });
     card.appendChild(revealBtn);
   }

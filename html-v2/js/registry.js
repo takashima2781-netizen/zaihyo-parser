@@ -213,7 +213,8 @@ var multiBlankHandler = {
   // 独自の複数unit UIを構築する（render.js側の共通choice/revealループは使わない）。
   // progressPanel/exerciseKeyはrender.js(createExerciseCard)で1回だけ生成されたものを
   // そのまま受け取る（v2-3、docs/v2_3_implementation_report.md）。
-  renderInteractive: function (ex, context, card, progressPanel, exerciseKey) {
+  // onNextはcreateExerciseCard経由で渡された「次の問題へ」の注入コールバック(省略可)。
+  renderInteractive: function (ex, context, card, progressPanel, exerciseKey, onNext) {
     var mode = this.getInteractionMode(ex, context);
 
     if (mode === "reveal") {
@@ -247,7 +248,7 @@ var multiBlankHandler = {
         );
         // v2-3: multi_blank revealは問題全体単位で1回だけ自己採点する
         // （「正解だった」＝全空欄正解、というユーザー自身の申告に委ねる）。
-        EVv2.appendSelfGradeButtons(revealBox, exerciseKey, ex.exerciseType, progressPanel, card);
+        EVv2.appendSelfGradeButtons(revealBox, exerciseKey, ex.exerciseType, progressPanel, card, onNext);
       });
       card.appendChild(revealBtn);
       card.appendChild(revealBox);
@@ -291,7 +292,7 @@ var multiBlankHandler = {
       if (!completedSaved) {
         completedSaved = true;
         var rec = exerciseKey ? EVv2.recordAnswer(exerciseKey, ex.exerciseType, allCorrect) : null;
-        EVv2.finalizeAnsweredCard(card, progressPanel, rec);
+        EVv2.finalizeAnsweredCard(card, progressPanel, rec, onNext);
       }
     }
     updateSummary();
@@ -356,7 +357,8 @@ var orderingHandler = {
     return "この項目はwithheld(review_required)データを診断目的で並べ替え形式へ変換した暫定表示です（item-1090限定）。";
   },
   // 独自の複数要素UIを構築する（multi_blankと同じく、render.js側の共通choice/revealループは使わない）。
-  renderInteractive: function (ex, context, card, progressPanel, exerciseKey) {
+  // onNextはcreateExerciseCard経由で渡された「次の問題へ」の注入コールバック(省略可)。
+  renderInteractive: function (ex, context, card, progressPanel, exerciseKey, onNext) {
     var items = ex.orderingItems;
     var correctOrder = ex.correctOrder;
     var itemById = {};
@@ -497,7 +499,7 @@ var orderingHandler = {
 
       // v2-3の既存進捗保存機構をそのまま再利用する（新しいlocalStorageスキーマは作らない）。
       var rec = exerciseKey ? EVv2.recordAnswer(exerciseKey, ex.exerciseType, correct) : null;
-      EVv2.finalizeAnsweredCard(card, progressPanel, rec);
+      EVv2.finalizeAnsweredCard(card, progressPanel, rec, onNext);
     });
 
     resetBtn.addEventListener("click", function () {

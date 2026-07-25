@@ -14,7 +14,30 @@
     batchSize: 30,
   };
 
+  // 1問ずつ学習するセッション画面専用の状態（一覧表示state.filteredとは独立）。
+  var studySession = {
+    queue: [],
+    index: 0,
+  };
+
   var els = {
+    initialSetup: document.getElementById("initial-setup"),
+    initialFileInput: document.getElementById("initial-file-input"),
+    initialLoading: document.getElementById("initial-setup-loading"),
+    initialError: document.getElementById("initial-setup-error"),
+    mainApp: document.getElementById("main-app"),
+    studySetup: document.getElementById("study-setup"),
+    studySetupTypeFilter: document.getElementById("study-setup-type-filter"),
+    studySetupModeFilter: document.getElementById("study-setup-mode-filter"),
+    studySetupEmpty: document.getElementById("study-setup-empty"),
+    startStudyBtn: document.getElementById("start-study-btn"),
+    openBrowseViewBtn: document.getElementById("open-browse-view-btn"),
+    studySession: document.getElementById("study-session"),
+    studySessionProgress: document.getElementById("study-session-progress"),
+    studySessionCardContainer: document.getElementById("study-session-card-container"),
+    endStudyBtn: document.getElementById("end-study-btn"),
+    browseView: document.getElementById("browse-view"),
+    backToSetupBtn: document.getElementById("back-to-setup-btn"),
     fileInput: document.getElementById("ev-file-input"),
     fetchSampleBtn: document.getElementById("fetch-sample-btn"),
     dataSourceDetails: document.getElementById("data-source-details"),
@@ -50,19 +73,64 @@
     els.errorPanel.textContent = "";
   }
 
+  // 初回セットアップ画面(#initial-setup)専用のエラー表示。メイン画面(#main-app)は
+  // データ読み込み成功まで非表示のため、その間のエラーはこちらに出す。
+  function showInitialSetupError(msg) {
+    els.initialError.hidden = false;
+    els.initialError.textContent = msg;
+  }
+  function clearInitialSetupError() {
+    els.initialError.hidden = true;
+    els.initialError.textContent = "";
+  }
+  function setInitialSetupLoading(isLoading) {
+    els.initialLoading.hidden = !isLoading;
+    els.initialFileInput.disabled = isLoading;
+  }
+  function showMainApp() {
+    els.initialSetup.hidden = true;
+    els.mainApp.hidden = false;
+    showStudySetup();
+  }
+
+  // #main-app内の3画面（学習設定／学習セッション／問題一覧）は同時に1つだけ表示する。
+  function showStudySetup() {
+    els.studySetup.hidden = false;
+    els.studySession.hidden = true;
+    els.browseView.hidden = true;
+  }
+  function showStudySession() {
+    els.studySetup.hidden = true;
+    els.studySession.hidden = false;
+    els.browseView.hidden = true;
+  }
+  function showBrowseView() {
+    els.studySetup.hidden = true;
+    els.studySession.hidden = true;
+    els.browseView.hidden = false;
+    if (state.data) applyFilter();
+  }
+
   // GitHub Pages公開フェーズ（docs/exercise_view_full_output_separation_report.mdの続き）。
   // opts.skipCacheSave: IndexedDBキャッシュから復元した内容をそのまま書き戻さないためのフラグ。
   // opts.cachedAt: キャッシュ復元時、状態表示に「最初に保存された時刻」を出すためのISO文字列
   // （省略時は現在時刻＝新規読み込み扱い）。
   function onLoaded(jsonText, sourceLabel, opts) {
     opts = opts || {};
+    var isFirstLoad = !state.data;
     clearError();
+    clearInitialSetupError();
     var t0 = performance.now();
     var parsed;
     try {
       parsed = EVv2.parseExerciseView(jsonText);
     } catch (e) {
-      showError("読み込みに失敗しました: " + e.message);
+      if (isFirstLoad) {
+        setInitialSetupLoading(false);
+        showInitialSetupError("読み込みに失敗しました: " + e.message);
+      } else {
+        showError("読み込みに失敗しました: " + e.message);
+      }
       return;
     }
     var t1 = performance.now();
@@ -100,6 +168,11 @@
     renderProgressStorageStatus();
     applyFilter();
     var t3 = performance.now();
+
+    if (isFirstLoad) {
+      setInitialSetupLoading(false);
+      showMainApp();
+    }
 
     var msg =
       "JSON.parse: " + (t1 - t0).toFixed(1) + "ms / " +
@@ -293,22 +366,25 @@
     return true;
   }
 
+  // 表示形式(exerciseType)フィルタのみを適用する。一覧表示(applyFilter)と学習セッションの
+  // 出題キュー構築(buildStudyQueue)の両方から共有して呼ばれる。
+  function filterByType(all, type) {
+    if (type === "all") return all;
+    if (type === "unsupported") {
+      return all.filter(function (ex) {
+        return !EVv2.registry[ex.exerciseType];
+      });
+    }
+    return all.filter(function (ex) {
+      return ex.exerciseType === type;
+    });
+  }
+
   function applyFilter() {
     var type = els.filterSelect.value;
     var studyMode = els.studyModeSelect.value;
     var all = state.baseExercises || state.data.exercises;
-    var byType;
-    if (type === "all") {
-      byType = all;
-    } else if (type === "unsupported") {
-      byType = all.filter(function (ex) {
-        return !EVv2.registry[ex.exerciseType];
-      });
-    } else {
-      byType = all.filter(function (ex) {
-        return ex.exerciseType === type;
-      });
-    }
+    var byType = filterByType(all, type);
     state.filtered = byType.filter(function (ex) {
       return matchesStudyMode(ex, studyMode);
     });
@@ -366,6 +442,78 @@
     }
   }
 
+  // ---- 学習セッション（1問ずつ学習する画面）。一覧表示(state.filtered)とは独立して
+  // studySession.queueを持つ。今回のスコープは問題形式・出題モードの2項目のみ
+  // （出題範囲・学習スタイル・出題順は未定義のため対象外）。 ----
+
+  function buildStudyQueue() {
+    var type = els.studySetupTypeFilter.value;
+    var studyMode = els.studySetupModeFilter.value;
+    var all = state.baseExercises || state.data.exercises;
+    var byType = filterByType(all, type);
+    return byType.filter(function (ex) {
+      return matchesStudyMode(ex, studyMode);
+    });
+  }
+
+  function renderStudySessionCard() {
+    els.studySessionCardContainer.innerHTML = "";
+
+    if (studySession.index >= studySession.queue.length) {
+      els.studySessionProgress.textContent = "";
+      var doneMsg = document.createElement("p");
+      doneMsg.className = "empty-state";
+      doneMsg.textContent = "この条件の問題をすべて学習しました。";
+      els.studySessionCardContainer.appendChild(doneMsg);
+      return;
+    }
+
+    els.studySessionProgress.textContent =
+      (studySession.index + 1) + " / " + studySession.queue.length + "問";
+
+    var ex = studySession.queue[studySession.index];
+    try {
+      var card = EVv2.createExerciseCard(ex, state.context, function () {
+        studySession.index += 1;
+        renderStudySessionCard();
+      });
+      els.studySessionCardContainer.appendChild(card);
+    } catch (e) {
+      console.error("カード描画失敗", ex.exerciseId, e);
+      var errCard = document.createElement("div");
+      errCard.className = "ex-card ex-card-error";
+      errCard.textContent = "描画エラー: " + ex.exerciseId + " (" + e.message + ")";
+      els.studySessionCardContainer.appendChild(errCard);
+    }
+  }
+
+  els.startStudyBtn.addEventListener("click", function () {
+    if (!state.data) return;
+    var queue = buildStudyQueue();
+    if (queue.length === 0) {
+      els.studySetupEmpty.hidden = false;
+      els.studySetupEmpty.textContent = "条件に一致する問題がありません。設定を変更してください。";
+      return;
+    }
+    els.studySetupEmpty.hidden = true;
+    studySession.queue = queue;
+    studySession.index = 0;
+    showStudySession();
+    renderStudySessionCard();
+  });
+
+  els.endStudyBtn.addEventListener("click", function () {
+    showStudySetup();
+  });
+
+  els.openBrowseViewBtn.addEventListener("click", function () {
+    showBrowseView();
+  });
+
+  els.backToSetupBtn.addEventListener("click", function () {
+    showStudySetup();
+  });
+
   els.fileInput.addEventListener("change", function (e) {
     var file = e.target.files[0];
     if (!file) return;
@@ -375,6 +523,24 @@
     };
     reader.onerror = function () {
       showError("ファイル読み込みに失敗しました: " + reader.error);
+    };
+    reader.readAsText(file, "utf-8");
+  });
+
+  // 初回セットアップ画面(#initial-setup)側のファイル選択。データ未読込の間はこちらが窓口になる
+  // （メイン画面側のels.fileInputは#main-appが表示されて初めて操作可能になる）。
+  els.initialFileInput.addEventListener("change", function (e) {
+    var file = e.target.files[0];
+    if (!file) return;
+    clearInitialSetupError();
+    setInitialSetupLoading(true);
+    var reader = new FileReader();
+    reader.onload = function () {
+      onLoaded(reader.result, "ファイル選択: " + file.name);
+    };
+    reader.onerror = function () {
+      setInitialSetupLoading(false);
+      showInitialSetupError("ファイル読み込みに失敗しました: " + reader.error);
     };
     reader.readAsText(file, "utf-8");
   });
@@ -422,20 +588,16 @@
     });
   }
 
-  function showFirstTimeSetupGuidance() {
-    if (els.dataSourceDetails) els.dataSourceDetails.open = true;
-    showError(
-      "問題データがまだこの端末にありません。下の「データソースを変更する」を開き、Exercise View JSONファイルを選択してください。" +
-      "一度読み込めば、次回からはこの端末で自動的に読み込まれます。"
-    );
-  }
+  // キャッシュも無い場合、#initial-setupは初期状態のまま（デフォルトで表示済み）で
+  // 案内が完結するため、ここでは何もしない。
+  function noCacheAvailable() {}
 
   if (location.protocol === "file:") {
     // file://ではfetch()が使えないため、キャッシュの有無だけで判定する。
-    tryLoadFromCache(showFirstTimeSetupGuidance);
+    tryLoadFromCache(noCacheAvailable);
   } else {
     fetchSampleData(function () {
-      tryLoadFromCache(showFirstTimeSetupGuidance);
+      tryLoadFromCache(noCacheAvailable);
     });
   }
 

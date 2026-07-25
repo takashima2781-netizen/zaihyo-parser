@@ -16,11 +16,71 @@
   <p id="data-source-status" class="data-source-status"></p>
 </header>
 
+<section id="initial-setup" class="initial-setup">
+  <p class="initial-setup-desc">
+    以下からExercise View JSON（問題データ）ファイルを選択すると、学習を開始できます。
+  </p>
+  <div class="control-row">
+    <label for="initial-file-input">Exercise View JSONファイルを選択:</label>
+  </div>
+  <div class="control-row">
+    <input type="file" id="initial-file-input" accept="application/json,.json">
+  </div>
+  <p id="initial-setup-loading" class="initial-setup-loading" hidden>データを読み込んでいます…</p>
+  <div id="initial-setup-error" class="error-panel" hidden></div>
+</section>
+
+<div id="main-app" hidden>
+
+<section id="study-setup">
+  <h2>学習設定</h2>
+  <div class="control-row">
+    <label for="study-setup-type-filter">問題形式:</label>
+    <select id="study-setup-type-filter">
+      <option value="all">全て</option>
+      <option value="true_false">true_false</option>
+      <option value="single_blank">single_blank</option>
+      <option value="multi_blank">multi_blank</option>
+      <option value="ordering">ordering（item-1090限定）</option>
+      <option value="unsupported">未対応形式のみ</option>
+    </select>
+  </div>
+  <div class="control-row">
+    <label for="study-setup-mode-filter">出題モード:</label>
+    <select id="study-setup-mode-filter">
+      <option value="all">全ての問題</option>
+      <option value="unmastered">未修得の問題</option>
+      <option value="checked">チェック問題</option>
+    </select>
+  </div>
+  <div id="study-setup-empty" class="empty-state" hidden></div>
+  <div class="control-row">
+    <button type="button" id="start-study-btn" class="next-btn">学習を始める</button>
+  </div>
+  <div class="control-row">
+    <button type="button" id="open-browse-view-btn">問題一覧を見る（検索・デバッグ用）</button>
+  </div>
+</section>
+
+<section id="study-session" hidden>
+  <div id="study-session-progress" class="study-session-progress"></div>
+  <div id="study-session-card-container"></div>
+  <div class="control-row">
+    <button type="button" id="end-study-btn">学習を終了する</button>
+  </div>
+</section>
+
+<div id="browse-view" hidden>
+
+<div class="control-row">
+  <button type="button" id="back-to-setup-btn">← 学習設定に戻る</button>
+</div>
+
 <section class="controls">
   <details class="control-row data-source-details" id="data-source-details">
     <summary>データソースを変更する（通常は操作不要）</summary>
     <p class="data-source-help">
-      問題データを更新したい場合や、この端末で初めて開いた場合はここから読み込んでください。
+      問題データを更新したい場合はここから読み込んでください。
     </p>
     <div class="control-row">
       <label for="ev-file-input">Exercise View JSON（例: output/exercise_view_full.json）を選択:</label>
@@ -73,6 +133,12 @@
 <main id="exercise-list" class="exercise-list"></main>
 
 <button type="button" id="load-more-btn" class="load-more-btn" hidden>さらに読み込む</button>
+
+</div>
+<!-- /#browse-view -->
+
+</div>
+<!-- /#main-app -->
 
 <script src="js/debugMode.js"></script>
 <script src="js/evLoader.js"></script>

@@ -46,6 +46,31 @@ header h1 {
   color: #777;
   margin: 4px 0 0;
 }
+.initial-setup {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 16px 0;
+}
+.initial-setup[hidden] {
+  display: none;
+}
+#study-setup h2 {
+  font-size: 1rem;
+  margin: 0 0 10px;
+}
+.study-session-progress {
+  font-size: 0.85rem;
+  color: #555;
+  margin-bottom: 8px;
+}
+.initial-setup-desc {
+  font-size: 0.95rem;
+}
+.initial-setup-loading {
+  font-size: 0.85rem;
+  color: #555;
+}
 .controls {
   display: flex;
   flex-direction: column;
@@ -376,6 +401,9 @@ input[type="file"]:focus-visible {
     background: #1e1e1e;
     color: #aaa;
   }
+  .initial-setup-loading {
+    color: #aaa;
+  }
   button {
     background: #1e1e1e;
     color: #eee;
@@ -395,7 +423,8 @@ input[type="file"]:focus-visible {
     color: #aac4ff;
   }
   .meta-panel,
-  .timing-panel {
+  .timing-panel,
+  .study-session-progress {
     color: #aaa;
   }
   .progress-status {
