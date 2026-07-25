@@ -17,6 +17,8 @@
   var els = {
     fileInput: document.getElementById("ev-file-input"),
     fetchSampleBtn: document.getElementById("fetch-sample-btn"),
+    dataSourceDetails: document.getElementById("data-source-details"),
+    dataSourceStatus: document.getElementById("data-source-status"),
     metaPanel: document.getElementById("meta-panel"),
     filterSelect: document.getElementById("type-filter"),
     studyModeSelect: document.getElementById("study-mode-filter"),
@@ -48,7 +50,12 @@
     els.errorPanel.textContent = "";
   }
 
-  function onLoaded(jsonText, sourceLabel) {
+  // GitHub Pages公開フェーズ（docs/exercise_view_full_output_separation_report.mdの続き）。
+  // opts.skipCacheSave: IndexedDBキャッシュから復元した内容をそのまま書き戻さないためのフラグ。
+  // opts.cachedAt: キャッシュ復元時、状態表示に「最初に保存された時刻」を出すためのISO文字列
+  // （省略時は現在時刻＝新規読み込み扱い）。
+  function onLoaded(jsonText, sourceLabel, opts) {
+    opts = opts || {};
     clearError();
     var t0 = performance.now();
     var parsed;
@@ -62,6 +69,20 @@
 
     state.data = parsed.data;
     state.context = { singleBlankPool: EVv2.buildSingleBlankAnswerPool(parsed.data.exercises) };
+
+    var savedAt = opts.cachedAt || new Date().toISOString();
+    renderDataSourceStatus(sourceLabel, savedAt);
+    if (!opts.skipCacheSave) {
+      EVv2.saveDataCache(jsonText, {
+        savedAt: savedAt,
+        sourceLabel: sourceLabel,
+        schemaVersion: parsed.data.meta.schemaVersion,
+        exerciseCount: parsed.data.exercises.length,
+        withheldCount: parsed.data.withheldExercises.length,
+      }).catch(function (e) {
+        console.warn("[EVv2 dataCache] 保存に失敗しました。次回起動時にこの端末で自動読み込みできない場合があります。", e);
+      });
+    }
 
     // v2-4本体(docs/v2_4_implementation_report.md)。item-1090専用のordering変換を試みる。
     // 対象外・変換失敗の場合はnullが返り、以降は現状どおり(withheld=非表示)のまま何も変わらない。
@@ -217,8 +238,29 @@
     els.progressStoragePanel.textContent =
       "学習履歴ストレージ - localStorage: " + (available ? "利用可能" : "利用不可（このセッション内のみ保持）") +
       " / 保存済みレコード数: " + records.length +
-      " / STORAGE_KEY: " + EVv2.STORAGE_KEY;
+      " / STORAGE_KEY: " + EVv2.STORAGE_KEY +
+      "\n問題データキャッシュ - IndexedDB: 確認中...";
     console.log("[EVv2 progressStorage]", { available: available, recordCount: records.length });
+
+    // GitHub Pages公開フェーズ。教材データ本体のキャッシュ（学習履歴とは別の保存領域）の
+    // 利用可否を追記する（非同期のため、上の1行を先に描画してから追記する）。
+    EVv2.isDataCacheAvailable().then(function (dataCacheAvailable) {
+      els.progressStoragePanel.textContent = els.progressStoragePanel.textContent.replace(
+        "問題データキャッシュ - IndexedDB: 確認中...",
+        "問題データキャッシュ - IndexedDB: " + (dataCacheAvailable ? "利用可能" : "利用不可（毎回の手動読み込みが必要）") +
+          " / DB名: " + EVv2.DATA_CACHE_DB_NAME
+      );
+    });
+  }
+
+  // GitHub Pages公開フェーズ。通常利用時（?debug=1なし）でも見える、データの由来・保存時刻の
+  // 簡易表示。「今表示している問題が最新か」を利用者自身が判断できるようにするための表示であり、
+  // 診断パネル（?debug=1限定）とは別に常時表示する。
+  function renderDataSourceStatus(sourceLabel, savedAtIso) {
+    if (!els.dataSourceStatus) return;
+    var savedDate = new Date(savedAtIso);
+    var savedText = isNaN(savedDate.getTime()) ? savedAtIso : savedDate.toLocaleString("ja-JP");
+    els.dataSourceStatus.textContent = "現在のデータ: " + sourceLabel + "（保存: " + savedText + "）";
   }
 
   function renderMeta(parsed, sourceLabel) {
@@ -360,17 +402,40 @@
     fetchSampleData();
   });
 
-  // 起動時の自動読み込み。npm run app:serve（html-v2/serve.mjs）経由でこのページを開いた場合、
-  // 毎回ファイル選択やボタン操作をしなくても ./data/exercise_view_full.json を自動で読み込む。
-  // file://で開いた場合はfetch()が使えないため何もしない（従来どおりファイル選択が必要）。
-  // 失敗時（データ未同期＝ `npm run app:sync-data` 未実行等）もエラー表示のみで、
-  // 手動読み込み手段（ファイル選択・ボタン）はそのまま使える状態を維持する。
-  if (location.protocol !== "file:") {
-    fetchSampleData(function (e) {
-      showError(
-        "起動時の自動読み込みに失敗しました（" + e.message + "）。" +
-        "`npm run app:sync-data` でデータを同期するか、下の「ファイルを選択」から読み込んでください。"
-      );
+  // GitHub Pages公開フェーズ。教材データ（output/exercise_view_full.json由来）はこれまでどおり
+  // Git管理外・公開サイトへは含めないため、公開URL上では ./data/exercise_view_full.json への
+  // fetchは常に失敗する（意図した挙動）。その場合はこの端末のIndexedDBキャッシュへフォールバックし、
+  // それも無ければ初回セットアップ導線（手動ファイル選択）を案内する。
+  // ローカル開発（npm run app:serve、html-v2/serve.mjs経由）では従来どおりfetchが成功し、
+  // 常に最新の同期済みデータを使う（キャッシュより優先）。
+  function tryLoadFromCache(onNoCache) {
+    EVv2.loadDataCache().then(function (cached) {
+      if (cached && cached.jsonText) {
+        var label = "この端末のキャッシュ" + (cached.meta && cached.meta.sourceLabel ? "（元: " + cached.meta.sourceLabel + "）" : "");
+        onLoaded(cached.jsonText, label, {
+          skipCacheSave: true,
+          cachedAt: cached.meta && cached.meta.savedAt,
+        });
+      } else {
+        onNoCache();
+      }
+    });
+  }
+
+  function showFirstTimeSetupGuidance() {
+    if (els.dataSourceDetails) els.dataSourceDetails.open = true;
+    showError(
+      "問題データがまだこの端末にありません。下の「データソースを変更する」を開き、Exercise View JSONファイルを選択してください。" +
+      "一度読み込めば、次回からはこの端末で自動的に読み込まれます。"
+    );
+  }
+
+  if (location.protocol === "file:") {
+    // file://ではfetch()が使えないため、キャッシュの有無だけで判定する。
+    tryLoadFromCache(showFirstTimeSetupGuidance);
+  } else {
+    fetchSampleData(function () {
+      tryLoadFromCache(showFirstTimeSetupGuidance);
     });
   }
 

@@ -1,0 +1,52 @@
+# 財表ドリル（html-v2）をGitHub Pagesへ公開する。
+#
+# 公開対象は html-v2/ 配下のみ（アプリのコード一式。index.html/css/js/serve.mjs）。
+# html-v2/data/（教材データ本体、有償ライセンス教材の問題文・解答・解説を含む）は
+# .gitignore の /html-v2/data/ 除外により、このワークフローが actions/checkout する時点で
+# そもそもリポジトリに存在しない。したがって本ワークフローが教材データを公開する経路は無い
+# （docs/exercise_view_full_output_separation_report.md、GitHub Pages公開検討時の調査参照）。
+#
+# 公開後の初回アクセス時は問題データが空の状態になる。利用者が手動でExercise View JSONを
+# 一度選択すると、html-v2/js/dataCache.js がこの端末のIndexedDBへ保存し、次回以降は
+# 自動的に読み込まれる（html-v2/js/app.jsのfetch→キャッシュ→手動選択のフォールバック連鎖）。
+
+name: Deploy html-v2 to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "html-v2/**"
+      - ".github/workflows/deploy-pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload html-v2 as Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: html-v2
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

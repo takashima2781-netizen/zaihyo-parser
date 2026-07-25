@@ -11,12 +11,17 @@
   <h1>財表ドリル</h1>
   <p class="disclaimer">
     財務諸表論ポイントチェックの問題を解いて学習履歴を記録します。学習履歴はこの端末のブラウザ内にのみ保存されます。
+    問題データも初回読み込み後はこの端末に保存されるため、次回からは自動的に学習を始められます。
   </p>
+  <p id="data-source-status" class="data-source-status"></p>
 </header>
 
 <section class="controls">
-  <details class="control-row data-source-details">
+  <details class="control-row data-source-details" id="data-source-details">
     <summary>データソースを変更する（通常は操作不要）</summary>
+    <p class="data-source-help">
+      問題データを更新したい場合や、この端末で初めて開いた場合はここから読み込んでください。
+    </p>
     <div class="control-row">
       <label for="ev-file-input">Exercise View JSON（例: output/exercise_view_full.json）を選択:</label>
     </div>
@@ -71,6 +76,7 @@
 
 <script src="js/debugMode.js"></script>
 <script src="js/evLoader.js"></script>
+<script src="js/dataCache.js"></script>
 <script src="js/progressKey.js"></script>
 <script src="js/progressStore.js"></script>
 <script src="js/orderingAdapter.js"></script>

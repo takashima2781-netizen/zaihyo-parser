@@ -37,6 +37,15 @@ header h1 {
 .data-source-details .control-row {
   margin-top: 8px;
 }
+.data-source-help {
+  font-size: 0.85rem;
+  margin: 8px 0 0;
+}
+.data-source-status {
+  font-size: 0.75rem;
+  color: #777;
+  margin: 4px 0 0;
+}
 .controls {
   display: flex;
   flex-direction: column;
