@@ -3,11 +3,11 @@
 // （output/、Git管理対象外）から更新するだけの薄いユーティリティ。
 // Exercise View生成ロジック（src/exerciseView/）・html-v2側の表示/採点ロジックは一切変更しない。
 //
-// 重要: output/exercise_view_full.json は run-exercise-view-full.mjs（override無しの診断用基準）と
-// build-drill-csv.mjs（F4レビュー結果のoverride反映込み、正式経路）の両方が書き込む共有ファイル。
-// レビュー承認済み項目を含む正しい状態を得るには、必ず build-drill-csv.mjs を最後に実行してから
-// 本スクリプトを実行すること（run-exercise-view-full.mjs を最後に実行すると、レビューで
-// eligibleに戻された項目がwithheldへ逆戻りする）。
+// output/exercise_view_full.json は build-drill-csv.mjs のみが書き込む正式成果物
+// （review_decisions.json のoverride反映済み）。生成ロジック単体の診断用出力
+// （override無し）は output/exercise_view_full_no_override.json に分離されている
+// （docs/exercise_view_full_output_separation_report.md）ため、本スクリプトが誤って
+// 未反映データを読み込む経路はない。
 
 import path from "node:path";
 import { fileURLToPath } from "node:url";

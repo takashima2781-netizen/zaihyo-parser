@@ -78,7 +78,7 @@ const PHASE3B1_3B2_LEGITIMATE_ARTIFACTS = [
   "src/cli/run-km-compat-adapter.mjs",
   "src/cli/run-phase3b3-verification.mjs",
   "output/exercise_view_full.json",
-  "output/exercise_view_full_validation.json",
+  "output/exercise_view_full_no_override_validation.json",
   "output/exercise_view_km_compat.json",
   "output/exercise_view_km_compat_validation.json",
   "output/exercise_view_km_compat_○×用.csv",

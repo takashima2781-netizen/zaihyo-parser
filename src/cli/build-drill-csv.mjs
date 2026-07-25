@@ -24,12 +24,10 @@
 // 該当Itemをwithheldではなく通常のeligible Exerciseとして生成し、正式CSVへ含める。
 // 決定ログが空/存在しない場合は完全に従来どおりの出力になる。
 //
-// 注意: output/exercise_view_full.json はこのCLIと run-exercise-view-full.mjs の両方が
-// 書き込む共有ファイルである。run-exercise-view-full.mjs は常にoverride無し(診断用の基準)で
-// 生成するため、reviewOverrideを反映した正式生成の後に run-exercise-view-full.mjs を実行すると、
-// このファイルはoverride無しの内容へ上書きされる（正式CSV自体は変更されない）。
-// override適用状態を正しく反映したoutput/exercise_view_full.jsonを得るには、本CLIを最後に
-// 実行すること。
+// output/exercise_view_full.json（override反映済み・正式成果物）への書き込み経路は本CLIのみに
+// 限定されている（docs/exercise_view_full_output_separation_report.md）。生成ロジック単体の
+// 診断用出力（override無し）は run-exercise-view-full.mjs が別ファイル
+// output/exercise_view_full_no_override.json へ出力する。
 
 import path from "node:path";
 import { fileURLToPath } from "node:url";

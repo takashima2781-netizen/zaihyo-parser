@@ -7,6 +7,11 @@
 // Item IDは現行互換helper（src/exerciseView/sourceRef.mjs）経由でlegacyItemId（item-NNN）を
 // 引き続き取得しつつ、F2（Item ID正式化、docs/item_id_formalization_design_memo.md）以降は
 // BSMのprovenance.stableItemId由来の安定IDもExerciseへ並行して保持する。
+//
+// 出力先: output/exercise_view_full_no_override.json / _no_override_validation.json。
+// review_decisions.jsonのoverride（人手レビュー結果）は適用しない、生成ロジック単体（BSM→Exercise View）
+// の診断・回帰確認専用の出力である。正式・override反映済みの成果物はoutput/exercise_view_full.json
+// （build-drill-csv.mjsのみが書き込む）を参照すること（docs/exercise_view_full_output_separation_report.md）。
 
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -323,14 +328,14 @@ function main() {
 
   const outDir = path.join(ROOT, "output");
   mkdirSync(outDir, { recursive: true });
-  writeFileSync(path.join(outDir, "exercise_view_full.json"), JSON.stringify(exerciseView, null, 2), "utf8");
+  writeFileSync(path.join(outDir, "exercise_view_full_no_override.json"), JSON.stringify(exerciseView, null, 2), "utf8");
   writeFileSync(
-    path.join(outDir, "exercise_view_full_validation.json"),
+    path.join(outDir, "exercise_view_full_no_override_validation.json"),
     JSON.stringify({ summary, checks, generationFailures, emptyQuestionsSkipped, missingItemIdExamples }, null, 2),
     "utf8"
   );
-  console.log("wrote: output/exercise_view_full.json");
-  console.log("wrote: output/exercise_view_full_validation.json");
+  console.log("wrote: output/exercise_view_full_no_override.json");
+  console.log("wrote: output/exercise_view_full_no_override_validation.json");
 }
 
 main();

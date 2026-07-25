@@ -48,7 +48,7 @@ const WATCHED_FROZEN_LAYERS = [
   "output/book_structure_master_phase2a.json",
   "output/book_structure_master_phase2a_validation.json",
   "output/exercise_view_full.json",
-  "output/exercise_view_full_validation.json",
+  "output/exercise_view_full_no_override_validation.json",
   "output/exercise_view_phase3a.json",
   "docs/book_structure_master_phase2a_report.md",
   "docs/book_structure_master_phase2b_report.md",
