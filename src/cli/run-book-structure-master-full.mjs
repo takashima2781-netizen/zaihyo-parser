@@ -160,7 +160,12 @@ function main() {
   checks["01_schema_shape"] = validateSchemaShape(bsm);
   // 1121→1112: Parserのマーカー誤検出補正(Group A、9件、docs/phase2c_pdf_visual_verification.md参照)により、
   // 箱囲みのない見出しラベルを誤って空欄としてカウントしていたItem 9件が正しく除外されたことによる期待値更新。
-  checks["02_count_correspondence"] = validateCounts(bsm, { expectedItemCount: 1112, expectedCheckBlockCount: 322 });
+  // 1112→1164: 教材データ品質調査(2026-07-27、共通指示文実装の表示確認中に発見)で、本文中の
+  // 列挙記号（例:「２ 動態論の特徴 …。」）がtopicHeadingと誤分類され、項目見出し4件が本文を
+  // 丸ごと吸収する一方、本来の設問本文・52 Itemが失われていたことが判明した。classify.mjsの
+  // topicHeading判定に長さ・句点の条件を追加して修正し、失われていた52 Itemが正しく復元された
+  // ことによる期待値更新（docs/book_structure_master_phase1_review.md等と同じ位置づけの調査記録）。
+  checks["02_count_correspondence"] = validateCounts(bsm, { expectedItemCount: 1164, expectedCheckBlockCount: 322 });
   checks["03_verbatim_match"] = validateVerbatimAgainstIntermediateJson(bsm, itemsById);
   checks["04_missing_text"] = checks["03_verbatim_match"]; // 逐語一致チェックが原文欠落検出を兼ねる
   checks["05_provenance_gap"] = validateProvenance(bsm);

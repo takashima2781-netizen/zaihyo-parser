@@ -329,6 +329,10 @@ function buildMultiBlankExercise(majorUnit, leaves, checkSectionId, ctx, structu
     bodySegments, // v1.6.0で追加。shared_body_blanks構造かつeligibleの場合のみ非null
     structurePath, // v1.7.0で追加。祖先StructureNode列(theme→section→topic等、RawSpanRef化済み)
     structure, // v1.7.0で追加。structurePathと同内容をkind別(theme/section/topic等)にアクセスしやすくしたもの
+    // v1.8.0で追加。共通指示文（「＜チェック区分＞＋問N」に続く、本文とは重複しない指示文）。
+    // majorUnit自身がこの演習(multi_blank)そのものであるためinherited:falseとする
+    // (single_blank/true_falseは末端Itemがこの値を"継承"するためinherited:trueになる)。
+    instructionRaw: majorUnit.instructionRaw ? toRef(majorUnit.instructionRaw, majorUnit.id, { inherited: false }) : null,
     generationRule: finalizeGenerationRule(attemptedRule, combined.eligibility),
     eligibility: combined.eligibility,
     ineligibilityReasons: combined.reasons,
@@ -402,6 +406,9 @@ function buildSingleBlankExercise(leaf, majorUnit, checkSectionId, ctx, structur
     bodySegments: null, // v1.6.0で追加。shared_body_blanks専用の軸のため、single_blankは常にnull
     structurePath, // v1.7.0で追加。祖先StructureNode列(theme→section→topic等、RawSpanRef化済み)
     structure, // v1.7.0で追加。structurePathと同内容をkind別(theme/section/topic等)にアクセスしやすくしたもの
+    // v1.8.0で追加。共通指示文は常にmajorUnit由来（末端Itemが独自に持つ概念ではない）ため
+    // inherited:trueとする（prompt/bodyのinherited判定とは独立、instructionRawは常にmajorUnit発）。
+    instructionRaw: majorUnit.instructionRaw ? toRef(majorUnit.instructionRaw, majorUnit.id, { inherited: true }) : null,
     generationRule: finalizeGenerationRule(attemptedRule, combined.eligibility),
     eligibility: combined.eligibility,
     ineligibilityReasons: combined.reasons,
@@ -467,6 +474,9 @@ function buildTrueFalseExercise(leaf, majorUnit, checkSectionId, ctx, structureP
     bodySegments: null, // v1.6.0で追加。shared_body_blanks専用の軸のため、true_falseは常にnull
     structurePath, // v1.7.0で追加。祖先StructureNode列(theme→section→topic等、RawSpanRef化済み)
     structure, // v1.7.0で追加。structurePathと同内容をkind別(theme/section/topic等)にアクセスしやすくしたもの
+    // v1.8.0で追加。共通指示文は常にmajorUnit由来（末端Itemが独自に持つ概念ではない）ため
+    // inherited:trueとする（prompt/bodyのinherited判定とは独立、instructionRawは常にmajorUnit発）。
+    instructionRaw: majorUnit.instructionRaw ? toRef(majorUnit.instructionRaw, majorUnit.id, { inherited: true }) : null,
     generationRule: finalizeGenerationRule(attemptedRule, combined.eligibility),
     eligibility: combined.eligibility,
     ineligibilityReasons: combined.reasons,
@@ -630,9 +640,14 @@ export function buildExerciseViewV1(bsm, { targets, anomaliesByUnitId, generated
         // v1.7.0(出題テーマ絞り込み機能向け、Exercise Viewへ祖先StructureNode列を追加。
         // structurePath(theme→section→topic等、深さ固定なし)とstructure(kind別アクセス用)を
         // 全Exercise/withheldExerciseへ追加。既存フィールドは無変更、追加フィールドのみ)。
+        // v1.8.0(共通指示文の計測・実装レポート参照、instructionRawフィールド追加。
+        // 「＜チェック区分＞＋問N」に続く指示文原文のうち、本文と重複しない範囲をRawSpanRef化して
+        // 保持する。指示文と小見出しが同一行で連結されている場合も分離を試みず原文のまま保持し、
+        // 境界の手がかりが無い場合（無マーカー単一Item）はnullのままにする。既存フィールドは
+        // 無変更、追加フィールドのみ)。
         // GENERATOR_VERSION_V1は意図的に変更していない(上部のコメント参照。
         // フィールド追加のみで既存値は一切変わらないため、47件の承認済みレビューへ影響しない)。
-        schemaVersion: "exercise-view-schema-v1.7.0",
+        schemaVersion: "exercise-view-schema-v1.8.0",
         status: "provisional-phase3b1-full",
         generatedAt,
         sourceBookStructureMasterPath: sourceBsmFile,

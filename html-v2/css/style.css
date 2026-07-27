@@ -150,6 +150,16 @@ input[type="file"]:focus-visible {
   border-color: #c62828;
   color: #c62828;
 }
+.structure-breadcrumb {
+  font-size: 0.72rem;
+  color: #777;
+  margin: 4px 0;
+}
+.instruction-line {
+  font-size: 0.9rem;
+  color: #333;
+  margin: 2px 0 8px;
+}
 .badge {
   display: inline-block;
   font-size: 0.7rem;
@@ -408,6 +418,12 @@ input[type="file"]:focus-visible {
   }
   .initial-setup-loading {
     color: #aaa;
+  }
+  .structure-breadcrumb {
+    color: #999;
+  }
+  .instruction-line {
+    color: #ccc;
   }
   button {
     background: #1e1e1e;

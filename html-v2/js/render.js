@@ -209,6 +209,28 @@ EVv2.createExerciseCard = function (ex, context, onNext) {
   badge.textContent = handler ? handler.label : "未対応形式 (" + ex.exerciseType + ")";
   card.appendChild(badge);
 
+  // v1.8.0(共通指示文の実装レポート参照)。カード上部はテーマ›節›論点 → 共通指示文 →
+  // 問題本文 → 回答UI、の順で並べる。パンくずは控えめ、共通指示文は本文よりわずかに小さいが
+  // 普通に読める文字色にし、内部ID(id-line)や出典(source-line)とは視覚的に区別する。
+  var structureLevels = ["theme", "section", "topic"]
+    .map(function (kind) {
+      return ex.structure && ex.structure[kind] ? ex.structure[kind].titleRaw.text : null;
+    })
+    .filter(Boolean);
+  if (structureLevels.length > 0) {
+    var breadcrumb = document.createElement("div");
+    breadcrumb.className = "structure-breadcrumb";
+    breadcrumb.textContent = structureLevels.join(" › ");
+    card.appendChild(breadcrumb);
+  }
+
+  if (ex.instructionRaw) {
+    var instructionLine = document.createElement("p");
+    instructionLine.className = "instruction-line";
+    instructionLine.textContent = ex.instructionRaw.text;
+    card.appendChild(instructionLine);
+  }
+
   // v2-5: 内部識別子は診断情報として扱い、通常利用時（?debug=1が無いとき）は表示しない。
   if (EVv2.DEBUG_MODE) {
     var idLine = document.createElement("div");

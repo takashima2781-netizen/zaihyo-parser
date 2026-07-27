@@ -7,6 +7,10 @@
 // - promptRaw は常にnull（設問文の「指示文」と「地の文」の分割は、Intermediate JSONの
 //   sharedPromptRawTextフィールド単体からは機械的に導出できないため、Phase 1同様に人手の
 //   判断が必要な部分として自動化しない。共有テキストは常にbodyRawへ格納する）。
+// - instructionRaw（v1.8.0で追加）は、上記promptRawとは別の、より機械的・保守的な軸。
+//   Parser側(buildCorpus.mjs)が「＜チェック区分＞＋問N＋指示文」の見出し行から、本文と
+//   重複しない範囲だけを既に切り出し済みの原文として保持しており、ここではその値を
+//   そのまま転記するだけで、新しい判定・分割は一切行わない。
 // - explanationRole.code は常にnull（訂正文か一般解説かを機械的に断定するルールが未確立のため）。
 // - 「記号が空欄か列挙記号か」は判定しない。presentations[].type と confidence/notes から
 //   機械的に導けるunitKindのみを付与し、それ以外は"unknown"のまま保持する。
@@ -163,6 +167,9 @@ export function buildQuestionUnitTree(question, items, stableIdsById) {
       ...leaf,
       id: `qu-${question.id}`,
       labelRaw: { text: question.raw.text, source: question.raw.source },
+      // v1.8.0。無マーカー単一Itemの場合、指示文と本文の境界を示す手がかりが無いため
+      // Parser側は分離を試みておらず、常にnullになる（ユーザー指示: 無理に分離しない）。
+      instructionRaw: question.instructionRaw ?? null,
     };
   }
 
@@ -195,6 +202,9 @@ export function buildQuestionUnitTree(question, items, stableIdsById) {
     labelRaw: { text: question.raw.text, source: question.raw.source },
     promptRaw: null,
     bodyRaw,
+    // v1.8.0。本文と重複しない範囲でParser側(buildCorpus.mjs)が既に切り出し済みの
+    // 共通指示文原文をそのまま転記する（ここでの新しい判定・分割は行わない）。
+    instructionRaw: question.instructionRaw ?? null,
     parsed: {
       diag: mapDiag(null, extraDiagNote),
       unitKind: { code: "majorQuestion", labelRaw: null },

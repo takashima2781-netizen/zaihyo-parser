@@ -858,6 +858,7 @@ export function buildCorpus({
         id: nextId("question"),
         raw: { text: questionLabelRaw, source: block.source },
         sharedPromptRawText: null,
+        instructionRaw: null,
         items: [],
       };
       checkBlock.questions.push(question);
@@ -866,10 +867,38 @@ export function buildCorpus({
       // なければ、次の既知ロール行が現れるまでの後続unknown行から、
       // マーカーを含む最初のブロックを本文として採用する。
       // （解答対応付けでマーカー集合の整合チェックに使うため、解答探索より先に行う）
+      //
+      // v1.8.0向け(共通指示文の計測・実装レポート参照)。instructionText（＜チェック区分＞の直後、
+      // 「問N」に続く原文）は、本文として採用されないと以後どこにも保存されず失われることを
+      // 実データ計測（全322 checkblock中244件で発生）で確認した。ここでは新しい意味判定は行わず、
+      // 「本文としてどこから採用したか」という既存の機械的な条件分岐だけを使って、
+      // 本文と重複しない範囲を原文のまま保持する（推測しない・原文を失わない、原則5・6）。
+      // - instructionText自体にマーカーが無く、後続の別ブロックが本文として採用された場合
+      //   （後述のfor内）: instructionText全体が本文と重複しない別テキストなので、そのまま保持する。
+      // - instructionText自体にマーカーが含まれ、かつそのstrategyがsegmented（paren、"(N)"）の場合:
+      //   本文は引き続きinstructionText全体から生成されるが、pairRegexは各"(N)"以降だけを
+      //   本文として切り出すため、最初のマーカーより前の部分は本文と重複しない。この部分だけを
+      //   共通指示文として保持する。指示文と小見出しが同一行で連結されている場合も、無理に
+      //   分離せず原文のまま保持する（ユーザー指示: 誤った推測で原文を削るより広めに保持する方が安全）。
+      // - instructionText自体にマーカーが含まれ、かつそのstrategyがinline-shared（circled、"①②③"）の
+      //   場合: この様式は本文全体（マーカーより前の部分も含む）をそのままsharedBodyBlankPositionの
+      //   基準テキストとして使うため、マーカーより前を別途instructionRawとして切り出すと本文と
+      //   完全に重複する。したがってこの様式ではinstructionRawを付与しない（ユーザー指示: 本文と
+      //   重複格納しない）。
+      // - マーカーがどこにも見つからない場合（この後のRule 3、単一Item・無マーカー）は、
+      //   指示文と本文の境界を示す手がかりが無いため、分離を試みずnullのままにする。
       let strategy = detectStrategy(instructionText);
       let bodyText = instructionText;
       let bodySource = block.source;
-      if (!strategy) {
+      if (strategy) {
+        if (strategy.mode === "segmented") {
+          strategy.detectRegex.lastIndex = 0;
+          const markerMatch = strategy.detectRegex.exec(instructionText);
+          strategy.detectRegex.lastIndex = 0;
+          const leading = (markerMatch ? instructionText.slice(0, markerMatch.index) : instructionText).trim();
+          question.instructionRaw = leading ? { text: leading, source: block.source } : null;
+        }
+      } else {
         for (let j = i + 1; j < questionBlocks.length; j++) {
           const nb = questionBlocks[j];
           if (nb.role !== "unknown") break;
@@ -879,6 +908,8 @@ export function buildCorpus({
             bodyText = nb.text;
             bodySource = nb.source;
             consumedLocators.add(nb.source.locator);
+            const leading = instructionText.trim();
+            question.instructionRaw = leading ? { text: leading, source: block.source } : null;
             break;
           }
         }
