@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "review-decisions-core-schema-v1.0.0",
+  "title": "Review Decisions Core (Git管理される再現性用SSOT)",
+  "description": "output/review_decisions.json（人間のレビュー用、自由記述・教材原文の引用を含みうる。Git管理外）から、パイプラインの再現に実際に必要な構造化フィールドだけを抽出した派生データ。src/cli/export-review-decisions-core.mjsで生成する（rich→coreの一方向）。comment・suggestedCorrectionは意図的に含めない（教材原文の引用を含みうるため）。build-drill-csv.mjsはこのファイルをcomment: \"\", suggestedCorrection: null で補完し、既存のsrc/review/resolveOverrides.mjs・reviewDecisions.mjsへ渡す（両モジュールは無変更）。",
+  "$defs": {
+    "Status": {
+      "type": "string",
+      "enum": ["pending", "approved", "rejected", "needs_source_fix", "needs_rule_change", "deferred"]
+    },
+    "CoreDecisionRecord": {
+      "type": "object",
+      "properties": {
+        "stableItemId": { "type": "string", "description": "レビュー対象Itemの主キー。BSM QuestionUnit.provenance.stableItemId(F2)と同じ値。" },
+        "legacyItemIdAtReview": { "type": "string", "description": "レビュー記録時点の現行item-NNN(監査用の補助情報)。" },
+        "status": { "$ref": "#/$defs/Status" },
+        "reasonCode": { "type": "string", "description": "判断の分類ラベル。教材原文の引用は含めない前提（output/review_decisions_schema.json §reasonCodeと同じ語彙）。" },
+        "reviewedBy": { "type": "string" },
+        "reviewedAt": { "type": "string", "description": "ISO8601形式の日時。" },
+        "contentFingerprintAtReview": { "type": "string" },
+        "exerciseViewGeneratorVersionAtReview": { "type": "string" },
+        "bsmSchemaVersionAtReview": { "type": "string" }
+      },
+      "required": [
+        "stableItemId",
+        "legacyItemIdAtReview",
+        "status",
+        "reasonCode",
+        "reviewedBy",
+        "reviewedAt",
+        "contentFingerprintAtReview",
+        "exerciseViewGeneratorVersionAtReview",
+        "bsmSchemaVersionAtReview"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "type": "object",
+  "properties": {
+    "schemaVersion": { "type": "string" },
+    "decisions": { "type": "array", "items": { "$ref": "#/$defs/CoreDecisionRecord" } }
+  },
+  "required": ["schemaVersion", "decisions"],
+  "additionalProperties": false
+}

@@ -20,9 +20,12 @@
 // エラーとして扱わない。
 //
 // F4(docs/exercise_view_f4_review_reflection_report.md、レビュー結果の反映機構):
-// output/review_decisions.json（F3の決定ログ）に安全確認済みの"approved"判断がある場合、
-// 該当Itemをwithheldではなく通常のeligible Exerciseとして生成し、正式CSVへ含める。
-// 決定ログが空/存在しない場合は完全に従来どおりの出力になる。
+// review/review_decisions_core.json（Git管理されるSSOT、2026-07-28分離）に安全確認済みの
+// "approved"判断がある場合、該当Itemをwithheldではなく通常のeligible Exerciseとして生成し、
+// 正式CSVへ含める。決定ログが空/存在しない場合は完全に従来どおりの出力になる。
+// 人間のレビュー用の完全な記録（自由記述・教材原文の引用を含みうるcomment/suggestedCorrection）は
+// output/review_decisions.json（Git管理外）に引き続き保持する。両者はsrc/cli/export-review-decisions-core.mjs
+// で同期する（rich→coreの一方向。パイプラインが実際に参照するのはcore側のみ）。
 //
 // output/exercise_view_full.json（override反映済み・正式成果物）への書き込み経路は本CLIのみに
 // 限定されている（docs/exercise_view_full_output_separation_report.md）。生成ロジック単体の
@@ -177,15 +180,27 @@ function main() {
   const groups = corpus.books[0].groups;
   const itemsById = collectAllItems(groups);
   record("=== Step 1b: F4レビュー結果反映機構(docs/exercise_view_f4_review_reflection_report.md) ===");
-  // output/review_decisions.jsonが存在しない場合は空の決定ログとして扱う(F3実装前・レビュー未実施と同じ挙動)。
-  // SKIP_REVIEW_OVERRIDES=1指定時は、ファイルの内容に関わらずoverride無し版を強制する(即時ロールバック手段)。
-  const decisionsPath = path.join(ROOT, "output/review_decisions.json");
+  // review/review_decisions_core.json（Git管理されるSSOT）が存在しない場合は空の決定ログとして扱う
+  // (F3実装前・レビュー未実施と同じ挙動)。SKIP_REVIEW_OVERRIDES=1指定時は、ファイルの内容に関わらず
+  // override無し版を強制する(即時ロールバック手段)。
+  // coreレコードにはcomment/suggestedCorrectionが含まれない(教材原文の引用を避けるため意図的に
+  // 除外、src/cli/export-review-decisions-core.mjs参照)。validateDecisionRecordShape・
+  // resolveApplicableOverrides(いずれも無変更)が要求する形状を満たすよう、安全なプレースホルダー
+  // (comment: ""、suggestedCorrection: null。schemaが明示的に許容する値、docs/review_decisions_schema.json)
+  // で補完してから渡す。
+  const decisionsPath = path.join(ROOT, "review/review_decisions_core.json");
   const skipReviewOverrides = process.env.SKIP_REVIEW_OVERRIDES === "1";
   const reviewDecisionsFileSha256 = !skipReviewOverrides && existsSync(decisionsPath) ? hashFile(decisionsPath) : null;
   const decisionsLog = skipReviewOverrides
     ? { schemaVersion: "review-decisions-v1.0.0", decisions: [] }
     : existsSync(decisionsPath)
-      ? JSON.parse(readFileSync(decisionsPath, "utf8"))
+      ? (() => {
+          const core = JSON.parse(readFileSync(decisionsPath, "utf8"));
+          return {
+            schemaVersion: core.schemaVersion,
+            decisions: (core.decisions ?? []).map((d) => ({ ...d, comment: "", suggestedCorrection: null })),
+          };
+        })()
       : { schemaVersion: "review-decisions-v1.0.0", decisions: [] };
   const overridesResult = resolveApplicableOverrides(bsm, decisionsLog, {
     currentGeneratorVersion: EXERCISE_VIEW_GENERATOR_VERSION_V1,
@@ -202,7 +217,7 @@ function main() {
     intermediateJsonFile: "output/intermediate_full_scan.json",
     intermediateJsonSha256: hashFile(corpusPath),
     inputItemCount: itemsById.size,
-    reviewDecisionsFile: reviewDecisionsFileSha256 ? "output/review_decisions.json" : null,
+    reviewDecisionsFile: reviewDecisionsFileSha256 ? "review/review_decisions_core.json" : null,
     reviewDecisionsFileSha256,
   };
 
