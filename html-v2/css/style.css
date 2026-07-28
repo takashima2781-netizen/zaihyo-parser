@@ -93,6 +93,17 @@ input[type="file"] {
   font-size: 0.95rem;
   max-width: 100%;
 }
+/* プルダウン(select)自体に控えめな枠線・背景を持たせ、周囲との境界を分かりやすくする
+   （ブラウザ標準の開いた選択肢一覧そのものはCSSで直接装飾できないため、selectコントロール側の
+   見た目を調整する。既存のbuttonと角丸・トーンを揃える）。同じ理由で存在する全selectへ
+   一律に適用される。 */
+select {
+  padding: 6px 8px;
+  border: 1px solid #999;
+  border-radius: 6px;
+  background: #fff;
+  color: inherit;
+}
 button {
   font-size: 0.92rem;
   padding: 8px 12px;
@@ -428,6 +439,10 @@ input[type="file"]:focus-visible {
   button {
     background: #1e1e1e;
     color: #eee;
+    border-color: #555;
+  }
+  select {
+    background: #1e1e1e;
     border-color: #555;
   }
   .ex-card {
