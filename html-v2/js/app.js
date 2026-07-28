@@ -22,6 +22,7 @@
   };
 
   var els = {
+    onboardingInfo: document.getElementById("onboarding-info"),
     initialSetup: document.getElementById("initial-setup"),
     initialFileInput: document.getElementById("initial-file-input"),
     initialLoading: document.getElementById("initial-setup-loading"),
@@ -95,6 +96,9 @@
   function showMainApp() {
     els.initialSetup.hidden = true;
     els.mainApp.hidden = false;
+    // 学習中は内部実装・保存先の説明を出さない（データを問題なく読み込めている場合のみ）。
+    // 初回セットアップ画面（読み込み前・エラー時）ではこれまでどおり表示したままにする。
+    els.onboardingInfo.hidden = true;
     showStudySetup();
   }
 

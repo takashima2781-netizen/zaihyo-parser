@@ -24,6 +24,7 @@ import { toHalfWidthDigits, extractFootnoteRefs, detectTrueFalseSymbol } from ".
 import { detectStrategy } from "./markerStrategies.mjs";
 import { labelToCode } from "./checkTypeLabels.mjs";
 import { getGroupAExclusionsForLocator, KNOWN_NORMAL_DUPLICATE_MARKER_LOCATORS } from "./knownMarkerExclusions.mjs";
+import { applyKnownBodyFragmentFix } from "./knownBodyFragmentFixes.mjs";
 
 function numOrNull(s) {
   return s == null ? null : Number(toHalfWidthDigits(s));
@@ -912,6 +913,17 @@ export function buildCorpus({
             question.instructionRaw = leading ? { text: leading, source: block.source } : null;
             break;
           }
+        }
+      }
+
+      // 教材データ品質調査(2026-07-28)で確認した、既知の本文断片再結合（src/parser/knownBodyFragmentFixes.mjs
+      // 参照）。レイアウト復元の不備で本文から孤立した断片を、個別確認済みのcheckBlockIdのみを対象に
+      // 本文へ結合する。fail-closed（想定と異なる場合は例外）なので、対象外のcheckBlockIdでは何もしない。
+      if (strategy) {
+        const fixResult = applyKnownBodyFragmentFix(checkBlock.id, bodyText, bodySource);
+        if (fixResult) {
+          bodyText = fixResult.bodyText;
+          consumedLocators.add(fixResult.fragmentLocator);
         }
       }
 

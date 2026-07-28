@@ -8,6 +8,11 @@ export const INELIGIBLE_CATEGORIES_FOR_REPORT = new Set([
   "unsupported_table_structure",
   "schema_validation_error",
   "builder_error",
+  // 教材データ品質調査(2026-07-28)で追加。本文の一部が別ブロックへ孤立し(分類できなかった断片)、
+  // かつその断片が破損・切断されているか、本文中の複数箇所へ分割挿入する必要があるなど、
+  // 機械的・決定的に本文を復元できないことを個別に確認した既知のcheckblockのみを対象とする
+  // （anomalyDetector.mjs 2d参照、locator完全一致の個別補正であり一般ルールではない）。
+  "body_fragment_incomplete",
 ]);
 
 // 自動演習化を停止し、レビュー待ちとして生成対象外にするカテゴリ

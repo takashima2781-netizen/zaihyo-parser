@@ -154,10 +154,97 @@ export function detectAnomalies(bsm, { itemsById, builderErrors = [], validation
     }
   }
 
+  // 2c. unsupported_table_structure（instructionRawベース、教材データ品質調査2026-07-28）:
+  //     大問の指示文(instructionRaw、v1.8.0で追加)が「次に掲げる表」で始まる場合、本文が
+  //     表構造であることが原文で明示されている。2b(avgSegLenベースの判定)は「子が全て
+  //     解答未リンク」を前提とするため、表の一部の空欄だけ偶然解答リンクに成功した場合
+  //     （checkblock-294、p.268。表の1セル分のみが独立した2空欄fillBlankとして誤って
+  //     切り出され、残り6空欄・他の行列は本文継続探索から漏れて別途unresolvedになっていた）を
+  //     検知できない。instructionRawは原文をそのまま転記した値であり、新しい解釈・推測は
+  //     加えていない。全322 checkblockを調査し、「次に掲げる表」に一致する指示文を持つのは
+  //     checkblock-90・294の2件のみ（他に指示文が「表」を含むケースは無し）であることを
+  //     確認済み。2bで既に検出済みのItemは重複計上しない。
+  const alreadyFlaggedItemIds = new Set(anomalies.map((a) => a.item_id));
+  for (const { qu, checkBlockId, questionId } of majorGroups) {
+    const instructionText = qu.instructionRaw?.text ?? "";
+    if (!/次に掲げる表/.test(instructionText)) continue;
+    for (const c of qu.children ?? []) {
+      if (!c._sourceItemId || alreadyFlaggedItemIds.has(c._sourceItemId)) continue;
+      const item = itemsById.get(c._sourceItemId);
+      anomalies.push({
+        anomaly_id: nextAnomalyId(),
+        severity: "review",
+        category: "unsupported_table_structure",
+        source_page: item ? parsePage(item.raw.question[0]?.source?.locator) : null,
+        checkblock_id: checkBlockId,
+        question_id: questionId,
+        item_id: c._sourceItemId,
+        unit_id: c.id,
+        raw_excerpt: excerptOf(item),
+        reason:
+          "大問の指示文（instructionRaw）が「次に掲げる表」で始まり、表構造の問題であることが原文で明示されている。" +
+          "一部の空欄で解答リンクに成功している場合でも、現行スキーマのQuestionUnitツリーでは表構造（行・列の対応関係）を" +
+          "表現できず、本文・空欄の一部しか正しく切り出せていない可能性が高い",
+        recommended_action: "手動レビューが必要。現行スキーマのQuestionUnitツリーでは表現できない可能性があり、スキーマ拡張の検討課題として記録する",
+      });
+    }
+  }
+
+  // 2d. body_fragment_incomplete（checkblock個別指定、教材データ品質調査2026-07-28）:
+  //     本文の一部が「分類できなかった断片」として別ブロックへ孤立し、かつその断片が
+  //     破損・途中で切れている、または本文中の複数箇所へ分割して挿入する必要があるなど、
+  //     機械的・決定的な単一の挿入位置を特定できないことを、原本PDFの目視確認により
+  //     個別に確認したcheckblockのみを対象とする一覧。
+  //     - checkblock-11(p.20): 断片自体が「しなけ」のように単語の途中で切れており、
+  //       本文への単純な挿入では復元できない。
+  //     - checkblock-257(p.244)・checkblock-261(p.246): 同一の断片テキストを本文中の
+  //       2箇所（"①及び②に区分される。"と"を区別する必要がある⑤を"）へ分割して
+  //       挿入する必要があり、単一挿入を前提とする仕組みでは復元できない。
+  //     - checkblock-185(p.176): 上記3件とは別種の不具合（孤立断片の再結合ではなく、本文の
+  //       切り出し範囲が後続の別設問（問５・問６の指示文）まで越境して混入しており、かつ本文中に
+  //       出典不明の孤立した1文字「あ」が混入している）。ユーザー指示(2026-07-28)により、原本PDF上の
+  //       正しい本文範囲をこの場で確実に復元できないため、他3件と同じ理由コード
+  //       body_fragment_incompleteでwithheldとする。次回の原本PDF確認対象としてdocs/known_issues.md
+  //       KI-4に記録済み。
+  //     いずれも本文が不完全なまま演習化されると誤った内容を出題することになるため、
+  //     ここでは推測で復元せず出題対象から外す（withheld）。本文中の特定の語句や
+  //     パターンによる一般ルールではなく、locator(checkBlockId)の完全一致のみを条件とする
+  //     個別補正である。
+  const KNOWN_BODY_FRAGMENT_INCOMPLETE_CHECKBLOCK_IDS = new Set([
+    "cs-checkblock-11",
+    "cs-checkblock-257",
+    "cs-checkblock-261",
+    "cs-checkblock-185",
+  ]);
+  for (const { qu, checkBlockId, questionId } of majorGroups) {
+    if (!KNOWN_BODY_FRAGMENT_INCOMPLETE_CHECKBLOCK_IDS.has(checkBlockId)) continue;
+    for (const c of qu.children ?? []) {
+      if (!c._sourceItemId || alreadyFlaggedItemIds.has(c._sourceItemId)) continue;
+      const item = itemsById.get(c._sourceItemId);
+      anomalies.push({
+        anomaly_id: nextAnomalyId(),
+        severity: "review",
+        category: "body_fragment_incomplete",
+        source_page: item ? parsePage(item.raw.question[0]?.source?.locator) : null,
+        checkblock_id: checkBlockId,
+        question_id: questionId,
+        item_id: c._sourceItemId,
+        unit_id: c.id,
+        raw_excerpt: excerptOf(item),
+        reason:
+          "本文の一部が「分類できなかった断片」として別ブロックへ孤立しており、原本PDF目視確認の結果、" +
+          "断片が破損している、または本文中の複数箇所へ分割挿入する必要があるなど、機械的・決定的な単一の" +
+          "挿入位置を特定できないことを確認した（教材データ品質調査2026-07-28）",
+        recommended_action: "原本PDFに基づく個別レビューが必要。本文の完全な復元方法が確定するまでwithheldのまま維持する",
+      });
+      alreadyFlaggedItemIds.add(c._sourceItemId);
+    }
+  }
+
   // 3. unresolved_item: 上記のいずれにも該当しない confidence="low" のItem（catch-all、推測はしない）
   const alreadyFlagged = new Set(
     anomalies
-      .filter((a) => ["missing_answer", "possible_marker_misclassification", "unsupported_table_structure"].includes(a.category))
+      .filter((a) => ["missing_answer", "possible_marker_misclassification", "unsupported_table_structure", "body_fragment_incomplete"].includes(a.category))
       .map((a) => a.item_id)
   );
   for (const { qu, checkBlockId, questionId } of leaves) {

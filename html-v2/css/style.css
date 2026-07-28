@@ -295,6 +295,15 @@ input[type="file"]:focus-visible {
   background: #ffcdd2;
   border-color: #c62828;
 }
+.choice-selected {
+  background: #e3f2fd;
+  border-color: #1565c0;
+}
+.multiblank-confirm-btn {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+}
 .reveal-box {
   margin-top: 10px;
   font-size: 0.9rem;

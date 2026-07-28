@@ -255,10 +255,15 @@ var multiBlankHandler = {
       return;
     }
 
+    // v2-6(教材データ品質調査2026-07-28 Item4): 選択のたびに即座に正誤を出す方式をやめ、
+    // 全空欄を選び終えてから「解答を確定」ボタンで一括採点する方式にする（ユーザー指示）。
+    // 選択中は正誤に一切触れない状態(selectedTextのみ)を持ち、確定後にのみ
+    // correct/incorrectを確定して以後変更不可にする。
     var choiceSets = buildMultiBlankChoiceSets(ex, context);
     var unitStates = choiceSets.map(function () {
-      return { answered: false, correct: false };
+      return { selectedText: null, buttonsByText: {} };
     });
+    var confirmed = false;
     var completedSaved = false;
 
     var summary = document.createElement("div");
@@ -267,14 +272,51 @@ var multiBlankHandler = {
     resultBox.className = "reveal-box";
     resultBox.hidden = true;
 
-    function updateSummary() {
-      var answeredCount = unitStates.filter(function (s) { return s.answered; }).length;
-      var correctCount = unitStates.filter(function (s) { return s.correct; }).length;
+    var confirmBtn = document.createElement("button");
+    confirmBtn.type = "button";
+    confirmBtn.className = "choice-btn multiblank-confirm-btn";
+    confirmBtn.textContent = "解答を確定";
+    confirmBtn.disabled = true;
+
+    function updateConfirmButtonState() {
+      confirmBtn.disabled = confirmed || unitStates.some(function (s) { return s.selectedText === null; });
+    }
+
+    function selectChoice(idx, choiceText) {
+      if (confirmed) return;
+      unitStates[idx].selectedText = choiceText;
+      var buttonsByText = unitStates[idx].buttonsByText;
+      Object.keys(buttonsByText).forEach(function (text) {
+        buttonsByText[text].classList.toggle("choice-selected", text === choiceText);
+      });
+      updateConfirmButtonState();
+    }
+
+    function confirmAnswers() {
+      if (confirmed) return;
+      if (unitStates.some(function (s) { return s.selectedText === null; })) return;
+      confirmed = true;
+      confirmBtn.disabled = true;
+
+      var correctCount = 0;
+      choiceSets.forEach(function (set, idx) {
+        var state = unitStates[idx];
+        var isCorrect = state.selectedText === set.correct;
+        if (isCorrect) correctCount += 1;
+        Object.keys(state.buttonsByText).forEach(function (text) {
+          var btn = state.buttonsByText[text];
+          btn.disabled = true;
+          if (text === state.selectedText) {
+            btn.classList.remove("choice-selected");
+            btn.classList.add(isCorrect ? "choice-correct" : "choice-wrong");
+          }
+        });
+      });
+
+      var allCorrect = correctCount === choiceSets.length;
       summary.textContent = correctCount + " / " + choiceSets.length + " 正解";
-      if (answeredCount !== choiceSets.length) return;
 
       // v2-5: 全形式共通の順序（正解/不正解→正しい解答→解説→出典）に揃える。
-      var allCorrect = correctCount === choiceSets.length;
       resultBox.hidden = false;
       resultBox.innerHTML = "";
       resultBox.appendChild(EVv2.createResultBanner(allCorrect));
@@ -287,15 +329,14 @@ var multiBlankHandler = {
       // multi_blankのexplanationは仕様上常にnull（複数解答に単一の解説スロットを持たないため）。
       resultBox.appendChild(EVv2.createExplanationLine(null));
 
-      // v2-3: multi_blank choiceは「全unit回答完了時」に1回だけ記録する。
-      // 問題全体の正誤は「全unitが正解の場合のみ正解」とする（v2-2のUI表現と同じ考え方）。
+      // v2-3から変更なし: 保存は一度だけ、問題全体の正誤は「全unitが正解の場合のみ正解」とする。
       if (!completedSaved) {
         completedSaved = true;
         var rec = exerciseKey ? EVv2.recordAnswer(exerciseKey, ex.exerciseType, allCorrect) : null;
         EVv2.finalizeAnsweredCard(card, progressPanel, rec, onNext);
       }
     }
-    updateSummary();
+    confirmBtn.addEventListener("click", confirmAnswers);
 
     var unitsWrap = document.createElement("div");
     unitsWrap.className = "multiblank-units";
@@ -316,15 +357,9 @@ var multiBlankHandler = {
         btn.className = "choice-btn";
         btn.textContent = choiceText;
         btn.addEventListener("click", function () {
-          if (unitStates[idx].answered) return;
-          unitStates[idx].answered = true;
-          unitStates[idx].correct = choiceText === set.correct;
-          btn.classList.add(unitStates[idx].correct ? "choice-correct" : "choice-wrong");
-          Array.prototype.forEach.call(choicesWrap.children, function (b) {
-            b.disabled = true;
-          });
-          updateSummary();
+          selectChoice(idx, choiceText);
         });
+        unitStates[idx].buttonsByText[choiceText] = btn;
         choicesWrap.appendChild(btn);
       });
       unitBox.appendChild(choicesWrap);
@@ -332,6 +367,7 @@ var multiBlankHandler = {
     });
 
     card.appendChild(unitsWrap);
+    card.appendChild(confirmBtn);
     card.appendChild(summary);
     card.appendChild(resultBox);
   },
