@@ -64,6 +64,210 @@ header h1 {
   color: #555;
   margin-bottom: 8px;
 }
+/* v2-8: 学習終了ボタンを画面右上へ。進捗表示と同じ行に置き、文字ではなく×記号のみ、
+   控えめな見た目にする（誤タップを避けつつ、視線の妨げにならないように）。 */
+.study-session-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.study-session-header .study-session-progress {
+  margin-bottom: 0;
+}
+.end-study-btn {
+  flex: 0 0 auto;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border-radius: 999px;
+  border-color: transparent;
+  background: transparent;
+  color: #999;
+  font-size: 1.3rem;
+  line-height: 1;
+}
+.end-study-btn:hover,
+.end-study-btn:focus-visible {
+  background: #f0f0f0;
+  color: #555;
+}
+
+/* v2-12: 振り返り画面（今回のセッションの結果概要・一覧・詳細）。 */
+#study-review h2 {
+  font-size: 1rem;
+  margin: 0 0 10px;
+}
+.study-review-stats {
+  background: #f5f5f5;
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+.study-review-headline {
+  font-size: 1.05rem;
+  font-weight: bold;
+  margin: 0 0 6px;
+}
+.study-review-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.85rem;
+  color: #555;
+}
+.study-review-filter-row {
+  margin-bottom: 10px;
+}
+.filter-chip {
+  font-size: 0.78rem;
+  border: 1px solid #ccc;
+  color: #666;
+  border-radius: 999px;
+  padding: 6px 14px;
+  min-height: 32px;
+  background: #fff;
+  cursor: pointer;
+}
+.filter-chip-active {
+  border-color: #1565c0;
+  color: #1565c0;
+  background: #e3f2fd;
+}
+.study-review-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.study-review-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 10px;
+  cursor: pointer;
+}
+.study-review-row:hover {
+  border-color: #999;
+}
+.review-result-mark {
+  font-weight: bold;
+  min-width: 30px;
+  text-align: center;
+  flex-shrink: 0;
+  font-size: 0.9rem;
+}
+.review-result-mark.review-mark-correct {
+  color: #2e7d32;
+}
+.review-result-mark.review-mark-wrong {
+  color: #777;
+}
+.review-result-mark.review-mark-partial {
+  color: #9a6b00;
+  font-size: 0.8rem;
+}
+.review-type-badge {
+  font-size: 0.68rem;
+  color: #666;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 1px 5px;
+  flex-shrink: 0;
+}
+.review-preview-text {
+  flex: 1;
+  font-size: 0.85rem;
+  color: #444;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.review-row-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.review-icon-btn {
+  border: 1px solid #ccc;
+  background: #fff;
+  border-radius: 6px;
+  min-width: 36px;
+  min-height: 36px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.review-icon-btn.checked {
+  background: #fff8e1;
+  border-color: #c9a227;
+  color: #8a6d00;
+}
+.back-btn {
+  border: none;
+  background: none;
+  color: #1565c0;
+  font-size: 0.88rem;
+  padding: 8px 0;
+  cursor: pointer;
+  min-height: 44px;
+}
+.review-detail-question {
+  background: #fafafa;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 8px 0 14px;
+}
+.review-detail-row {
+  display: flex;
+  gap: 8px;
+  font-size: 0.9rem;
+  margin-bottom: 8px;
+}
+.review-detail-label {
+  color: #777;
+  flex: 0 0 90px;
+}
+.review-detail-value {
+  flex: 1;
+}
+.review-detail-result {
+  font-weight: bold;
+  margin: 12px 0;
+}
+.review-detail-result-correct {
+  color: #2e7d32;
+}
+.review-detail-result-wrong {
+  color: #777;
+}
+.review-detail-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+.action-btn {
+  flex: 1;
+  padding: 10px;
+  border-radius: 6px;
+  border: 1px solid #999;
+  background: #fff;
+  font-size: 0.85rem;
+  cursor: pointer;
+  min-height: 44px;
+}
+.action-btn-primary {
+  background: #1565c0;
+  color: #fff;
+  border-color: #0d47a1;
+}
+.action-btn.checked {
+  background: #fff8e1;
+  border-color: #c9a227;
+  color: #8a6d00;
+}
 .study-setup-count {
   font-size: 0.95rem;
   font-weight: bold;
@@ -239,6 +443,18 @@ input[type="file"]:focus-visible {
 }
 .self-grade-btn {
   flex: 1 1 auto;
+  font-size: 1.3rem;
+  font-weight: bold;
+}
+/* v2-8: 「正解だった／不正解だった」の文字ではなく○×記号中心のUIにする。
+   記号だけでも判断しやすいよう、○×それぞれに同系色（緑／赤）の枠線を付ける。 */
+.self-grade-btn-correct {
+  border-color: #2e7d32;
+  color: #2e7d32;
+}
+.self-grade-btn-wrong {
+  border-color: #c62828;
+  color: #c62828;
 }
 .danger-btn {
   font-size: 0.8rem;
@@ -273,6 +489,31 @@ input[type="file"]:focus-visible {
   white-space: pre-wrap;
   margin: 6px 0 10px;
 }
+/* v2-11: 問題文の構造可視化（保守的案）。実際の改行の裏付けがある全角数字の見出しだけを
+   強調する。見出しタイトル文字列自体の切り出しは行わない（誤判定を避けるため）。 */
+.body-heading-marker {
+  display: inline-block;
+  font-weight: 700;
+  font-size: 1.05em;
+  margin-top: 14px;
+}
+/* v2-7: single_blankの対象マーカー強調。対象だけをアクセント色のチップにし、
+   他のマーカーは消さず控えめな色に落とすことで、文字を増やさずに対応関係を示す。 */
+.blank-marker-target {
+  display: inline-block;
+  font-weight: 700;
+  color: #0d47a1;
+  background: #e3f2fd;
+  padding: 0 5px;
+  border-radius: 5px;
+}
+.blank-marker-other {
+  color: #999;
+}
+/* 対象マーカーと同系色の細い上枠線で、本文の強調箇所と選択肢群を視覚的に結びつける。 */
+.choices-marker-linked .choice-btn {
+  border-top: 2px solid #1565c0;
+}
 .unsupported-note {
   font-size: 0.85rem;
   color: #666;
@@ -299,6 +540,12 @@ input[type="file"]:focus-visible {
   background: #e3f2fd;
   border-color: #1565c0;
 }
+/* v2-7: 誤答した空欄で、選ばなかった正解の選択肢に付ける控えめなヒント表示
+   （.choice-wrongの「選んで不正解だった」と区別できるよう、塗りつぶさず枠と背景色調のみ）。 */
+.choice-correct-hint {
+  background: #eaf5ea;
+  border-color: #2e7d32;
+}
 .multiblank-confirm-btn {
   display: block;
   width: 100%;
@@ -310,6 +557,65 @@ input[type="file"]:focus-visible {
   background: #fafafa;
   padding: 8px;
   border-radius: 6px;
+}
+/* v2-10(multi_blankレイアウト改善)。問題文エリアと解答エリアを分離し、それぞれ独立スクロール
+   できるようにする。モバイル(既定)は縦積みで問題文1:解答2の比率、確定ボタンは解答エリア内の
+   下部に固定（スクロールに追従しない）。PC(640px以上)は左右分割にする。 */
+.multiblank-split {
+  display: flex;
+  flex-direction: column;
+  height: min(70vh, 560px);
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  overflow: hidden;
+  margin: 10px 0;
+}
+.multiblank-split-body {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px 12px;
+  background: #fafafa;
+  border-bottom: 1px solid #ddd;
+}
+.multiblank-split-body .question-text {
+  margin: 0;
+}
+.multiblank-split-answer {
+  flex: 2 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.multiblank-split-units-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px 12px;
+}
+.multiblank-split-confirm {
+  flex: 0 0 auto;
+  padding: 8px 12px;
+  border-top: 1px solid #ddd;
+  background: #fafafa;
+}
+.multiblank-split-confirm .multiblank-confirm-btn {
+  margin-top: 0;
+}
+@media (min-width: 640px) {
+  .multiblank-split {
+    flex-direction: row;
+    height: min(60vh, 520px);
+  }
+  .multiblank-split-body {
+    flex: 0 0 44%;
+    border-bottom: none;
+    border-right: 1px solid #ddd;
+  }
+  .multiblank-split-answer {
+    flex: 1 1 56%;
+  }
 }
 .multiblank-units {
   display: flex;
@@ -326,15 +632,59 @@ input[type="file"]:focus-visible {
   color: #666;
   margin-bottom: 4px;
 }
+/* v2-8(問題階層の修正): 独立した中問(subQuestions)を持つ大問のreveal表示。
+   各中問の本文とその解答を対にして、大問しか見えない状態を解消する。 */
+.subquestions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.subquestion {
+  border: 1px dashed #ccc;
+  border-radius: 6px;
+  padding: 8px;
+}
+.subquestion-body {
+  margin: 0 0 4px;
+  font-size: 0.92rem;
+}
+/* v2-7: 確定後、空欄ラベルの横に付く○×（長い問題でも各空欄の場所で正誤が分かるように）。 */
+.multiblank-unit-result {
+  font-weight: bold;
+  margin-left: 6px;
+}
+.multiblank-unit-result-correct {
+  color: #2e7d32;
+}
+.multiblank-unit-result-wrong {
+  color: #c62828;
+}
 .multiblank-summary {
   margin-top: 10px;
   font-weight: bold;
   font-size: 0.95rem;
 }
-.explanation-line,
+/* v2-7: 「不正解」表示だけで終わらせず、部分正解（X/N正解）を主役として見せるための色分け。 */
+.multiblank-summary-all {
+  color: #2e7d32;
+}
+.multiblank-summary-partial {
+  color: #9a6b00;
+}
+.multiblank-summary-none {
+  color: #c62828;
+}
+/* v2-10: 解説本文は問題文と同程度に読める文字色にする（ダークモードでは従来#444固定で
+   コントラスト不足だった）。「解説なし」の補助表示のみ.explanation-line-emptyで控えめにする。 */
+.explanation-line {
+  margin-top: 4px;
+}
+.explanation-line-empty {
+  color: #777;
+}
 .source-line {
   margin-top: 4px;
-  color: #444;
+  color: #777;
 }
 .load-more-btn {
   display: block;
@@ -410,6 +760,13 @@ input[type="file"]:focus-visible {
 .result-banner-wrong {
   color: #c62828;
 }
+/* v2-7: multi_blank確定後のみ使用。全体の正解/不正解は残しつつ、summary(X/N正解)より
+   目立たない扱いにすることで、部分点の把握を優先させる（他exerciseTypeには適用しない）。 */
+.result-banner-compact {
+  font-size: 0.8rem;
+  font-weight: normal;
+  color: #777;
+}
 .correct-answer-line {
   margin-top: 4px;
   color: #333;
@@ -425,6 +782,44 @@ input[type="file"]:focus-visible {
 }
 .settings-row {
   margin: 4px 0 16px;
+}
+/* v2-9: 学習終了の確認ダイアログ。 */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 100;
+}
+.modal-backdrop[hidden] {
+  display: none;
+}
+.modal-dialog {
+  background: #fff;
+  border-radius: 12px;
+  padding: 20px;
+  max-width: 320px;
+  width: 100%;
+}
+.modal-title {
+  margin: 0 0 16px;
+  font-size: 1rem;
+  text-align: center;
+}
+.modal-actions {
+  display: flex;
+  gap: 10px;
+}
+.modal-btn {
+  flex: 1 1 auto;
+}
+.modal-btn-primary {
+  background: #1565c0;
+  color: #fff;
+  border-color: #0d47a1;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -501,5 +896,147 @@ input[type="file"]:focus-visible {
   }
   .correct-answer-line {
     color: #eee;
+  }
+  /* v2-7: 対象マーカー強調・空欄単位表示のダークモード配色（視認性確保のため単純な色反転ではなく
+     個別に調整する）。 */
+  .blank-marker-target {
+    color: #90caf9;
+    background: #123a5c;
+  }
+  .blank-marker-other {
+    color: #777;
+  }
+  .choices-marker-linked .choice-btn {
+    border-top-color: #5b9bd5;
+  }
+  .choice-correct-hint {
+    background: #123420;
+    border-color: #7fd39c;
+  }
+  .multiblank-unit-result-correct {
+    color: #7fd39c;
+  }
+  .multiblank-unit-result-wrong {
+    color: #e57373;
+  }
+  .multiblank-summary-all {
+    color: #7fd39c;
+  }
+  .multiblank-summary-partial {
+    color: #e0b45c;
+  }
+  .multiblank-summary-none {
+    color: #e57373;
+  }
+  .result-banner-compact {
+    color: #999;
+  }
+  /* v2-8: 学習終了ボタン・自己採点記号・中問表示のダークモード配色。 */
+  .end-study-btn {
+    color: #777;
+  }
+  .end-study-btn:hover,
+  .end-study-btn:focus-visible {
+    background: #2a2a2a;
+    color: #ccc;
+  }
+  .self-grade-btn-correct {
+    border-color: #7fd39c;
+    color: #7fd39c;
+  }
+  .self-grade-btn-wrong {
+    border-color: #e57373;
+    color: #e57373;
+  }
+  .subquestion {
+    border-color: #444;
+  }
+  .modal-dialog {
+    background: #1e1e1e;
+    color: #eee;
+  }
+  .explanation-line-empty {
+    color: #999;
+  }
+  .source-line {
+    color: #999;
+  }
+  .multiblank-split {
+    border-color: #333;
+  }
+  .multiblank-split-body {
+    background: #1a1a1a;
+    border-color: #333;
+  }
+  .multiblank-split-confirm {
+    background: #1a1a1a;
+    border-color: #333;
+  }
+  /* v2-12: 振り返り画面のダークモード配色。 */
+  .study-review-stats {
+    background: #1e1e1e;
+  }
+  .study-review-breakdown {
+    color: #aaa;
+  }
+  .filter-chip {
+    background: #1e1e1e;
+    border-color: #555;
+    color: #aaa;
+  }
+  .filter-chip-active {
+    border-color: #5b9bd5;
+    color: #90caf9;
+    background: #123a5c;
+  }
+  .study-review-row {
+    border-color: #333;
+  }
+  .study-review-row:hover {
+    border-color: #666;
+  }
+  .review-result-mark.review-mark-correct {
+    color: #7fd39c;
+  }
+  .review-result-mark.review-mark-wrong {
+    color: #999;
+  }
+  .review-result-mark.review-mark-partial {
+    color: #e0b45c;
+  }
+  .review-preview-text {
+    color: #ccc;
+  }
+  .review-icon-btn {
+    background: #1e1e1e;
+    border-color: #555;
+    color: #eee;
+  }
+  .review-icon-btn.checked {
+    background: #3a2f0a;
+    border-color: #c9a227;
+    color: #e6c65c;
+  }
+  .review-detail-question {
+    background: #1a1a1a;
+  }
+  .review-detail-label {
+    color: #999;
+  }
+  .review-detail-result-correct {
+    color: #7fd39c;
+  }
+  .review-detail-result-wrong {
+    color: #999;
+  }
+  .action-btn {
+    background: #1e1e1e;
+    border-color: #555;
+    color: #eee;
+  }
+  .action-btn.checked {
+    background: #3a2f0a;
+    border-color: #c9a227;
+    color: #e6c65c;
   }
 }

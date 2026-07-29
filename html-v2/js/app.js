@@ -16,9 +16,18 @@
   };
 
   // 1問ずつ学習するセッション画面専用の状態（一覧表示state.filteredとは独立）。
+  // v2-12(振り返り機能): answeredLogは今回のセッション中に回答した問題の一時的な記録
+  // （メモリ上のみ。progressStore/localStorageの保存形式・保存先は一切変更しない）。
+  // retryは「この問題をもう一度解く」実行中の状態（元の一覧/詳細表示に戻るための情報を保持）。
   var studySession = {
     queue: [],
     index: 0,
+    answeredLog: [],
+  };
+  var studyReview = {
+    filter: "all", // "all" | "wrong"
+    detailEntry: null,
+    retryReturnTo: null, // { view: "list" } | { view: "detail", entry } | null（もう一度解く実行前の画面）
   };
 
   var els = {
@@ -42,6 +51,19 @@
     studySessionProgress: document.getElementById("study-session-progress"),
     studySessionCardContainer: document.getElementById("study-session-card-container"),
     endStudyBtn: document.getElementById("end-study-btn"),
+    endStudyConfirmBackdrop: document.getElementById("end-study-confirm"),
+    endStudyConfirmYesBtn: document.getElementById("end-study-confirm-yes"),
+    endStudyConfirmNoBtn: document.getElementById("end-study-confirm-no"),
+    studyReview: document.getElementById("study-review"),
+    studyReviewListView: document.getElementById("study-review-list-view"),
+    studyReviewDetailView: document.getElementById("study-review-detail-view"),
+    studyReviewStats: document.getElementById("study-review-stats"),
+    studyReviewFilterAllBtn: document.getElementById("study-review-filter-all"),
+    studyReviewFilterWrongBtn: document.getElementById("study-review-filter-wrong"),
+    studyReviewList: document.getElementById("study-review-list"),
+    studyReviewBackBtn: document.getElementById("study-review-back-btn"),
+    studyReviewDetailBackBtn: document.getElementById("study-review-detail-back-btn"),
+    studyReviewDetailBody: document.getElementById("study-review-detail-body"),
     browseView: document.getElementById("browse-view"),
     backToSetupBtn: document.getElementById("back-to-setup-btn"),
     fileInput: document.getElementById("ev-file-input"),
@@ -102,10 +124,11 @@
     showStudySetup();
   }
 
-  // #main-app内の3画面（学習設定／学習セッション／問題一覧）は同時に1つだけ表示する。
+  // #main-app内の4画面（学習設定／学習セッション／振り返り／問題一覧）は同時に1つだけ表示する。
   function showStudySetup() {
     els.studySetup.hidden = false;
     els.studySession.hidden = true;
+    els.studyReview.hidden = true;
     els.browseView.hidden = true;
     // 学習セッション終了直後などは修得状態が変わっている可能性があるため、都度再計算する。
     if (state.data) updateStudySetupCount();
@@ -113,11 +136,13 @@
   function showStudySession() {
     els.studySetup.hidden = true;
     els.studySession.hidden = false;
+    els.studyReview.hidden = true;
     els.browseView.hidden = true;
   }
   function showBrowseView() {
     els.studySetup.hidden = true;
     els.studySession.hidden = true;
+    els.studyReview.hidden = true;
     els.browseView.hidden = false;
     if (state.data) applyFilter();
   }
@@ -147,7 +172,13 @@
     var t1 = performance.now();
 
     state.data = parsed.data;
-    state.context = { singleBlankPool: EVv2.buildSingleBlankAnswerPool(parsed.data.exercises) };
+    // v2-7: single_blankの対象マーカー強調用。同じ本文を共有するmulti_blank兄弟の
+    // bodySegmentsから、blankUnitId単位のマーカー位置情報を索引化する(docs/未作成、
+    // html-v2/js/blankMarkerIndex.js参照)。
+    state.context = {
+      singleBlankPool: EVv2.buildSingleBlankAnswerPool(parsed.data.exercises),
+      blankMarkerIndex: EVv2.buildBlankMarkerIndex(parsed.data.exercises),
+    };
 
     var savedAt = opts.cachedAt || new Date().toISOString();
     renderDataSourceStatus(sourceLabel, savedAt);
@@ -572,11 +603,7 @@
     els.studySessionCardContainer.innerHTML = "";
 
     if (studySession.index >= studySession.queue.length) {
-      els.studySessionProgress.textContent = "";
-      var doneMsg = document.createElement("p");
-      doneMsg.className = "empty-state";
-      doneMsg.textContent = "この条件の問題をすべて学習しました。";
-      els.studySessionCardContainer.appendChild(doneMsg);
+      showStudyReview();
       return;
     }
 
@@ -599,18 +626,423 @@
     }
   }
 
+  // ---- v2-12: 振り返り機能（今回のセッションを振り返る。progressStore/localStorageは
+  // 参照のみ・チェック状態の読み書きは既存のtoggleChecked/getProgressRecordをそのまま使う）。----
+
+  function isReviewEntryWrongish(entry) {
+    if (entry.resultKind === "partial") return entry.correctCount < entry.total;
+    return entry.isCorrect !== true;
+  }
+
+  // exerciseType・structureTypeに応じて、振り返り画面に出す「解答」「解説」を組み立てる。
+  // 各registry.jsハンドラが持つ既存ロジック(getCorrectLabel等)と同じ実データ参照のみで構成し、
+  // 新しい判定・推測は行わない。
+  function describeAnswerForReview(ex) {
+    if (ex.exerciseType === "true_false") {
+      return {
+        answer: ex.judgement ? ex.judgement.symbolRaw.text : "(judgementなし)",
+        explanation: ex.explanation ? ex.explanation.raw.text : null,
+      };
+    }
+    if (ex.exerciseType === "single_blank") {
+      var item = ex.expectedAnswer && ex.expectedAnswer[0];
+      return {
+        answer: item ? item.answerText.text : "(expectedAnswerなし)",
+        explanation: ex.explanation ? ex.explanation.raw.text : null,
+      };
+    }
+    if (ex.exerciseType === "multi_blank") {
+      if (Array.isArray(ex.subQuestions) && ex.subQuestions.length > 0) {
+        return {
+          answer: ex.subQuestions
+            .map(function (sq, i) {
+              return "中問" + (i + 1) + ": " + sq.expectedAnswer.text;
+            })
+            .join(" ／ "),
+          explanation: null,
+        };
+      }
+      return {
+        answer: ex.expectedAnswer
+          .map(function (u, i) {
+            return "空欄" + (i + 1) + "=" + u.answerText.text;
+          })
+          .join(" ／ "),
+        explanation: null,
+      };
+    }
+    if (ex.exerciseType === "ordering") {
+      return {
+        answer: ex.correctOrder
+          .map(function (id) {
+            var found = ex.orderingItems.filter(function (it) {
+              return it.id === id;
+            })[0];
+            return found ? found.label : id;
+          })
+          .join(" → "),
+        explanation: ex.explanationText || null,
+      };
+    }
+    return { answer: "(不明)", explanation: null };
+  }
+
+  function getReviewQuestionText(ex) {
+    if (ex.exerciseType === "multi_blank" && Array.isArray(ex.subQuestions) && ex.subQuestions.length > 0) {
+      var parts = ex.instructionRaw ? [ex.instructionRaw.text] : [];
+      ex.subQuestions.forEach(function (sq, i) {
+        parts.push("中問" + (i + 1) + ": " + sq.body.text);
+      });
+      return parts.join("\n");
+    }
+    var span = EVv2.getQuestionRawSpan(ex);
+    return span ? span.text : "(問題文なし)";
+  }
+
+  function reviewResultMarkText(entry) {
+    if (entry.resultKind === "partial") return entry.correctCount + "/" + entry.total;
+    return entry.isCorrect ? "○" : "×";
+  }
+  function reviewResultMarkClass(entry) {
+    if (entry.resultKind === "partial") {
+      return entry.correctCount === entry.total ? "review-mark-correct" : entry.correctCount === 0 ? "review-mark-wrong" : "review-mark-partial";
+    }
+    return entry.isCorrect ? "review-mark-correct" : "review-mark-wrong";
+  }
+
+  function showStudyReview() {
+    els.studySetup.hidden = true;
+    els.studySession.hidden = true;
+    els.browseView.hidden = true;
+    els.studyReview.hidden = false;
+    els.studyReviewListView.hidden = false;
+    els.studyReviewDetailView.hidden = true;
+    renderReviewStats();
+    renderReviewList();
+  }
+
+  function renderReviewStats() {
+    var log = studySession.answeredLog;
+    var autoTotal = 0,
+      autoCorrect = 0,
+      selfTotal = 0,
+      selfCorrect = 0,
+      multiTotal = 0,
+      multiFullCorrect = 0,
+      multiBlanksTotal = 0,
+      multiBlanksCorrect = 0;
+    log.forEach(function (entry) {
+      if (entry.resultKind === "auto") {
+        autoTotal++;
+        if (entry.isCorrect) autoCorrect++;
+      } else if (entry.resultKind === "self") {
+        selfTotal++;
+        if (entry.isCorrect) selfCorrect++;
+      } else if (entry.resultKind === "partial") {
+        multiTotal++;
+        if (entry.correctCount === entry.total) multiFullCorrect++;
+        multiBlanksTotal += entry.total;
+        multiBlanksCorrect += entry.correctCount;
+      }
+    });
+    var lines = ["今回は" + log.length + "問解きました"];
+    if (autoTotal > 0) lines.push("自動採点: " + autoCorrect + "/" + autoTotal + "正解");
+    if (selfTotal > 0) lines.push("自己採点(自己申告): " + selfCorrect + "/" + selfTotal);
+    if (multiTotal > 0) {
+      lines.push("multi_blank: " + multiFullCorrect + "/" + multiTotal + "問（空欄計" + multiBlanksCorrect + "/" + multiBlanksTotal + "）");
+    }
+    els.studyReviewStats.innerHTML = "";
+    var headline = document.createElement("p");
+    headline.className = "study-review-headline";
+    headline.textContent = lines[0];
+    els.studyReviewStats.appendChild(headline);
+    var breakdown = document.createElement("div");
+    breakdown.className = "study-review-breakdown";
+    lines.slice(1).forEach(function (line) {
+      var span = document.createElement("span");
+      span.textContent = line;
+      breakdown.appendChild(span);
+    });
+    els.studyReviewStats.appendChild(breakdown);
+  }
+
+  function renderReviewList() {
+    els.studyReviewList.innerHTML = "";
+    var log = studySession.answeredLog.filter(function (entry) {
+      return studyReview.filter === "all" || isReviewEntryWrongish(entry);
+    });
+    if (log.length === 0) {
+      var empty = document.createElement("p");
+      empty.className = "empty-state";
+      empty.textContent = studyReview.filter === "wrong" ? "誤答・要復習の問題はありません。" : "回答した問題がありません。";
+      els.studyReviewList.appendChild(empty);
+      return;
+    }
+    log.forEach(function (entry) {
+      var row = document.createElement("div");
+      row.className = "study-review-row";
+      row.addEventListener("click", function () {
+        renderReviewDetail(entry);
+      });
+
+      var mark = document.createElement("span");
+      mark.className = "review-result-mark " + reviewResultMarkClass(entry);
+      mark.textContent = reviewResultMarkText(entry);
+      row.appendChild(mark);
+
+      var badge = document.createElement("span");
+      badge.className = "review-type-badge";
+      badge.textContent = entry.ex.exerciseType;
+      row.appendChild(badge);
+
+      var preview = document.createElement("span");
+      preview.className = "review-preview-text";
+      preview.textContent = getReviewQuestionText(entry.ex).replace(/\n/g, " ");
+      row.appendChild(preview);
+
+      var actions = document.createElement("div");
+      actions.className = "review-row-actions";
+      actions.appendChild(createReviewCheckButton(entry, false));
+      actions.appendChild(createReviewRetryButton(entry));
+      row.appendChild(actions);
+
+      els.studyReviewList.appendChild(row);
+    });
+  }
+
+  // stopPropagationはprimary(false時)のみ必要(一覧行クリックで詳細を開いてしまうのを防ぐため)。
+  // 詳細画面側(primary=true)は行クリックの外なので不要だが、渡しても害はない。
+  function createReviewCheckButton(entry, primary) {
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = primary ? "action-btn" : "review-icon-btn";
+    function refresh() {
+      if (!entry.exerciseKey) {
+        btn.disabled = true;
+        btn.textContent = primary ? "チェック対象外" : "☆";
+        return;
+      }
+      var rec = EVv2.getProgressRecord(entry.exerciseKey, entry.ex.exerciseType);
+      btn.classList.toggle("checked", rec.checked);
+      btn.textContent = primary ? (rec.checked ? "チェック解除" : "チェック登録") : rec.checked ? "★" : "☆";
+    }
+    btn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      if (!entry.exerciseKey) return;
+      // v2-12: 既存のtoggleChecked(progressStore.js)をそのまま使う。新しい保存方式は作らない。
+      EVv2.toggleChecked(entry.exerciseKey, entry.ex.exerciseType);
+      refresh();
+    });
+    refresh();
+    return btn;
+  }
+
+  function createReviewRetryButton(entry) {
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "review-icon-btn";
+    btn.textContent = "↻";
+    btn.title = "この問題をもう一度解く";
+    btn.setAttribute("aria-label", "この問題をもう一度解く");
+    btn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      startRetry(entry, { view: "list" });
+    });
+    return btn;
+  }
+
+  function renderReviewDetail(entry) {
+    studyReview.detailEntry = entry;
+    els.studyReviewListView.hidden = true;
+    els.studyReviewDetailView.hidden = false;
+
+    var desc = describeAnswerForReview(entry.ex);
+    els.studyReviewDetailBody.innerHTML = "";
+
+    var badge = document.createElement("span");
+    badge.className = "review-type-badge";
+    badge.textContent = entry.ex.exerciseType;
+    els.studyReviewDetailBody.appendChild(badge);
+
+    var qText = document.createElement("p");
+    qText.className = "question-text review-detail-question";
+    EVv2.appendTextWithHeadingMarkers(qText, getReviewQuestionText(entry.ex));
+    els.studyReviewDetailBody.appendChild(qText);
+
+    function addRow(label, value) {
+      var row = document.createElement("div");
+      row.className = "review-detail-row";
+      var l = document.createElement("span");
+      l.className = "review-detail-label";
+      l.textContent = label;
+      var v = document.createElement("span");
+      v.className = "review-detail-value";
+      v.textContent = value;
+      row.appendChild(l);
+      row.appendChild(v);
+      els.studyReviewDetailBody.appendChild(row);
+    }
+    addRow("あなたの解答", entry.yourAnswerText || "(自己採点)");
+    addRow("解答", desc.answer);
+    addRow("解説", desc.explanation || "（教材原文に解説なし）");
+
+    var resultLine = document.createElement("p");
+    var wrongish = isReviewEntryWrongish(entry);
+    resultLine.className = "review-detail-result " + (wrongish ? "review-detail-result-wrong" : "review-detail-result-correct");
+    resultLine.textContent =
+      entry.resultKind === "partial"
+        ? entry.correctCount + " / " + entry.total + " 正解"
+        : entry.resultKind === "self"
+          ? "自己採点: " + (entry.isCorrect ? "正解" : "不正解")
+          : entry.isCorrect
+            ? "正解"
+            : "不正解";
+    els.studyReviewDetailBody.appendChild(resultLine);
+
+    var actions = document.createElement("div");
+    actions.className = "review-detail-actions";
+    actions.appendChild(createReviewCheckButton(entry, true));
+    var retryBtn = document.createElement("button");
+    retryBtn.type = "button";
+    retryBtn.className = "action-btn action-btn-primary";
+    retryBtn.textContent = "もう一度解く";
+    retryBtn.addEventListener("click", function () {
+      startRetry(entry, { view: "detail", entry: entry });
+    });
+    actions.appendChild(retryBtn);
+    els.studyReviewDetailBody.appendChild(actions);
+  }
+
+  // 「この問題をもう一度解く」。通常のstudySession.queue/indexには触れず、単発の出題だけを
+  // #study-session画面で行い、回答完了後は振り返り画面（呼び出し元の一覧/詳細）へ戻る。
+  function startRetry(entry, returnTo) {
+    studyReview.retryReturnTo = returnTo;
+    els.studyReview.hidden = true;
+    els.studySession.hidden = false;
+    els.studySessionProgress.textContent = "この問題をもう一度解く";
+    els.studySessionCardContainer.innerHTML = "";
+    try {
+      var card = EVv2.createExerciseCard(entry.ex, state.context, function () {
+        var back = studyReview.retryReturnTo;
+        studyReview.retryReturnTo = null;
+        showStudyReview();
+        if (back && back.view === "detail") {
+          // answeredLogは更新済み（onExerciseAnsweredが同じキーのレコードを差し替える）ため、
+          // 最新のentryを取り直してから詳細を開き直す。
+          var logKey = back.entry.exerciseKey || back.entry.ex.exerciseId;
+          var latest = studySession.answeredLog.filter(function (e2) {
+            return (e2.exerciseKey || e2.ex.exerciseId) === logKey;
+          })[0];
+          renderReviewDetail(latest || back.entry);
+        }
+      });
+      els.studySessionCardContainer.appendChild(card);
+    } catch (e) {
+      console.error("カード描画失敗", entry.ex.exerciseId, e);
+    }
+  }
+
+  els.studyReviewFilterAllBtn.addEventListener("click", function () {
+    studyReview.filter = "all";
+    els.studyReviewFilterAllBtn.classList.add("filter-chip-active");
+    els.studyReviewFilterWrongBtn.classList.remove("filter-chip-active");
+    renderReviewList();
+  });
+  els.studyReviewFilterWrongBtn.addEventListener("click", function () {
+    studyReview.filter = "wrong";
+    els.studyReviewFilterWrongBtn.classList.add("filter-chip-active");
+    els.studyReviewFilterAllBtn.classList.remove("filter-chip-active");
+    renderReviewList();
+  });
+  els.studyReviewBackBtn.addEventListener("click", function () {
+    showStudySetup();
+  });
+  els.studyReviewDetailBackBtn.addEventListener("click", function () {
+    els.studyReviewDetailView.hidden = true;
+    els.studyReviewListView.hidden = false;
+    renderReviewList();
+  });
+
   els.startStudyBtn.addEventListener("click", function () {
     if (!state.data) return;
     var queue = buildStudyQueue();
     if (queue.length === 0) return; // ボタンは既に無効化されているはずのフェイルセーフ
     studySession.queue = queue;
     studySession.index = 0;
+    studySession.answeredLog = [];
     showStudySession();
     renderStudySessionCard();
   });
 
-  els.endStudyBtn.addEventListener("click", function () {
+  // v2-12(振り返り機能)。render.js/registry.js側の4箇所（true_false/single_blank選択式、
+  // 自己採点、multi_blank一括確定、ordering）から、回答が確定した瞬間に呼ばれる共通フック。
+  // 同じexerciseKey（無い場合はexerciseId）の記録が既にあれば更新し、無ければ追加する
+  // （「もう一度解く」で再回答した場合に一覧の結果を最新の状態へ差し替えるため）。
+  // progressStore・localStorageには一切書き込まない（studySession.answeredLogはメモリ上のみ）。
+  EVv2.onExerciseAnswered = function (entry) {
+    var logKey = entry.exerciseKey || entry.ex.exerciseId;
+    var existingIndex = -1;
+    for (var i = 0; i < studySession.answeredLog.length; i++) {
+      var k = studySession.answeredLog[i].exerciseKey || studySession.answeredLog[i].ex.exerciseId;
+      if (k === logKey) {
+        existingIndex = i;
+        break;
+      }
+    }
+    if (existingIndex >= 0) {
+      studySession.answeredLog[existingIndex] = entry;
+    } else {
+      studySession.answeredLog.push(entry);
+    }
+  };
+
+  // v2-9: 学習終了ボタンは即時終了せず、確認ダイアログを挟む（誤操作防止）。
+  // 「はい」を選んだ場合のみ、既存の終了処理(showStudySetup)をそのまま呼ぶ。
+  var endStudyConfirmTriggerEl = null;
+
+  function openEndStudyConfirm() {
+    endStudyConfirmTriggerEl = document.activeElement;
+    els.endStudyConfirmBackdrop.hidden = false;
+    els.endStudyConfirmYesBtn.focus();
+    document.addEventListener("keydown", onEndStudyConfirmKeydown);
+  }
+  function closeEndStudyConfirm() {
+    els.endStudyConfirmBackdrop.hidden = true;
+    document.removeEventListener("keydown", onEndStudyConfirmKeydown);
+    if (endStudyConfirmTriggerEl && typeof endStudyConfirmTriggerEl.focus === "function") {
+      endStudyConfirmTriggerEl.focus();
+    }
+  }
+  // Escで閉じる（「いいえ」相当）。Tabはダイアログ内の2ボタン間だけを循環させる簡易フォーカストラップ。
+  function onEndStudyConfirmKeydown(e) {
+    if (e.key === "Escape") {
+      closeEndStudyConfirm();
+      return;
+    }
+    if (e.key === "Tab") {
+      e.preventDefault();
+      var focusables = [els.endStudyConfirmNoBtn, els.endStudyConfirmYesBtn];
+      var idx = focusables.indexOf(document.activeElement);
+      var nextIdx = e.shiftKey
+        ? idx <= 0
+          ? focusables.length - 1
+          : idx - 1
+        : idx === focusables.length - 1
+        ? 0
+        : idx + 1;
+      focusables[nextIdx].focus();
+    }
+  }
+
+  els.endStudyBtn.addEventListener("click", openEndStudyConfirm);
+  els.endStudyConfirmNoBtn.addEventListener("click", closeEndStudyConfirm);
+  els.endStudyConfirmYesBtn.addEventListener("click", function () {
+    closeEndStudyConfirm();
     showStudySetup();
+  });
+  // ダイアログ外（背景）クリックで閉じる（「いいえ」相当）。
+  els.endStudyConfirmBackdrop.addEventListener("click", function (e) {
+    if (e.target === els.endStudyConfirmBackdrop) closeEndStudyConfirm();
   });
 
   // テーマ→節→論点のカスケード。上位を変更したら下位の選択肢を作り直し、"すべて"に戻す。

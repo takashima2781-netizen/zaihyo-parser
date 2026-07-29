@@ -68,8 +68,13 @@ var trueFalseHandler = {
   getCorrectLabel: function (ex) {
     return ex.judgement ? ex.judgement.symbolRaw.text : "(judgementなし)";
   },
-  getAnswerBodyText: function (ex) {
-    return ex.judgement ? ex.judgement.answerBodyRaw.text : null;
+  // v2-10(解答/解説の役割整理): judgement.answerBodyRaw.textは教材原文どおり「記号＋訂正文」を
+  // そのまま保持しているが(Parser層のraw保持方針、docs/ox_explanation_investigation.mdで検証済み、
+  // 265件中148件でexplanation.raw.textと完全一致・欠落0件)、解答欄にそのまま出すとexplanationと
+  // 重複表示になる。解答欄は記号のみ(getCorrectLabel)に統一し、訂正文は解説欄(explanation)側で
+  // 表示する。answerBodyRaw自体は削除せず、データとしては保持したまま参照しないだけにする。
+  getAnswerBodyText: function () {
+    return null;
   },
   getExplanationText: function (ex) {
     return ex.explanation ? ex.explanation.raw.text : null;
@@ -218,10 +223,55 @@ var multiBlankHandler = {
     var mode = this.getInteractionMode(ex, context);
 
     if (mode === "reveal") {
+      // v2-9(問題階層の表示位置修正)。structureType==="independent_subquestions"の大問は
+      // 共有本文(ex.body)を持たず、各中問がそれぞれ独立した問題文(subQuestions[].body)を持つ。
+      // 中問の本文は「問題文」であって「解答」ではないため、解答表示ボタンより前・常時表示する。
+      // 解答表示後は、各中問の直下（同じ.subquestion枠内）にその中問の解答だけを出す
+      // （末尾にまとめた一覧は作らない）。shared_body_blanksの安全側フォールバック
+      // （distractor不足でchoiceを組めなかった場合）はsubQuestionsを持たないため、
+      // 従来通り末尾に空欄単位の一覧を1回だけ表示する（実データでは現状0件、堅牢性のため維持）。
+      var hasSubQuestions =
+        ex.structureType === "independent_subquestions" && Array.isArray(ex.subQuestions) && ex.subQuestions.length > 0;
+
+      // hasSubQuestionsの場合は各中問の本文(subQuestions[].body)が問題文の役割を果たすため、
+      // 共有本文は表示しない(そもそもex.body===null)。無い場合のみ、従来通り共有本文を表示する
+      // （render.js側は多重穴埋め全体の共有qText描画をこちらへ委譲しているため、ここで描画する）。
+      if (!hasSubQuestions) {
+        var revealQuestionSpan = EVv2.getQuestionRawSpan(ex);
+        var revealQText = document.createElement("p");
+        revealQText.className = "question-text";
+        if (revealQuestionSpan) {
+          EVv2.appendTextWithHeadingMarkers(revealQText, revealQuestionSpan.text);
+        } else {
+          revealQText.textContent = "(問題文なし)";
+        }
+        card.appendChild(revealQText);
+      }
+
+      var subAnswerLines = [];
+      if (hasSubQuestions) {
+        var list = document.createElement("div");
+        list.className = "subquestions";
+        ex.subQuestions.forEach(function (sq) {
+          var item = document.createElement("div");
+          item.className = "subquestion";
+          var body = document.createElement("p");
+          body.className = "subquestion-body";
+          EVv2.appendTextWithHeadingMarkers(body, sq.body.text);
+          item.appendChild(body);
+          var answerLine = EVv2.createCorrectAnswerLine(sq.expectedAnswer.text);
+          answerLine.hidden = true;
+          item.appendChild(answerLine);
+          subAnswerLines.push(answerLine);
+          list.appendChild(item);
+        });
+        card.appendChild(list);
+      }
+
       var revealBtn = document.createElement("button");
       revealBtn.type = "button";
       revealBtn.className = "choice-btn reveal-btn";
-      revealBtn.textContent = "解答を表示（自己採点、" + ex.expectedAnswer.length + "空欄）";
+      revealBtn.textContent = "解答を表示（自己採点、" + ex.expectedAnswer.length + (hasSubQuestions ? "問）" : "空欄）");
       var revealBox = document.createElement("div");
       revealBox.className = "reveal-box";
       revealBox.hidden = true;
@@ -229,26 +279,31 @@ var multiBlankHandler = {
         revealBtn.disabled = true;
         revealBox.hidden = false;
         revealBox.innerHTML = "";
-        // v2-5: 全形式共通の順序（正解/不正解→正しい解答→解説→出典）に揃える。
         // revealモードは自己採点前のため、正解/不正解バナーはまだ出さない。
-        var correctText = ex.expectedAnswer
-          .map(function (u, idx) {
-            return "空欄" + (idx + 1) + "=" + u.answerText.text;
-          })
-          .join(" ／ ");
-        revealBox.appendChild(EVv2.createCorrectAnswerLine(correctText));
+        if (hasSubQuestions) {
+          subAnswerLines.forEach(function (line) {
+            line.hidden = false;
+          });
+        } else {
+          var correctText = ex.expectedAnswer
+            .map(function (u, idx) {
+              return "空欄" + (idx + 1) + "=" + u.answerText.text;
+            })
+            .join(" ／ ");
+          revealBox.appendChild(EVv2.createCorrectAnswerLine(correctText));
+        }
         var expl = ex.explanation ? ex.explanation.raw.text : null;
         revealBox.appendChild(EVv2.createExplanationLine(expl));
-        revealBox.appendChild(
-          EVv2.createSourceLine(
-            ex.expectedAnswer.map(function (u) {
-              return u.answerText;
-            })
-          )
+        // 出典は学習画面では表示しない（?debug=1時のみEVv2.createSourceLineが実体を返す）。
+        var sourceLine = EVv2.createSourceLine(
+          ex.expectedAnswer.map(function (u) {
+            return u.answerText;
+          })
         );
+        if (sourceLine) revealBox.appendChild(sourceLine);
         // v2-3: multi_blank revealは問題全体単位で1回だけ自己採点する
         // （「正解だった」＝全空欄正解、というユーザー自身の申告に委ねる）。
-        EVv2.appendSelfGradeButtons(revealBox, exerciseKey, ex.exerciseType, progressPanel, card, onNext);
+        EVv2.appendSelfGradeButtons(revealBox, ex, exerciseKey, ex.exerciseType, progressPanel, card, onNext);
       });
       card.appendChild(revealBtn);
       card.appendChild(revealBox);
@@ -292,6 +347,10 @@ var multiBlankHandler = {
       updateConfirmButtonState();
     }
 
+    // v2-7(multi_blank確定後の空欄単位表示)。問題全体の正誤判定・修得判定・連続正解・
+    // 学習履歴保存(recordAnswer呼び出し)は一切変更しない。「全選択→一括確定」という
+    // 操作も変更しない。確定後の表示だけを、各空欄の場所で正誤・正解が分かる形にする
+    // (履歴の保存先は増やさない。その場のDOM表示のみ)。
     function confirmAnswers() {
       if (confirmed) return;
       if (unitStates.some(function (s) { return s.selectedText === null; })) return;
@@ -309,37 +368,90 @@ var multiBlankHandler = {
           if (text === state.selectedText) {
             btn.classList.remove("choice-selected");
             btn.classList.add(isCorrect ? "choice-correct" : "choice-wrong");
+          } else if (!isCorrect && text === set.correct) {
+            // 誤答した空欄では、選ばなかった正解の選択肢にもヒントを付け、
+            // その場で「選んだ回答」と「正解」を比較できるようにする。
+            btn.classList.add("choice-correct-hint");
           }
         });
+        // 空欄ラベルの横に○×を付け、長い問題でもスクロールせず各空欄の正誤が分かるようにする。
+        var resultMark = document.createElement("span");
+        resultMark.className =
+          "multiblank-unit-result " + (isCorrect ? "multiblank-unit-result-correct" : "multiblank-unit-result-wrong");
+        resultMark.textContent = isCorrect ? "○" : "×";
+        unitLabelEls[idx].appendChild(resultMark);
       });
 
       var allCorrect = correctCount === choiceSets.length;
       summary.textContent = correctCount + " / " + choiceSets.length + " 正解";
+      summary.className =
+        "multiblank-summary " +
+        (allCorrect ? "multiblank-summary-all" : correctCount === 0 ? "multiblank-summary-none" : "multiblank-summary-partial");
 
-      // v2-5: 全形式共通の順序（正解/不正解→正しい解答→解説→出典）に揃える。
+      // v2-7: 空欄ごとの正誤・正解は各unit内に表示済みのため、末尾の一覧表示(長い1行)は行わない。
+      // 全体の正解/不正解バナーは残すが、部分点の把握を妨げないよう控えめな表示にする
+      // (result-banner-compact。他のexerciseTypeのresult-bannerは変更しない)。
       resultBox.hidden = false;
       resultBox.innerHTML = "";
-      resultBox.appendChild(EVv2.createResultBanner(allCorrect));
-      var correctText = choiceSets
-        .map(function (set, idx) {
-          return "空欄" + (idx + 1) + "=" + set.correct;
-        })
-        .join(" ／ ");
-      resultBox.appendChild(EVv2.createCorrectAnswerLine(correctText));
-      // multi_blankのexplanationは仕様上常にnull（複数解答に単一の解説スロットを持たないため）。
-      resultBox.appendChild(EVv2.createExplanationLine(null));
+      var banner = EVv2.createResultBanner(allCorrect);
+      banner.classList.add("result-banner-compact");
+      resultBox.appendChild(banner);
 
       // v2-3から変更なし: 保存は一度だけ、問題全体の正誤は「全unitが正解の場合のみ正解」とする。
       if (!completedSaved) {
         completedSaved = true;
+        if (typeof EVv2.onExerciseAnswered === "function") {
+          var yourAnswerText = choiceSets
+            .map(function (set, idx) {
+              return "空欄" + (idx + 1) + ": " + unitStates[idx].selectedText;
+            })
+            .join(" ／ ");
+          EVv2.onExerciseAnswered({
+            ex: ex,
+            exerciseKey: exerciseKey,
+            yourAnswerText: yourAnswerText,
+            resultKind: "partial",
+            correctCount: correctCount,
+            total: choiceSets.length,
+          });
+        }
         var rec = exerciseKey ? EVv2.recordAnswer(exerciseKey, ex.exerciseType, allCorrect) : null;
         EVv2.finalizeAnsweredCard(card, progressPanel, rec, onNext);
       }
     }
     confirmBtn.addEventListener("click", confirmAnswers);
 
+    // v2-10(multi_blankレイアウト改善)。問題文エリアと解答エリアを分離し、それぞれ独立して
+    // スクロールできるようにする(docs未作成、実装前にPC/スマホの試作で確認済み)。
+    // 「全選択→一括確定」という操作、正誤判定・修得判定・学習履歴の記録先は一切変更しない。
+    var choiceQuestionSpan = EVv2.getQuestionRawSpan(ex);
+    var splitWrap = document.createElement("div");
+    splitWrap.className = "multiblank-split";
+
+    var bodyPane = document.createElement("div");
+    bodyPane.className = "multiblank-split-body";
+    var splitQText = document.createElement("p");
+    splitQText.className = "question-text";
+    if (choiceQuestionSpan) {
+      EVv2.appendTextWithHeadingMarkers(splitQText, choiceQuestionSpan.text);
+    } else {
+      splitQText.textContent = "(問題文なし)";
+    }
+    bodyPane.appendChild(splitQText);
+
+    var answerPane = document.createElement("div");
+    answerPane.className = "multiblank-split-answer";
+
+    var unitsScroll = document.createElement("div");
+    unitsScroll.className = "multiblank-split-units-scroll";
+
+    var confirmBar = document.createElement("div");
+    confirmBar.className = "multiblank-split-confirm";
+    confirmBar.appendChild(confirmBtn);
+
     var unitsWrap = document.createElement("div");
     unitsWrap.className = "multiblank-units";
+    var unitLabelEls = [];
 
     choiceSets.forEach(function (set, idx) {
       var unitBox = document.createElement("div");
@@ -348,6 +460,7 @@ var multiBlankHandler = {
       label.className = "multiblank-unit-label";
       label.textContent = "空欄" + (idx + 1);
       unitBox.appendChild(label);
+      unitLabelEls.push(label);
 
       var choicesWrap = document.createElement("div");
       choicesWrap.className = "choices";
@@ -366,8 +479,13 @@ var multiBlankHandler = {
       unitsWrap.appendChild(unitBox);
     });
 
-    card.appendChild(unitsWrap);
-    card.appendChild(confirmBtn);
+    unitsScroll.appendChild(unitsWrap);
+    answerPane.appendChild(unitsScroll);
+    answerPane.appendChild(confirmBar);
+    splitWrap.appendChild(bodyPane);
+    splitWrap.appendChild(answerPane);
+
+    card.appendChild(splitWrap);
     card.appendChild(summary);
     card.appendChild(resultBox);
   },
@@ -531,8 +649,23 @@ var orderingHandler = {
         .join(" → ");
       revealBox.appendChild(EVv2.createCorrectAnswerLine(correctOrderText));
       revealBox.appendChild(EVv2.createExplanationLine(ex.explanationText));
-      revealBox.appendChild(EVv2.createSourceLine(ex.sourceRefs));
+      var orderingSourceLine = EVv2.createSourceLine(ex.sourceRefs);
+      if (orderingSourceLine) revealBox.appendChild(orderingSourceLine);
 
+      if (typeof EVv2.onExerciseAnswered === "function") {
+        var submittedOrderText = uiState.order
+          .map(function (id) {
+            return itemById[id].label;
+          })
+          .join(" → ");
+        EVv2.onExerciseAnswered({
+          ex: ex,
+          exerciseKey: exerciseKey,
+          yourAnswerText: submittedOrderText,
+          resultKind: "auto",
+          isCorrect: correct,
+        });
+      }
       // v2-3の既存進捗保存機構をそのまま再利用する（新しいlocalStorageスキーマは作らない）。
       var rec = exerciseKey ? EVv2.recordAnswer(exerciseKey, ex.exerciseType, correct) : null;
       EVv2.finalizeAnsweredCard(card, progressPanel, rec, onNext);

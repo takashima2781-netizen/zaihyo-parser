@@ -25,6 +25,7 @@ import { detectStrategy } from "./markerStrategies.mjs";
 import { labelToCode } from "./checkTypeLabels.mjs";
 import { getGroupAExclusionsForLocator, KNOWN_NORMAL_DUPLICATE_MARKER_LOCATORS } from "./knownMarkerExclusions.mjs";
 import { applyKnownBodyFragmentFix } from "./knownBodyFragmentFixes.mjs";
+import { applyKnownCharacterSpacingFixes } from "./knownCharacterSpacingFixes.mjs";
 
 function numOrNull(s) {
   return s == null ? null : Number(toHalfWidthDigits(s));
@@ -925,6 +926,12 @@ export function buildCorpus({
           bodyText = fixResult.bodyText;
           consumedLocators.add(fixResult.fragmentLocator);
         }
+
+        // 教材データ品質調査(2026-07-29)で確認した、既知の文字間スペース除去
+        // （src/parser/knownCharacterSpacingFixes.mjs参照）。PDFの文字間隔を広げた組版が原因で
+        // 1文字ずつスペースが入って抽出された箇所を、個別確認済みのcheckBlockIdのみ対象に修正する。
+        // fail-closed（想定と異なる場合は例外）なので、対象外のcheckBlockIdでは何もしない。
+        bodyText = applyKnownCharacterSpacingFixes(checkBlock.id, bodyText, bodySource);
       }
 
       const questionMarkers = extractQuestionMarkers(strategy, bodyText);
