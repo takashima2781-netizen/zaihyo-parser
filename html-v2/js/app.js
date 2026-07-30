@@ -38,15 +38,19 @@
     initialError: document.getElementById("initial-setup-error"),
     mainApp: document.getElementById("main-app"),
     studySetup: document.getElementById("study-setup"),
-    studySetupThemeFilter: document.getElementById("study-setup-theme-filter"),
-    studySetupSectionFilter: document.getElementById("study-setup-section-filter"),
-    studySetupTopicFilter: document.getElementById("study-setup-topic-filter"),
-    studySetupTypeFilter: document.getElementById("study-setup-type-filter"),
-    studySetupModeFilter: document.getElementById("study-setup-mode-filter"),
-    studySetupCount: document.getElementById("study-setup-count"),
-    studySetupEmpty: document.getElementById("study-setup-empty"),
+    studySetupThemeSelect: document.getElementById("study-setup-theme-select"),
+    studySetupSectionSelect: document.getElementById("study-setup-section-select"),
+    studySetupTopicSelect: document.getElementById("study-setup-topic-select"),
+    studySetupTypeChips: document.getElementById("study-setup-type-chips"),
+    studySetupModeChips: document.getElementById("study-setup-mode-chips"),
+    studySetupPickerToggle: document.getElementById("study-setup-picker-toggle"),
+    studySetupPickerPanel: document.getElementById("study-setup-picker-panel"),
+    studySetupPickerSummaryText: document.getElementById("study-setup-picker-summary-text"),
+    studySetupDockSummary: document.getElementById("study-setup-dock-summary"),
+    studySetupDockCount: document.getElementById("study-setup-dock-count"),
     startStudyBtn: document.getElementById("start-study-btn"),
     openBrowseViewBtn: document.getElementById("open-browse-view-btn"),
+    themeSwitch: document.getElementById("theme-switch"),
     studySession: document.getElementById("study-session"),
     studySessionProgress: document.getElementById("study-session-progress"),
     studySessionCardContainer: document.getElementById("study-session-card-container"),
@@ -205,8 +209,6 @@
     // カスケード選択肢を構築する。データ再読み込み時にも毎回作り直す。
     state.themeHierarchy = buildThemeHierarchy(state.baseExercises);
     populateThemeSelect();
-    populateSectionSelect("all");
-    populateTopicSelect("all", "all");
 
     var t2 = performance.now();
 
@@ -539,32 +541,80 @@
     return (theme && theme.sectionsMap[sectionId]) || null;
   }
 
-  function populateSelectOptions(selectEl, items) {
+  // v2-15(教材ピッカーをプルダウンへ差し戻し): テーマは27件超あり、横スクロールのチップは
+  // 操作性が悪いためselectに戻す。データの意味づけ(themeHierarchy・structureNodeId)や
+  // カスケード（テーマ→節→論点）のロジック自体はv2-13から変更していない。
+  function populateSelectOptions(selectEl, nodes, labelFn) {
     selectEl.innerHTML = "";
     var allOpt = document.createElement("option");
     allOpt.value = "all";
     allOpt.textContent = "すべて";
     selectEl.appendChild(allOpt);
-    items.forEach(function (item) {
+    nodes.forEach(function (n) {
       var opt = document.createElement("option");
-      opt.value = item.id;
-      opt.textContent = item.title;
+      opt.value = n.id;
+      opt.textContent = labelFn ? labelFn(n.title) : n.title;
       selectEl.appendChild(opt);
     });
-    selectEl.disabled = items.length === 0;
+    selectEl.value = "all";
+    selectEl.disabled = nodes.length === 0;
+  }
+
+  // KNOWN-ISSUE: 元データ(titleRaw.text)上、テーマ26のみ見出しに「テーマ」の語が欠落している
+  // （原文自体は書き換えない。表示専用のラベル整形としてのみ、この画面内で補う）。
+  function formatThemeTitle(title) {
+    return /^\d/.test(title) && title.indexOf("テーマ") !== 0 ? "テーマ" + title : title;
   }
 
   function populateThemeSelect() {
-    populateSelectOptions(els.studySetupThemeFilter, state.themeHierarchy);
+    populateSelectOptions(els.studySetupThemeSelect, state.themeHierarchy, formatThemeTitle);
+    populateSectionSelect("all");
+    populateTopicSelect("all", "all");
   }
   function populateSectionSelect(themeId) {
     var theme = findTheme(themeId);
-    populateSelectOptions(els.studySetupSectionFilter, theme ? theme.sectionsOrder : []);
+    populateSelectOptions(els.studySetupSectionSelect, theme ? theme.sectionsOrder : []);
   }
   function populateTopicSelect(themeId, sectionId) {
     var section = findSection(themeId, sectionId);
-    populateSelectOptions(els.studySetupTopicFilter, section ? section.topicsOrder : []);
+    populateSelectOptions(els.studySetupTopicSelect, section ? section.topicsOrder : []);
   }
+
+  els.studySetupThemeSelect.addEventListener("change", function () {
+    populateSectionSelect(els.studySetupThemeSelect.value);
+    populateTopicSelect(els.studySetupThemeSelect.value, "all");
+    updateStudySetupCount();
+  });
+  els.studySetupSectionSelect.addEventListener("change", function () {
+    populateTopicSelect(els.studySetupThemeSelect.value, els.studySetupSectionSelect.value);
+    updateStudySetupCount();
+  });
+  els.studySetupTopicSelect.addEventListener("change", updateStudySetupCount);
+
+  // 問題形式は英語のexerciseTypeそのままだと直感的でないため、日本語ラベルで表示する
+  // （フィルタの実装値・buildStudyQueueが参照する値は従来のexerciseType文字列のまま）。
+  var TYPE_ITEMS = [
+    { value: "all", label: "全て" },
+    { value: "true_false", label: "〇×" },
+    { value: "single_blank", label: "穴埋め" },
+    { value: "multi_blank", label: "多重穴埋め" },
+    { value: "ordering", label: "並び替え" },
+  ];
+  var MODE_ITEMS = [
+    { value: "all", label: "すべての問題" },
+    { value: "unmastered", label: "未修得の問題" },
+    { value: "checked", label: "チェック問題" },
+  ];
+  var typeChipGroup = EVv2.createChipGroup(els.studySetupTypeChips, {
+    items: TYPE_ITEMS,
+    value: "all",
+    onChange: updateStudySetupCount,
+  });
+  var modeChipGroup = EVv2.createChipGroup(els.studySetupModeChips, {
+    items: MODE_ITEMS,
+    value: "all",
+    onChange: updateStudySetupCount,
+  });
 
   // themeId/sectionId/topicIdはそれぞれ"all"または具体的なstructureNodeId。
   // 該当する階層情報を持たないExercise（buildThemeHierarchyのコメント参照）は、
@@ -578,11 +628,11 @@
   }
 
   function buildStudyQueue() {
-    var type = els.studySetupTypeFilter.value;
-    var studyMode = els.studySetupModeFilter.value;
-    var themeId = els.studySetupThemeFilter.value;
-    var sectionId = els.studySetupSectionFilter.value;
-    var topicId = els.studySetupTopicFilter.value;
+    var type = typeChipGroup.getValue();
+    var studyMode = modeChipGroup.getValue();
+    var themeId = els.studySetupThemeSelect.value;
+    var sectionId = els.studySetupSectionSelect.value;
+    var topicId = els.studySetupTopicSelect.value;
     var all = state.baseExercises || state.data.exercises;
     var byType = filterByType(all, type);
     return byType.filter(function (ex) {
@@ -590,13 +640,34 @@
     });
   }
 
-  // 設定変更のたびに対象問題数を再計算し、0件なら「学習を始める」を無効化する。
+  // v2-14(教材ピッカー・ドックUI化): 教材ピッカーの要約行と、画面下部に常時固定した
+  // ドック（現在の絞り込み内容の一文＋開始ボタン）を、設定変更のたびに再計算する。
   function updateStudySetupCount() {
     var count = buildStudyQueue().length;
-    els.studySetupCount.textContent = "対象問題数：" + count + "問";
+    var themeId = els.studySetupThemeSelect.value;
+    var theme = themeId === "all" ? null : findTheme(themeId);
+    var themeLabel = theme ? formatThemeTitle(theme.title) : "すべて";
+    var typeLabel = typeChipGroup.getLabel() || "全て";
+    var modeLabel = modeChipGroup.getLabel() || "すべての問題";
+
+    // 問題数は下部のドックに一本化する（ピッカー要約行では重複させない）。
+    els.studySetupPickerSummaryText.textContent = themeLabel;
+
+    els.studySetupDockSummary.textContent = "";
+    if (count === 0) {
+      els.studySetupDockSummary.textContent = "条件に該当する問題がありません";
+    } else {
+      els.studySetupDockSummary.appendChild(document.createTextNode(themeLabel));
+      [typeLabel, modeLabel].forEach(function (label) {
+        var sep = document.createElement("span");
+        sep.className = "sep";
+        sep.textContent = "・";
+        els.studySetupDockSummary.appendChild(sep);
+        els.studySetupDockSummary.appendChild(document.createTextNode(label));
+      });
+    }
+    els.studySetupDockCount.textContent = count;
     els.startStudyBtn.disabled = count === 0;
-    els.studySetupEmpty.hidden = count !== 0;
-    if (count === 0) els.studySetupEmpty.textContent = "条件に該当する問題がありません。";
   }
 
   function renderStudySessionCard() {
@@ -791,7 +862,7 @@
       row.appendChild(mark);
 
       var badge = document.createElement("span");
-      badge.className = "review-type-badge";
+      badge.className = "badge";
       badge.textContent = entry.ex.exerciseType;
       row.appendChild(badge);
 
@@ -860,7 +931,7 @@
     els.studyReviewDetailBody.innerHTML = "";
 
     var badge = document.createElement("span");
-    badge.className = "review-type-badge";
+    badge.className = "badge";
     badge.textContent = entry.ex.exerciseType;
     els.studyReviewDetailBody.appendChild(badge);
 
@@ -944,14 +1015,14 @@
 
   els.studyReviewFilterAllBtn.addEventListener("click", function () {
     studyReview.filter = "all";
-    els.studyReviewFilterAllBtn.classList.add("filter-chip-active");
-    els.studyReviewFilterWrongBtn.classList.remove("filter-chip-active");
+    els.studyReviewFilterAllBtn.classList.add("active");
+    els.studyReviewFilterWrongBtn.classList.remove("active");
     renderReviewList();
   });
   els.studyReviewFilterWrongBtn.addEventListener("click", function () {
     studyReview.filter = "wrong";
-    els.studyReviewFilterWrongBtn.classList.add("filter-chip-active");
-    els.studyReviewFilterAllBtn.classList.remove("filter-chip-active");
+    els.studyReviewFilterWrongBtn.classList.add("active");
+    els.studyReviewFilterAllBtn.classList.remove("active");
     renderReviewList();
   });
   els.studyReviewBackBtn.addEventListener("click", function () {
@@ -963,7 +1034,9 @@
     renderReviewList();
   });
 
-  els.startStudyBtn.addEventListener("click", function () {
+  // v2-14: 開始ドックのボタンは画面下部に常時固定されているため、
+  // スクロール位置に関わらずいつでも同じ動作で学習を開始できる。
+  function startStudyFromSetup() {
     if (!state.data) return;
     var queue = buildStudyQueue();
     if (queue.length === 0) return; // ボタンは既に無効化されているはずのフェイルセーフ
@@ -972,7 +1045,29 @@
     studySession.answeredLog = [];
     showStudySession();
     renderStudySessionCard();
+  }
+  els.startStudyBtn.addEventListener("click", startStudyFromSetup);
+
+  // v2-14: 教材ピッカーの開閉。実際の並び替え・選択ロジックはchipGroupが担う。
+  els.studySetupPickerToggle.addEventListener("click", function () {
+    var willOpen = els.studySetupPickerPanel.hidden;
+    els.studySetupPickerPanel.hidden = !willOpen;
+    els.studySetupPickerToggle.setAttribute("aria-expanded", String(willOpen));
   });
+
+  // v2-13: テーマ（システム／ライト／ダーク）切替。永続化・data-theme適用はthemeStore.jsが担う。
+  function refreshThemeSwitchUI() {
+    var pref = EVv2.getThemePreference();
+    var buttons = els.themeSwitch.querySelectorAll("button");
+    buttons.forEach(function (b) { b.classList.toggle("active", b.dataset.mode === pref); });
+  }
+  els.themeSwitch.querySelectorAll("button").forEach(function (b) {
+    b.addEventListener("click", function () {
+      EVv2.setThemePreference(b.dataset.mode);
+      refreshThemeSwitchUI();
+    });
+  });
+  refreshThemeSwitchUI();
 
   // v2-12(振り返り機能)。render.js/registry.js側の4箇所（true_false/single_blank選択式、
   // 自己採点、multi_blank一括確定、ordering）から、回答が確定した瞬間に呼ばれる共通フック。
@@ -1044,20 +1139,6 @@
   els.endStudyConfirmBackdrop.addEventListener("click", function (e) {
     if (e.target === els.endStudyConfirmBackdrop) closeEndStudyConfirm();
   });
-
-  // テーマ→節→論点のカスケード。上位を変更したら下位の選択肢を作り直し、"すべて"に戻す。
-  els.studySetupThemeFilter.addEventListener("change", function () {
-    populateSectionSelect(els.studySetupThemeFilter.value);
-    populateTopicSelect(els.studySetupThemeFilter.value, "all");
-    updateStudySetupCount();
-  });
-  els.studySetupSectionFilter.addEventListener("change", function () {
-    populateTopicSelect(els.studySetupThemeFilter.value, els.studySetupSectionFilter.value);
-    updateStudySetupCount();
-  });
-  els.studySetupTopicFilter.addEventListener("change", updateStudySetupCount);
-  els.studySetupTypeFilter.addEventListener("change", updateStudySetupCount);
-  els.studySetupModeFilter.addEventListener("change", updateStudySetupCount);
 
   els.openBrowseViewBtn.addEventListener("click", function () {
     showBrowseView();
