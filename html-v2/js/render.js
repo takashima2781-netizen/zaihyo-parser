@@ -170,14 +170,15 @@ EVv2.createNextButton = function (card, onNext) {
   return btn;
 };
 
-// 学習状態（progressPanel）＋「次の問題へ」を、回答が確定した瞬間に1回だけカード末尾へ追加する
-// （未回答状態ではこの2つはDOMに存在しない＝誤って次へ進めない、という設計をそのまま満たす）。
-// 再挑戦等で複数回呼ばれても、2回目以降はprogressPanelの表示更新のみ行い、DOMの二重追加はしない。
+// v2-16: progressPanel（学習状態）自体はcreateExerciseCardが最初からカード上部（バッジの隣）へ
+// 追加済みのため、ここでは表示更新のみ行う。「次の問題へ」は引き続き、回答が確定した瞬間に
+// 1回だけカード末尾へ追加する（未回答状態ではDOMに存在しない＝誤って次へ進めない、という
+// 設計はそのまま維持する）。再挑戦等で複数回呼ばれても、2回目以降は表示更新のみ行い、
+// 「次の問題へ」ボタンのDOM二重追加はしない。
 EVv2.finalizeAnsweredCard = function (card, progressPanel, rec, onNext) {
   if (progressPanel && rec) progressPanel.update(rec);
   if (card.dataset.trailingAppended === "1") return;
   card.dataset.trailingAppended = "1";
-  if (progressPanel) card.appendChild(progressPanel.el);
   card.appendChild(EVv2.createNextButton(card, onNext));
 };
 
@@ -214,6 +215,8 @@ EVv2.createProgressPanel = function (exerciseKey, exerciseType) {
   streakEl.className = "progress-streak";
   wrap.appendChild(streakEl);
 
+  // v2-17: チェック登録は☆/★のオンオフ表示にする（振り返り画面のreview-icon-btnと同じ考え方。
+  // クリックで保存されるデータ・保存先は変更しない。読み上げ用にaria-labelへ元の文言を残す）。
   var checkBtn = document.createElement("button");
   checkBtn.type = "button";
   checkBtn.className = "check-btn";
@@ -223,7 +226,8 @@ EVv2.createProgressPanel = function (exerciseKey, exerciseType) {
     statusEl.textContent = statusLabel(record.status);
     statusEl.className = "progress-status progress-status-" + record.status;
     streakEl.textContent = "連続正解 " + record.correctStreak;
-    checkBtn.textContent = record.checked ? "チェック解除" : "チェック登録";
+    checkBtn.textContent = record.checked ? "★" : "☆";
+    checkBtn.setAttribute("aria-label", record.checked ? "チェック解除" : "チェック登録");
     checkBtn.classList.toggle("checked", record.checked);
   }
 
@@ -302,10 +306,26 @@ EVv2.createExerciseCard = function (ex, context, onNext) {
 
   var handler = EVv2.registry[ex.exerciseType];
 
+  // v2-16: バッジと学習状態(progressPanel)を同じ行にまとめて表示する
+  // （以前はprogressPanelが未回答の間DOMに存在せず、回答確定後にカード末尾へ追加していたが、
+  // 学習履歴(修得状態・連続正解・チェック)は今解いているかどうかに関わらず参照できる情報のため、
+  // 最初から表示する。「次の問題へ」ボタンは引き続き回答確定まで表示しない）。
+  var topRow = document.createElement("div");
+  topRow.className = "ex-card-top";
+
   var badge = document.createElement("span");
   badge.className = "badge" + (handler ? "" : " badge-unsupported");
   badge.textContent = handler ? handler.label : "未対応形式 (" + ex.exerciseType + ")";
-  card.appendChild(badge);
+  topRow.appendChild(badge);
+
+  var exerciseKey = null;
+  var progressPanel = null;
+  if (handler) {
+    exerciseKey = EVv2.computeExerciseKey(ex);
+    progressPanel = EVv2.createProgressPanel(exerciseKey, ex.exerciseType);
+    topRow.appendChild(progressPanel.el);
+  }
+  card.appendChild(topRow);
 
   // v1.8.0(共通指示文の実装レポート参照)。カード上部はテーマ›節›論点 → 共通指示文 →
   // 問題本文 → 回答UI、の順で並べる。パンくずは控えめ、共通指示文は本文よりわずかに小さいが
@@ -373,10 +393,6 @@ EVv2.createExerciseCard = function (ex, context, onNext) {
     }
     return card;
   }
-
-  var exerciseKey = EVv2.computeExerciseKey(ex);
-  var progressPanel = EVv2.createProgressPanel(exerciseKey, ex.exerciseType);
-  // v2-5: progressPanel.elはここでは追加しない。回答確定時にfinalizeAnsweredCardがカード末尾へ追加する。
 
   // v2-2(docs/v2_2_implementation_report.md)。multi_blank等、1問の中に複数の判定単位を持つ
   // 形式は、下のchoice/reveal二値ループ（true_false/single_blank用）とは独立した専用の描画を持つ。

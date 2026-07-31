@@ -149,12 +149,19 @@ input[type="file"]:focus-visible {
   outline-offset: 2px;
 }
 
-/* ==== ヘッダー：ブランドとテーマ切替。全画面で不変。フルブリードの帯として扱う ==== */
+/* ==== ヘッダー：ブランドとテーマ切替。全画面で不変。フルブリードの帯として常に画面上部に固定する ==== */
 header {
+  position: sticky;
+  top: 0;
+  z-index: 40;
   background: var(--header-bg);
   border-bottom: 1px solid var(--border);
-  margin: calc(var(--sp-4) * -1) calc(var(--sp-4) * -1) var(--sp-5);
-  padding: 14px var(--sp-4);
+  margin: calc(var(--sp-4) * -1) calc(var(--sp-4) * -1) var(--sp-3);
+  padding: 10px var(--sp-4);
+}
+/* v2-16: 学習セッション画面ではテーマ切替を占有スペース削減のため隠す（app.js側で切替）。 */
+header.theme-switch-hidden .theme-switch {
+  display: none;
 }
 .appbar-row {
   display: flex;
@@ -266,11 +273,19 @@ header h1 {
   color: var(--text-muted);
   margin-bottom: 8px;
 }
+/* v2-18: 長い問題文でもスクロール中に進捗・終了ボタンを見失わないよう、
+   ヘッダーの直下に固定する（--header-hはapp.jsがヘッダーの実測高さを設定する）。 */
 .study-session-header {
+  position: sticky;
+  top: var(--header-h, 57px);
+  z-index: 35;
+  background: var(--bg);
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  padding: 6px 0;
+  margin-bottom: var(--sp-2);
 }
 .study-session-header .study-session-progress {
   margin-bottom: 0;
@@ -467,7 +482,8 @@ header h1 {
 }
 
 /* ---- 教材ピッカー：閉じた状態は1行の要約、開くとチップの棚が展開する ---- */
-/* アクセントの枠線をうっすら効かせ、下部の選択済みチップ・開始ボタンと同じ色調で画面全体を統一する */
+/* 下のチップグリッド（問題形式・出題モード）と同じ枠の太さ・色・ピル形状にし、
+   画面全体で「アクセントの枠＝選べる場所」という見た目のルールを統一する。 */
 .picker-summary {
   width: 100%;
   display: flex;
@@ -475,9 +491,9 @@ header h1 {
   justify-content: space-between;
   gap: var(--sp-3);
   background: var(--surface-card);
-  border: 1px solid var(--accent-soft-border);
-  border-radius: var(--radius);
-  padding: 16px 18px;
+  border: 1.5px solid var(--accent);
+  border-radius: 999px;
+  padding: 12px 20px;
   font-family: inherit;
   font-size: 1rem;
   font-weight: 700;
@@ -545,24 +561,36 @@ header h1 {
   color: var(--selected-text);
 }
 
-/* ---- チップグリッド：問題形式・出題モード。両者とも同じ書式（塗り）で選択中を示す ---- */
+/* ---- チップグリッド：問題形式・出題モード。1つの帯（外枠）の中に選択肢を並べ、
+   選択中の項目だけが塗りつぶしのピルとして浮き上がるセグメントコントロール。
+   スマホでも1行に収まる均等幅にする ---- */
 .chip-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-  gap: var(--sp-3);
+  display: flex;
+  flex-wrap: nowrap;
+  background: var(--surface-card);
+  border: 1.5px solid var(--accent);
+  border-radius: 999px;
+  padding: 4px;
+  gap: 2px;
 }
 .chip-grid .chip {
-  border-radius: var(--radius-sm);
-  padding: 14px 10px;
-  min-height: 52px;
+  flex: 1 1 0;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  padding: 9px 4px;
+  min-height: 38px;
+  font-size: .78rem;
+  line-height: 1.25;
   text-align: center;
   justify-content: center;
+  white-space: normal;
 }
 /* 選択中は塗り（強いアクセント）。塗りに乗る文字は常にaccent-ink（白）で読みやすさを優先する */
 .chip-grid.fill .chip.active {
   background: var(--accent-fill);
   color: var(--accent-ink);
-  border-color: var(--accent-fill);
 }
 
 .list-view-btn {
@@ -682,6 +710,18 @@ header h1 {
   color: var(--text-muted);
   margin: 2px 0 8px;
 }
+/* v2-16: 問題形式バッジと学習状態(progress-panel)を同じ行にまとめる
+   （以前はprogress-panelがカード末尾にあったが、正誤バッジの近くに集約する）。 */
+.ex-card-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.ex-card-top .badge {
+  margin-bottom: 0;
+}
 .badge {
   display: inline-block;
   font-size: 0.7rem;
@@ -707,9 +747,6 @@ header h1 {
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-  margin-top: 10px;
-  padding-top: 8px;
-  border-top: 1px dashed var(--border);
 }
 .progress-status {
   font-size: 0.68rem;
@@ -730,12 +767,21 @@ header h1 {
   font-size: 0.68rem;
   color: var(--text-faint);
 }
+/* v2-17: チェック登録は文字ラベルではなく☆/★のオンオフ表示にする（振り返り画面の
+   review-icon-btnと同じ星アイコンの考え方に揃える）。 */
 .check-btn {
-  font-size: 0.68rem;
-  padding: 1px 8px;
-  min-height: auto;
+  font-size: 1.05rem;
+  padding: 0;
+  min-width: 32px;
+  min-height: 32px;
   border-radius: 999px;
   background: transparent;
+  border: none;
+  line-height: 1;
+}
+.check-btn.checked {
+  background: transparent;
+  border: none;
 }
 .self-grade {
   display: flex;

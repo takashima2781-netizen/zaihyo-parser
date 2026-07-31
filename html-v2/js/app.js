@@ -31,6 +31,7 @@
   };
 
   var els = {
+    header: document.querySelector("header"),
     onboardingInfo: document.getElementById("onboarding-info"),
     initialSetup: document.getElementById("initial-setup"),
     initialFileInput: document.getElementById("initial-file-input"),
@@ -96,6 +97,15 @@
     els.debugPanels.hidden = true;
   }
 
+  // v2-18: 固定ヘッダーの実測高さを --header-h に反映する（学習画面の進捗行をその直下に
+  // 固定表示するため）。テーマ切替の表示・非表示で高さが変わるため、リサイズ時だけでなく
+  // 画面切替のたびにも呼び直す想定（各showXxx関数から呼ぶ）。
+  function syncHeaderHeightVar() {
+    document.documentElement.style.setProperty("--header-h", els.header.getBoundingClientRect().height + "px");
+  }
+  syncHeaderHeightVar();
+  window.addEventListener("resize", syncHeaderHeightVar);
+
   function showError(msg) {
     els.errorPanel.hidden = false;
     els.errorPanel.textContent = msg;
@@ -134,6 +144,8 @@
     els.studySession.hidden = true;
     els.studyReview.hidden = true;
     els.browseView.hidden = true;
+    els.header.classList.remove("theme-switch-hidden");
+    syncHeaderHeightVar();
     // 学習セッション終了直後などは修得状態が変わっている可能性があるため、都度再計算する。
     if (state.data) updateStudySetupCount();
   }
@@ -142,12 +154,17 @@
     els.studySession.hidden = false;
     els.studyReview.hidden = true;
     els.browseView.hidden = true;
+    // v2-16: 問題を解いている間はテーマ切替を隠し、画面上部の占有スペースを減らす。
+    els.header.classList.add("theme-switch-hidden");
+    syncHeaderHeightVar();
   }
   function showBrowseView() {
     els.studySetup.hidden = true;
     els.studySession.hidden = true;
     els.studyReview.hidden = true;
     els.browseView.hidden = false;
+    els.header.classList.remove("theme-switch-hidden");
+    syncHeaderHeightVar();
     if (state.data) applyFilter();
   }
 
@@ -788,6 +805,8 @@
     els.studyReview.hidden = false;
     els.studyReviewListView.hidden = false;
     els.studyReviewDetailView.hidden = true;
+    els.header.classList.remove("theme-switch-hidden");
+    syncHeaderHeightVar();
     renderReviewStats();
     renderReviewList();
   }
@@ -990,6 +1009,8 @@
     studyReview.retryReturnTo = returnTo;
     els.studyReview.hidden = true;
     els.studySession.hidden = false;
+    els.header.classList.add("theme-switch-hidden");
+    syncHeaderHeightVar();
     els.studySessionProgress.textContent = "この問題をもう一度解く";
     els.studySessionCardContainer.innerHTML = "";
     try {
