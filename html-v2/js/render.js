@@ -172,14 +172,16 @@ EVv2.createNextButton = function (card, onNext) {
 
 // v2-16: progressPanel（学習状態）自体はcreateExerciseCardが最初からカード上部（バッジの隣）へ
 // 追加済みのため、ここでは表示更新のみ行う。「次の問題へ」は引き続き、回答が確定した瞬間に
-// 1回だけカード末尾へ追加する（未回答状態ではDOMに存在しない＝誤って次へ進めない、という
-// 設計はそのまま維持する）。再挑戦等で複数回呼ばれても、2回目以降は表示更新のみ行い、
+// 1回だけ追加する（未回答状態ではDOMに存在しない＝誤って次へ進めない、という設計はそのまま
+// 維持する）。再挑戦等で複数回呼ばれても、2回目以降は表示更新のみ行い、
 // 「次の問題へ」ボタンのDOM二重追加はしない。
-EVv2.finalizeAnsweredCard = function (card, progressPanel, rec, onNext) {
+// v2-25: 第1引数はカード本体ではなく、常時表示される末尾の固定領域(ex-card-footer-zone)。
+// 問題文・回答欄がそれぞれ独立スクロールする中でも、次へ進む導線だけは必ず見える位置に置く。
+EVv2.finalizeAnsweredCard = function (footerZone, progressPanel, rec, onNext) {
   if (progressPanel && rec) progressPanel.update(rec);
-  if (card.dataset.trailingAppended === "1") return;
-  card.dataset.trailingAppended = "1";
-  card.appendChild(EVv2.createNextButton(card, onNext));
+  if (!footerZone || footerZone.dataset.trailingAppended === "1") return;
+  footerZone.dataset.trailingAppended = "1";
+  footerZone.appendChild(EVv2.createNextButton(footerZone.parentElement, onNext));
 };
 
 // true_false/single_blankの共通choice/revealループ専用。正解/不正解バナー→解答→解説→出典、
@@ -251,7 +253,8 @@ EVv2.createProgressPanel = function (exerciseKey, exerciseType) {
 // v2-8: 文字（「正解だった」「不正解だった」）ではなく○×の記号を中心にしたUIにする
 // （読み上げ用にaria-labelへ元の文言を残す。判定ロジック・学習履歴の記録先は変更しない）。
 // v2-12(振り返り機能): 自己採点確定時にEVv2.onExerciseAnsweredを呼ぶため、exを追加した。
-EVv2.appendSelfGradeButtons = function (container, ex, exerciseKey, exerciseType, progressPanel, card, onNext) {
+// v2-25: footerZoneはfinalizeAnsweredCardへそのまま渡す末尾の固定領域（旧cardパラメータ）。
+EVv2.appendSelfGradeButtons = function (container, ex, exerciseKey, exerciseType, progressPanel, footerZone, onNext) {
   var wrap = document.createElement("div");
   wrap.className = "self-grade";
 
@@ -281,7 +284,7 @@ EVv2.appendSelfGradeButtons = function (container, ex, exerciseKey, exerciseType
     }
     if (!exerciseKey) return;
     var rec = EVv2.recordAnswer(exerciseKey, exerciseType, isCorrect);
-    if (card) EVv2.finalizeAnsweredCard(card, progressPanel, rec, onNext);
+    if (footerZone) EVv2.finalizeAnsweredCard(footerZone, progressPanel, rec, onNext);
     else if (rec && progressPanel) progressPanel.update(rec);
   }
 
@@ -306,10 +309,13 @@ EVv2.createExerciseCard = function (ex, context, onNext) {
 
   var handler = EVv2.registry[ex.exerciseType];
 
-  // v2-16: バッジと学習状態(progressPanel)を同じ行にまとめて表示する
-  // （以前はprogressPanelが未回答の間DOMに存在せず、回答確定後にカード末尾へ追加していたが、
-  // 学習履歴(修得状態・連続正解・チェック)は今解いているかどうかに関わらず参照できる情報のため、
-  // 最初から表示する。「次の問題へ」ボタンは引き続き回答確定まで表示しない）。
+  // v2-19: バッジ・学習状態・パンくず・共通指示文は「メタ情報」としてひとまとめにし、
+  // 実際の大問（question-text以降）との間に視覚的な区切り線を引く（ex-card-meta）。
+  // v2-16の「バッジと学習状態(progressPanel)を同じ行にまとめる」という考え方はそのまま、
+  // その行を含むメタ情報全体をさらに1つの区画として扱う。
+  var metaSection = document.createElement("div");
+  metaSection.className = "ex-card-meta";
+
   var topRow = document.createElement("div");
   topRow.className = "ex-card-top";
 
@@ -325,7 +331,7 @@ EVv2.createExerciseCard = function (ex, context, onNext) {
     progressPanel = EVv2.createProgressPanel(exerciseKey, ex.exerciseType);
     topRow.appendChild(progressPanel.el);
   }
-  card.appendChild(topRow);
+  metaSection.appendChild(topRow);
 
   // v1.8.0(共通指示文の実装レポート参照)。カード上部はテーマ›節›論点 → 共通指示文 →
   // 問題本文 → 回答UI、の順で並べる。パンくずは控えめ、共通指示文は本文よりわずかに小さいが
@@ -336,18 +342,24 @@ EVv2.createExerciseCard = function (ex, context, onNext) {
     })
     .filter(Boolean);
   if (structureLevels.length > 0) {
+    // v2-21: バッジの行と同じ1行に収める。毎問確認する情報ではないため、幅が足りない分は
+    // 省略記号(…)で切り詰める（情報は失わずtitle属性で全文を保持。CSS側でellipsis指定）。
+    var breadcrumbText = structureLevels.join(" › ");
     var breadcrumb = document.createElement("div");
     breadcrumb.className = "structure-breadcrumb";
-    breadcrumb.textContent = structureLevels.join(" › ");
-    card.appendChild(breadcrumb);
+    breadcrumb.textContent = breadcrumbText;
+    breadcrumb.title = breadcrumbText;
+    topRow.appendChild(breadcrumb);
   }
 
   if (ex.instructionRaw) {
     var instructionLine = document.createElement("p");
     instructionLine.className = "instruction-line";
     instructionLine.textContent = ex.instructionRaw.text;
-    card.appendChild(instructionLine);
+    metaSection.appendChild(instructionLine);
   }
+
+  card.appendChild(metaSection);
 
   // v2-5: 内部識別子は診断情報として扱い、通常利用時（?debug=1が無いとき）は表示しない。
   if (EVv2.DEBUG_MODE) {
@@ -366,17 +378,24 @@ EVv2.createExerciseCard = function (ex, context, onNext) {
     }
   }
 
+  // v2-25: 問題文と回答UIを、それぞれ独立してスクロールできる領域(zone)に分ける
+  // （ex-card-question-zone / ex-card-answer-zone）。メタ情報(上)と「次の問題へ」(下、
+  // ex-card-footer-zone)は常に見える位置に残し、間に挟まれた本文・選択肢だけが伸びても
+  // ページ全体は伸びない。multi_blankの独自レイアウト(旧multiblank-split)もこの3領域を
+  // 共有する形に統一した（registry.js側もzones引数を受け取るよう変更）。
+  var questionZone = document.createElement("div");
+  questionZone.className = "ex-card-question-zone";
+  card.appendChild(questionZone);
+
   var questionSpan = EVv2.getQuestionRawSpan(ex);
   var qText = document.createElement("p");
   qText.className = "question-text";
   var markerHighlightApplied = appendQuestionBody(qText, ex, context, questionSpan);
   // v2-8/v2-10: multi_blankは本文の描画をhandler.renderInteractive側(registry.js)へ完全に委譲する。
-  // 理由は2つ: (1)独立した中問(subQuestions)を持つ大問は共有本文を持たず(ex.body===null)、
-  // 各中問の本文を個別に表示する必要がある。(2)choiceモード(空欄を選ぶ形式)では、v2-10の
-  // レイアウト改善により本文を解答エリアと分離した独立スクロール領域(.multiblank-split-body)へ
-  // 表示するため、ここで共通のqTextを先に追加すると二重表示になる。
+  // 独立した中問(subQuestions)を持つ大問は共有本文を持たず(ex.body===null)、各中問の本文を
+  // 個別に表示する必要があるため。
   if (ex.exerciseType !== "multi_blank") {
-    card.appendChild(qText);
+    questionZone.appendChild(qText);
   }
 
   if (!handler) {
@@ -385,20 +404,32 @@ EVv2.createExerciseCard = function (ex, context, onNext) {
     note.textContent =
       "このビューアはこの出題形式(" + ex.exerciseType + ")にまだ対応していません。" +
       "判定・選択肢は表示されませんが、原文情報は上記のとおり保持されています。";
-    card.appendChild(note);
+    questionZone.appendChild(note);
 
     if (questionSpan) {
       var unsupportedSourceLine = EVv2.createSourceLine([questionSpan]);
-      if (unsupportedSourceLine) card.appendChild(unsupportedSourceLine);
+      if (unsupportedSourceLine) questionZone.appendChild(unsupportedSourceLine);
     }
     return card;
   }
+
+  var answerZone = document.createElement("div");
+  answerZone.className = "ex-card-answer-zone";
+  card.appendChild(answerZone);
+
+  var footerZone = document.createElement("div");
+  footerZone.className = "ex-card-footer-zone";
+  card.appendChild(footerZone);
 
   // v2-2(docs/v2_2_implementation_report.md)。multi_blank等、1問の中に複数の判定単位を持つ
   // 形式は、下のchoice/reveal二値ループ（true_false/single_blank用）とは独立した専用の描画を持つ。
   // ハンドラがrenderInteractiveを持つ場合はそちらへ完全に委譲する。
   if (typeof handler.renderInteractive === "function") {
-    handler.renderInteractive(ex, context, card, progressPanel, exerciseKey, onNext);
+    handler.renderInteractive(ex, context, card, progressPanel, exerciseKey, onNext, {
+      question: questionZone,
+      answer: answerZone,
+      footer: footerZone,
+    });
     return card;
   }
 
@@ -441,12 +472,12 @@ EVv2.createExerciseCard = function (ex, context, onNext) {
           });
         }
         var rec = exerciseKey ? EVv2.recordAnswer(exerciseKey, ex.exerciseType, correct) : null;
-        EVv2.finalizeAnsweredCard(card, progressPanel, rec, onNext);
+        EVv2.finalizeAnsweredCard(footerZone, progressPanel, rec, onNext);
       });
       choicesWrap.appendChild(btn);
     });
 
-    card.appendChild(choicesWrap);
+    answerZone.appendChild(choicesWrap);
   } else {
     // reveal モード: 短答であることが確認できない（長文回答・未判定・欠落）ため、
     // 選択肢は作らず、ボタン1つで解答を開示し、正誤は自己採点に委ねる。
@@ -458,11 +489,11 @@ EVv2.createExerciseCard = function (ex, context, onNext) {
       revealBtn.disabled = true;
       revealBox.hidden = false;
       fillRevealBox(revealBox, ex, handler, null);
-      EVv2.appendSelfGradeButtons(revealBox, ex, exerciseKey, ex.exerciseType, progressPanel, card, onNext);
+      EVv2.appendSelfGradeButtons(revealBox, ex, exerciseKey, ex.exerciseType, progressPanel, footerZone, onNext);
     });
-    card.appendChild(revealBtn);
+    answerZone.appendChild(revealBtn);
   }
 
-  card.appendChild(revealBox);
+  answerZone.appendChild(revealBox);
   return card;
 };

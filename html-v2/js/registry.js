@@ -52,7 +52,8 @@ EVv2.answerFormDisplayLabel = answerFormDisplayLabel;
 // ---- true_false ----
 
 var trueFalseHandler = {
-  label: "正誤 (true_false)",
+  // v2-19: 学習設定画面の問題形式チップと表記を統一する（TYPE_ITEMS、html-v2/js/app.js参照）。
+  label: "〇×",
   getInteractionMode: function () {
     return "choice";
   },
@@ -129,7 +130,7 @@ EVv2.singleBlankRandomDistractorStrategy = function (ex, pool) {
 };
 
 var singleBlankHandler = {
-  label: "穴埋め (single_blank)",
+  label: "穴埋め",
   // answerForm==="blank"（短答であることが分かっている）の場合のみ4択（choice）モード。
   // それ以外（"subQuestion"＝長文回答、"unknown"、null＝欠落）は、文字数等で推測せず、
   // 一律「解答を表示して自己採点する」reveal モードへ安全側にフォールバックする。
@@ -207,7 +208,7 @@ function buildMultiBlankChoiceSets(ex, context) {
 EVv2.buildMultiBlankChoiceSets = buildMultiBlankChoiceSets;
 
 var multiBlankHandler = {
-  label: "多重穴埋め (multi_blank)",
+  label: "多重穴埋め",
   getInteractionMode: function (ex, context) {
     if (ex.answerForm !== SHORT_ANSWER_FORM) return "reveal";
     return buildMultiBlankChoiceSets(ex, context) ? "choice" : "reveal";
@@ -219,7 +220,10 @@ var multiBlankHandler = {
   // progressPanel/exerciseKeyはrender.js(createExerciseCard)で1回だけ生成されたものを
   // そのまま受け取る（v2-3、docs/v2_3_implementation_report.md）。
   // onNextはcreateExerciseCard経由で渡された「次の問題へ」の注入コールバック(省略可)。
-  renderInteractive: function (ex, context, card, progressPanel, exerciseKey, onNext) {
+  // v2-25: zones.question/zones.answer/zones.footerは、問題文・回答欄がそれぞれ独立して
+  // スクロールできるようcreateExerciseCardが用意する共通の3領域（旧・専用splitレイアウトを
+  // 統合した）。
+  renderInteractive: function (ex, context, card, progressPanel, exerciseKey, onNext, zones) {
     var mode = this.getInteractionMode(ex, context);
 
     if (mode === "reveal") {
@@ -245,11 +249,12 @@ var multiBlankHandler = {
         } else {
           revealQText.textContent = "(問題文なし)";
         }
-        card.appendChild(revealQText);
+        zones.question.appendChild(revealQText);
       }
 
       var subAnswerLines = [];
       if (hasSubQuestions) {
+        // 各中問の本文はそれ自体が「問題文」の役割を果たすため、questionZoneへ入れる。
         var list = document.createElement("div");
         list.className = "subquestions";
         ex.subQuestions.forEach(function (sq) {
@@ -265,7 +270,7 @@ var multiBlankHandler = {
           subAnswerLines.push(answerLine);
           list.appendChild(item);
         });
-        card.appendChild(list);
+        zones.question.appendChild(list);
       }
 
       var revealBtn = document.createElement("button");
@@ -303,10 +308,10 @@ var multiBlankHandler = {
         if (sourceLine) revealBox.appendChild(sourceLine);
         // v2-3: multi_blank revealは問題全体単位で1回だけ自己採点する
         // （「正解だった」＝全空欄正解、というユーザー自身の申告に委ねる）。
-        EVv2.appendSelfGradeButtons(revealBox, ex, exerciseKey, ex.exerciseType, progressPanel, card, onNext);
+        EVv2.appendSelfGradeButtons(revealBox, ex, exerciseKey, ex.exerciseType, progressPanel, zones.footer, onNext);
       });
-      card.appendChild(revealBtn);
-      card.appendChild(revealBox);
+      zones.answer.appendChild(revealBtn);
+      zones.answer.appendChild(revealBox);
       return;
     }
 
@@ -416,20 +421,15 @@ var multiBlankHandler = {
           });
         }
         var rec = exerciseKey ? EVv2.recordAnswer(exerciseKey, ex.exerciseType, allCorrect) : null;
-        EVv2.finalizeAnsweredCard(card, progressPanel, rec, onNext);
+        EVv2.finalizeAnsweredCard(zones.footer, progressPanel, rec, onNext);
       }
     }
     confirmBtn.addEventListener("click", confirmAnswers);
 
-    // v2-10(multi_blankレイアウト改善)。問題文エリアと解答エリアを分離し、それぞれ独立して
-    // スクロールできるようにする(docs未作成、実装前にPC/スマホの試作で確認済み)。
+    // v2-25: 問題文はquestionZoneへ、空欄の選択肢一覧はanswerZone内の独立スクロール領域へ、
+    // 「解答を確定」ボタンはanswerZoneの下端に固定する（スクロールしても常に押せる）。
     // 「全選択→一括確定」という操作、正誤判定・修得判定・学習履歴の記録先は一切変更しない。
     var choiceQuestionSpan = EVv2.getQuestionRawSpan(ex);
-    var splitWrap = document.createElement("div");
-    splitWrap.className = "multiblank-split";
-
-    var bodyPane = document.createElement("div");
-    bodyPane.className = "multiblank-split-body";
     var splitQText = document.createElement("p");
     splitQText.className = "question-text";
     if (choiceQuestionSpan) {
@@ -437,16 +437,13 @@ var multiBlankHandler = {
     } else {
       splitQText.textContent = "(問題文なし)";
     }
-    bodyPane.appendChild(splitQText);
-
-    var answerPane = document.createElement("div");
-    answerPane.className = "multiblank-split-answer";
+    zones.question.appendChild(splitQText);
 
     var unitsScroll = document.createElement("div");
-    unitsScroll.className = "multiblank-split-units-scroll";
+    unitsScroll.className = "multiblank-units-scroll";
 
     var confirmBar = document.createElement("div");
-    confirmBar.className = "multiblank-split-confirm";
+    confirmBar.className = "multiblank-confirm-bar";
     confirmBar.appendChild(confirmBtn);
 
     var unitsWrap = document.createElement("div");
@@ -479,15 +476,12 @@ var multiBlankHandler = {
       unitsWrap.appendChild(unitBox);
     });
 
+    unitsWrap.appendChild(summary);
+    unitsWrap.appendChild(resultBox);
     unitsScroll.appendChild(unitsWrap);
-    answerPane.appendChild(unitsScroll);
-    answerPane.appendChild(confirmBar);
-    splitWrap.appendChild(bodyPane);
-    splitWrap.appendChild(answerPane);
 
-    card.appendChild(splitWrap);
-    card.appendChild(summary);
-    card.appendChild(resultBox);
+    zones.answer.appendChild(unitsScroll);
+    zones.answer.appendChild(confirmBar);
   },
 };
 
@@ -506,13 +500,15 @@ function orderingArraysEqual(a, b) {
 }
 
 var orderingHandler = {
-  label: "並べ替え (ordering・item-1090限定の暫定対応)",
+  // item-1090限定の暫定対応であることの注記はgetAnswerFormNote側(?debug=1時のみ表示)に残す。
+  label: "並び替え",
   getAnswerFormNote: function () {
     return "この項目はwithheld(review_required)データを診断目的で並べ替え形式へ変換した暫定表示です（item-1090限定）。";
   },
   // 独自の複数要素UIを構築する（multi_blankと同じく、render.js側の共通choice/revealループは使わない）。
   // onNextはcreateExerciseCard経由で渡された「次の問題へ」の注入コールバック(省略可)。
-  renderInteractive: function (ex, context, card, progressPanel, exerciseKey, onNext) {
+  // zones.answer/zones.footerはcreateExerciseCardが用意する共通の独立スクロール領域。
+  renderInteractive: function (ex, context, card, progressPanel, exerciseKey, onNext, zones) {
     var items = ex.orderingItems;
     var correctOrder = ex.correctOrder;
     var itemById = {};
@@ -668,7 +664,7 @@ var orderingHandler = {
       }
       // v2-3の既存進捗保存機構をそのまま再利用する（新しいlocalStorageスキーマは作らない）。
       var rec = exerciseKey ? EVv2.recordAnswer(exerciseKey, ex.exerciseType, correct) : null;
-      EVv2.finalizeAnsweredCard(card, progressPanel, rec, onNext);
+      EVv2.finalizeAnsweredCard(zones.footer, progressPanel, rec, onNext);
     });
 
     resetBtn.addEventListener("click", function () {
@@ -682,9 +678,9 @@ var orderingHandler = {
     });
 
     renderList();
-    card.appendChild(listEl);
-    card.appendChild(actionsEl);
-    card.appendChild(revealBox);
+    zones.answer.appendChild(listEl);
+    zones.answer.appendChild(actionsEl);
+    zones.answer.appendChild(revealBox);
   },
 };
 

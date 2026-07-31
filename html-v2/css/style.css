@@ -104,13 +104,18 @@
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Yu Gothic", "Noto Sans JP", sans-serif;
   margin: 0;
-  padding: var(--sp-4) var(--sp-4) 140px;
+  padding: var(--sp-4);
   max-width: 720px;
   margin-inline: auto;
   line-height: 1.7;
   background: var(--bg);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
+}
+/* v2-25: 下部固定ドックの分の余白は学習設定画面だけに必要（学習画面はページ自体を伸ばさない
+   固定シェルのため、body側に大きな下余白を持たせるとそちらまでページが伸びてしまう）。 */
+#study-setup {
+  padding-bottom: 140px;
 }
 
 /* ---- 汎用フォーム部品（select・button共通の土台） ---- */
@@ -156,12 +161,21 @@ header {
   z-index: 40;
   background: var(--header-bg);
   border-bottom: 1px solid var(--border);
-  margin: calc(var(--sp-4) * -1) calc(var(--sp-4) * -1) var(--sp-3);
+  margin: calc(var(--sp-4) * -1) calc(var(--sp-4) * -1) var(--sp-2);
   padding: 10px var(--sp-4);
 }
-/* v2-16: 学習セッション画面ではテーマ切替を占有スペース削減のため隠す（app.js側で切替）。 */
+/* v2-16/v2-20: 学習セッション画面ではテーマ切替の代わりに進捗・終了ボタンをヘッダー内の
+   同じ位置に表示する（行を1つ節約する。app.js側でheader.theme-switch-hiddenを切替）。 */
 header.theme-switch-hidden .theme-switch {
   display: none;
+}
+.study-session-header {
+  display: none;
+}
+header.theme-switch-hidden .study-session-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 .appbar-row {
   display: flex;
@@ -273,22 +287,9 @@ header h1 {
   color: var(--text-muted);
   margin-bottom: 8px;
 }
-/* v2-18: 長い問題文でもスクロール中に進捗・終了ボタンを見失わないよう、
-   ヘッダーの直下に固定する（--header-hはapp.jsがヘッダーの実測高さを設定する）。 */
-.study-session-header {
-  position: sticky;
-  top: var(--header-h, 57px);
-  z-index: 35;
-  background: var(--bg);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 6px 0;
-  margin-bottom: var(--sp-2);
-}
 .study-session-header .study-session-progress {
   margin-bottom: 0;
+  font-size: 0.8rem;
 }
 .end-study-btn {
   flex: 0 0 auto;
@@ -306,6 +307,96 @@ header h1 {
 .end-study-btn:focus-visible {
   background: var(--surface-card);
   color: var(--text-muted);
+}
+
+/* v2-25: 学習画面はページ全体を伸ばさず、ヘッダー直下から画面下端までの高さに固定する。
+   --header-hはapp.jsがヘッダーの実測高さ（枠線含む・マージン含まず）を設定するため、
+   ヘッダー自身の下マージン(--sp-2)とbodyの下パディング(--sp-4)も合わせて差し引く。
+   中の問題文・回答欄はそれぞれ独立してスクロールする（下記ex-card-question-zone等）。 */
+#study-session {
+  display: flex;
+  flex-direction: column;
+  height: calc(100dvh - var(--header-h, 65px) - var(--sp-2) - var(--sp-4));
+  overflow: hidden;
+}
+#study-session-card-container {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+#study-session-card-container .ex-card {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+#study-session-card-container .ex-card-meta {
+  flex: 0 0 auto;
+}
+/* v2-26: 中身が少ない問題まで無理に引き伸ばさない。余白は自然に生まれるままにし、
+   詰めて見せる（内容が枠を超えるときだけ縮んでスクロールする＝flex-grow:0、flex-shrink:1）。
+   内容が多く枠に収まらない場合は、それぞれの内容量に応じて縮み方の配分が決まる。 */
+.ex-card-question-zone {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  border-bottom: 1px solid var(--border);
+  padding: var(--sp-2) 0;
+}
+.ex-card-answer-zone {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding-top: var(--sp-2);
+}
+.ex-card-footer-zone {
+  flex: 0 0 auto;
+}
+.ex-card-footer-zone:empty {
+  display: none;
+}
+.multiblank-units-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+.multiblank-confirm-bar {
+  flex: 0 0 auto;
+  padding-top: var(--sp-2);
+  margin-top: var(--sp-2);
+  border-top: 1px solid var(--border);
+}
+.multiblank-confirm-bar .multiblank-confirm-btn {
+  margin-top: 0;
+}
+@media (min-width: 640px) {
+  #study-session-card-container .ex-card {
+    display: grid;
+    grid-template-columns: 42% 1fr;
+    grid-template-rows: auto 1fr auto;
+    grid-template-areas: "meta meta" "question answer" "footer footer";
+    height: 100%;
+  }
+  #study-session-card-container .ex-card-meta {
+    grid-area: meta;
+  }
+  .ex-card-question-zone {
+    grid-area: question;
+    border-bottom: none;
+    border-right: 1px solid var(--border);
+    padding: 0 var(--sp-3) 0 0;
+  }
+  .ex-card-answer-zone {
+    grid-area: answer;
+    padding: 0 0 0 var(--sp-3);
+  }
+  .ex-card-footer-zone {
+    grid-area: footer;
+  }
 }
 
 /* ==== 振り返り画面 ==== */
@@ -693,34 +784,69 @@ header h1 {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow-sm);
-  padding: 12px;
+  padding: 10px 12px;
   overflow-wrap: anywhere;
 }
 .ex-card-error {
   border-color: var(--danger);
   color: var(--danger);
 }
+/* v2-21: 学習画面は1問だけを表示するため、外枠で囲うと画面が狭く見える。枠を外し、
+   区切りは（ex-card-metaの下線のような）横線だけで示して画面を広く使う。
+   問題一覧・振り返り詳細など複数カードが並ぶ画面ではこれまでどおり枠付きのカードのままにする。 */
+#study-session-card-container .ex-card {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 0;
+}
+#study-session-card-container .ex-card-error {
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+}
+/* v2-19: バッジ・学習状態・パンくず・共通指示文を1つの「メタ情報」区画にまとめ、
+   実際の大問（question-text以降）との間に区切り線を引く。中の要素同士は詰めて並べる。 */
+.ex-card-meta {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 4px;
+  margin-bottom: 6px;
+}
 .structure-breadcrumb {
   font-size: 0.72rem;
   color: var(--text-faint);
-  margin: 4px 0;
+  margin: 3px 0;
 }
 .instruction-line {
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   color: var(--text-muted);
-  margin: 2px 0 8px;
+  margin: 0;
 }
-/* v2-16: 問題形式バッジと学習状態(progress-panel)を同じ行にまとめる
-   （以前はprogress-panelがカード末尾にあったが、正誤バッジの近くに集約する）。 */
+/* v2-21: 「2行に収める」ことを優先し、折り返さず常に1行にする。バッジ・学習状態は
+   常に全部表示し、パンくず（毎問確認する情報ではない）だけを省略記号で切り詰める対象にする。 */
 .ex-card-top {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 8px;
-  margin-bottom: 6px;
 }
 .ex-card-top .badge {
   margin-bottom: 0;
+  background: transparent;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.ex-card-top .structure-breadcrumb {
+  flex: 1 1 auto;
+  min-width: 24px;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+  cursor: help;
 }
 .badge {
   display: inline-block;
@@ -744,7 +870,8 @@ header h1 {
 }
 .progress-panel {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
   align-items: center;
   gap: 6px;
 }
@@ -790,8 +917,7 @@ header h1 {
 }
 .self-grade-btn {
   flex: 1 1 auto;
-  font-size: 1.3rem;
-  font-weight: bold;
+  font-weight: 600;
 }
 .self-grade-btn-correct {
   border-color: var(--success);
@@ -829,15 +955,22 @@ header h1 {
   display: block;
   width: 100%;
 }
-/* 問題文は枠で囲わず、背景色（--surface-raised）と余白・行間で主役として見せる */
+/* v2-22: 問題文も箱で囲わず、指示文と同じ文字サイズにして横線だけで回答欄と区切る
+   （囲みを重ねず、画面を広く保つ）。 */
 .question-text {
-  font-size: 1.02rem;
-  line-height: 1.85;
+  font-size: 0.85rem;
+  line-height: 1.7;
+  color: var(--text);
   white-space: pre-wrap;
-  background: var(--surface-raised);
-  padding: var(--sp-4);
-  border-radius: var(--radius-sm);
-  margin: 6px 0 var(--sp-3);
+  margin: 0 0 var(--sp-2);
+  padding-bottom: var(--sp-2);
+  border-bottom: 1px solid var(--border);
+}
+/* 学習画面ではex-card-question-zone自体が回答欄との区切り線を持つため、二重線にしない。 */
+.ex-card-question-zone .question-text {
+  margin: 0;
+  padding-bottom: 0;
+  border-bottom: none;
 }
 .body-heading-marker {
   display: inline-block;
@@ -868,23 +1001,32 @@ header h1 {
   flex-wrap: wrap;
   gap: 8px;
 }
+/* v2-23: 学習設定画面のチップ（教材を選ぶ・問題形式・出題モード）と同じピル型＋
+   アクセント枠線のデザインに揃える。 */
 .choice-btn {
   flex: 1 1 auto;
   min-width: 44px;
   min-height: 44px;
+  border-radius: 999px;
+  border: 1px solid var(--accent);
+  background: transparent;
+  color: var(--text);
 }
 .choice-correct,
 .choice-correct-hint {
   background: var(--success-soft);
   border-color: var(--success);
+  color: var(--success);
 }
 .choice-wrong {
   background: var(--danger-soft);
   border-color: var(--danger);
+  color: var(--danger);
 }
 .choice-selected {
   background: var(--accent-soft);
   border-color: var(--accent);
+  color: var(--accent);
 }
 .multiblank-confirm-btn {
   display: block;
@@ -899,74 +1041,15 @@ header h1 {
   padding: var(--sp-3);
   border-radius: var(--radius-sm);
 }
-.multiblank-split {
-  display: flex;
-  flex-direction: column;
-  height: min(70vh, 560px);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  overflow: hidden;
-  margin: 10px 0;
-}
-.multiblank-split-body {
-  flex: 1 1 0;
-  min-height: 0;
-  overflow-y: auto;
-  padding: var(--sp-3) var(--sp-4);
-  background: var(--surface-raised);
-  border-bottom: 1px solid var(--border);
-}
-/* このペイン自体が既に問題スポットライト面のため、question-text側の二重の背景・余白は外す */
-.multiblank-split-body .question-text {
-  margin: 0;
-  padding: 0;
-  background: transparent;
-}
-.multiblank-split-answer {
-  flex: 2 1 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-.multiblank-split-units-scroll {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 10px 12px;
-}
-.multiblank-split-confirm {
-  flex: 0 0 auto;
-  padding: 8px 12px;
-  border-top: 1px solid var(--border);
-  background: var(--surface-card);
-}
-.multiblank-split-confirm .multiblank-confirm-btn {
-  margin-top: 0;
-}
-@media (min-width: 640px) {
-  .multiblank-split {
-    flex-direction: row;
-    height: min(60vh, 520px);
-  }
-  .multiblank-split-body {
-    flex: 0 0 44%;
-    border-bottom: none;
-    border-right: 1px solid var(--border);
-  }
-  .multiblank-split-answer {
-    flex: 1 1 56%;
-  }
-}
 .multiblank-units {
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
-.multiblank-unit {
-  border: 1px dashed var(--border-strong);
-  border-radius: var(--radius-sm);
-  padding: 8px;
+/* v2-24: 点線の囲みをやめ、空欄同士の区切りは余白＋薄い横線だけにする。 */
+.multiblank-unit:not(:last-child) {
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
 }
 .multiblank-unit-label {
   font-size: 0.75rem;
@@ -978,10 +1061,9 @@ header h1 {
   flex-direction: column;
   gap: 10px;
 }
-.subquestion {
-  border: 1px dashed var(--border-strong);
-  border-radius: var(--radius-sm);
-  padding: 8px;
+.subquestion:not(:last-child) {
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
 }
 .subquestion-body {
   margin: 0 0 4px;

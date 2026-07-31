@@ -42,6 +42,12 @@
         ダーク
       </button>
     </div>
+    <!-- v2-20: 学習画面ではテーマ切替の代わりにここへ進捗・終了ボタンを表示する（app.jsが
+         header.theme-switch-hiddenクラスで両者を排他的に切り替える。行を1つ節約する）。 -->
+    <div class="study-session-header" id="study-session-header-slot">
+      <div id="study-session-progress" class="study-session-progress"></div>
+      <button type="button" id="end-study-btn" class="end-study-btn" aria-label="学習を終了する">&times;</button>
+    </div>
   </div>
   <div id="onboarding-info">
     <p class="disclaimer">
@@ -114,10 +120,6 @@
 </section>
 
 <section id="study-session" hidden>
-  <div class="study-session-header">
-    <div id="study-session-progress" class="study-session-progress"></div>
-    <button type="button" id="end-study-btn" class="end-study-btn" aria-label="学習を終了する">&times;</button>
-  </div>
   <div id="study-session-card-container"></div>
 </section>
 

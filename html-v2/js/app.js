@@ -97,9 +97,9 @@
     els.debugPanels.hidden = true;
   }
 
-  // v2-18: 固定ヘッダーの実測高さを --header-h に反映する（学習画面の進捗行をその直下に
-  // 固定表示するため）。テーマ切替の表示・非表示で高さが変わるため、リサイズ時だけでなく
-  // 画面切替のたびにも呼び直す想定（各showXxx関数から呼ぶ）。
+  // v2-25: 学習画面はページ全体をスクロールさせず、ヘッダー直下から画面下端までの高さに
+  // 固定する（CSS側の#study-sessionがcalc(100dvh - var(--header-h))を使う）。
+  // ヘッダーの内容（テーマ切替⇔進捗表示）で高さが変わるため、画面切替のたびに呼び直す。
   function syncHeaderHeightVar() {
     document.documentElement.style.setProperty("--header-h", els.header.getBoundingClientRect().height + "px");
   }
@@ -154,7 +154,8 @@
     els.studySession.hidden = false;
     els.studyReview.hidden = true;
     els.browseView.hidden = true;
-    // v2-16: 問題を解いている間はテーマ切替を隠し、画面上部の占有スペースを減らす。
+    // v2-16/v2-20: 問題を解いている間はテーマ切替の代わりに進捗・終了ボタンを表示する
+    // （ヘッダー内の同じ位置。CSS側のheader.theme-switch-hidden .study-session-headerが担う）。
     els.header.classList.add("theme-switch-hidden");
     syncHeaderHeightVar();
   }
