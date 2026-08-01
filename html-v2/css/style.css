@@ -313,7 +313,7 @@ header h1 {
    --header-hはapp.jsがヘッダーの実測高さ（枠線含む・マージン含まず）を設定するため、
    ヘッダー自身の下マージン(--sp-2)とbodyの下パディング(--sp-4)も合わせて差し引く。
    中の問題文・回答欄はそれぞれ独立してスクロールする（下記ex-card-question-zone等）。 */
-#study-session {
+#study-session:not([hidden]) {
   display: flex;
   flex-direction: column;
   height: calc(100dvh - var(--header-h, 65px) - var(--sp-2) - var(--sp-4));

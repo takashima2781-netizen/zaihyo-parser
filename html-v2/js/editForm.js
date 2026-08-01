@@ -848,6 +848,20 @@ window.EVv2 = EVv2;
       });
       actions.appendChild(downBtn);
 
+      // v2-32: 末尾に追加してから↑で運ぶ手間を無くすため、狙った位置に直接挿入できるボタンを
+      // 用意する（ユーザー指示）。空の項目をこの項目の直後に挿入するだけで、文言はその場で
+      // 入力してもらう（並べ替え問題全般で使えるよう、文章復元モード限定にはしない）。
+      var insertBtn = document.createElement("button");
+      insertBtn.type = "button";
+      insertBtn.className = "segment-move-btn";
+      insertBtn.textContent = "＋";
+      insertBtn.setAttribute("aria-label", "この項目の直後に新しい項目を挿入");
+      insertBtn.addEventListener("click", function () {
+        draft.splice(index + 1, 0, EVv2.ExerciseEditor.createOrderingDraftItem());
+        renderItems();
+      });
+      actions.appendChild(insertBtn);
+
       // v2-30(文節ならびかえ): 分割はまず「テキスト編集＋項目追加」で対応する方針
       // （ユーザー指示。使ってみて分割ボタンが必要になったら別途追加する）。結合は区切りの
       // 調整で最も頻度が高い操作と見込まれるため、文章復元モード限定でボタンを用意する。
