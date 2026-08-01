@@ -692,36 +692,36 @@ window.EVv2 = EVv2;
 
   function renderOrderingEditor(ex, mountEl) {
     var draft = EVv2.ExerciseEditor.buildOrderingDraft(ex);
-    // v2-30(文節ならびかえ): assembledTextは「文節を正しい順に連結すると必ず戻る文章」
-    // （変換時点の原文、ユーザー指示により編集不可の参照値として扱う）。
-    var isSentenceMode = typeof ex.assembledText === "string" && ex.assembledText.length > 0;
+    // v2-31(元問題との統合): 「元問題の一つの表現方法が並べ替え問題」という考え方
+    // （ユーザー指示、2026-08-01）にもとづき、完成文の凍結コピーは持たない。変換元が
+    // 独立小問(subQuestion)単位で特定できる場合、その本文・正解をこの画面から直接編集し、
+    // 保存時に元問題へ書き戻す。文節を連結した結果が本文＋正解と完全一致していない場合は
+    // 保存をブロックする（ユーザー指示: 一致していない状態では保存できないようにする）。
+    var isSentenceMode = ex.assembledFromSource === true;
+
+    var sourceEx = null;
+    var subQuestion = null;
+    if (isSentenceMode && ex.sourceExerciseId) {
+      sourceEx =
+        EVv2.getEditableExercises().filter(function (e) {
+          return e.exerciseId === ex.sourceExerciseId;
+        })[0] || null;
+      if (sourceEx && ex.sourceSubQuestionIndex != null && Array.isArray(sourceEx.subQuestions)) {
+        subQuestion = sourceEx.subQuestions[ex.sourceSubQuestionIndex] || null;
+      }
+    }
 
     var note = document.createElement("p");
     note.className = "edit-note";
     note.textContent = "並んでいる順番がそのまま正解の順序になります。学習画面では毎回シャッフルして出題されます。";
     mountEl.appendChild(note);
 
+    var bodyTextarea = null;
+    var answerTextarea = null;
     var reconstructionLine = null;
-    if (isSentenceMode) {
-      var sourceNote = document.createElement("p");
-      sourceNote.className = "edit-note";
-      sourceNote.textContent = "この問題は自己採点形式の問題から変換されました。下の「元の文章」と一致するように、文節の区切り・並び・文言を調整してください。";
-      mountEl.appendChild(sourceNote);
 
-      var originalTextBox = document.createElement("div");
-      originalTextBox.className = "phrase-reorder-original-text";
-      var originalTextLabel = document.createElement("span");
-      originalTextLabel.className = "eyebrow";
-      originalTextLabel.textContent = "元の文章（常に戻れる正解）";
-      originalTextBox.appendChild(originalTextLabel);
-      var originalTextBody = document.createElement("p");
-      originalTextBody.textContent = ex.assembledText;
-      originalTextBox.appendChild(originalTextBody);
-      mountEl.appendChild(originalTextBox);
-
-      reconstructionLine = document.createElement("p");
-      reconstructionLine.className = "phrase-reorder-reconstruction-line";
-      mountEl.appendChild(reconstructionLine);
+    function currentReferenceText() {
+      return bodyTextarea.value + " " + answerTextarea.value;
     }
 
     function updateReconstructionLine() {
@@ -731,9 +731,59 @@ window.EVv2 = EVv2;
           return item.text;
         })
         .join("");
-      var matches = joined === ex.assembledText;
+      var matches = joined === currentReferenceText();
       reconstructionLine.className = "phrase-reorder-reconstruction-line" + (matches ? " phrase-reorder-match" : " phrase-reorder-mismatch");
-      reconstructionLine.textContent = (matches ? "✓ 元の文章と一致しています: " : "⚠ 元の文章と一致しません（言い回しを調整した場合はそのままで問題ありません）: ") + joined;
+      reconstructionLine.textContent =
+        (matches ? "✓ 本文＋正解の連結と一致しています: " : "⚠ 本文＋正解の連結と一致しません（この状態では保存できません）: ") + joined;
+    }
+
+    if (isSentenceMode) {
+      if (subQuestion) {
+        var sourceNote = document.createElement("p");
+        sourceNote.className = "edit-note";
+        sourceNote.textContent =
+          "この問題は元の問題（多重穴埋め）の一つの表現方法です。下の「本文」「正解」を編集すると元の問題にも反映されます。" +
+          "文節を連結した結果が本文＋正解と完全に一致していないと保存できません。";
+        mountEl.appendChild(sourceNote);
+
+        var bodyGroup = document.createElement("div");
+        bodyGroup.className = "field-group edit-field";
+        var bodyLabel = document.createElement("span");
+        bodyLabel.className = "eyebrow";
+        bodyLabel.textContent = "本文（元の問題と共有）";
+        bodyGroup.appendChild(bodyLabel);
+        bodyTextarea = document.createElement("textarea");
+        bodyTextarea.className = "edit-textarea";
+        bodyTextarea.rows = 3;
+        bodyTextarea.value = subQuestion.body.text;
+        bodyTextarea.addEventListener("input", updateReconstructionLine);
+        bodyGroup.appendChild(bodyTextarea);
+        mountEl.appendChild(bodyGroup);
+
+        var answerGroup = document.createElement("div");
+        answerGroup.className = "field-group edit-field";
+        var answerLabel = document.createElement("span");
+        answerLabel.className = "eyebrow";
+        answerLabel.textContent = "正解（元の問題と共有）";
+        answerGroup.appendChild(answerLabel);
+        answerTextarea = document.createElement("textarea");
+        answerTextarea.className = "edit-textarea";
+        answerTextarea.rows = 2;
+        answerTextarea.value = subQuestion.expectedAnswer.text;
+        answerTextarea.addEventListener("input", updateReconstructionLine);
+        answerGroup.appendChild(answerTextarea);
+        mountEl.appendChild(answerGroup);
+
+        reconstructionLine = document.createElement("p");
+        reconstructionLine.className = "phrase-reorder-reconstruction-line";
+        mountEl.appendChild(reconstructionLine);
+      } else {
+        var noLinkNote = document.createElement("p");
+        noLinkNote.className = "edit-note";
+        noLinkNote.textContent =
+          "元の問題と自動連携できません（見つからないか、この形式にはまだ対応していません）。文節の内容はここで手動管理してください。";
+        mountEl.appendChild(noLinkNote);
+      }
     }
 
     var listEl = document.createElement("div");
@@ -865,9 +915,25 @@ window.EVv2 = EVv2;
 
     return {
       validate: function () {
-        return EVv2.ExerciseEditor.validateOrderingDraft(draft);
+        var base = EVv2.ExerciseEditor.validateOrderingDraft(draft);
+        if (!base.ok) return base;
+        if (subQuestion) {
+          var joined = draft
+            .map(function (item) {
+              return item.text;
+            })
+            .join("");
+          if (joined !== currentReferenceText()) {
+            return { ok: false, error: "文節を連結した結果が本文＋正解と一致しません。区切り・並び・本文/正解の文言を確認してください。" };
+          }
+        }
+        return { ok: true, error: null };
       },
       commit: function () {
+        if (subQuestion) {
+          EVv2.ExerciseEditor.updateSubQuestionBody(sourceEx, ex.sourceSubQuestionIndex, bodyTextarea.value);
+          EVv2.ExerciseEditor.updateSubQuestionAnswer(sourceEx, ex.sourceSubQuestionIndex, answerTextarea.value);
+        }
         EVv2.ExerciseEditor.applyOrderingDraft(ex, draft);
       },
     };
@@ -949,11 +1015,6 @@ window.EVv2 = EVv2;
       bodyEl.appendChild(buildTextField("問題文", ex.body ? ex.body.text : "", function (v) {
         EVv2.ExerciseEditor.updateBodyText(ex, v);
       }, 3));
-      // v2-30(文節ならびかえ): 解説はordering全般で編集可能にする（従来この画面には解説欄が
-      // 無かったが、変換由来の項目は元の穴埋めの解説を引き継いでおり、レビュー時に直せる必要があるため）。
-      bodyEl.appendChild(buildTextField("解説", ex.explanation && ex.explanation.raw ? ex.explanation.raw.text : "", function (v) {
-        EVv2.ExerciseEditor.updateExplanationText(ex, v);
-      }, 2));
 
       var orderingLabel = document.createElement("span");
       orderingLabel.className = "eyebrow";

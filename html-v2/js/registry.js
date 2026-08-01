@@ -530,8 +530,8 @@ var orderingHandler = {
     if (ex.appEdit && ex.appEdit.origin === "migrated-from-adapter") {
       return "この項目はitem-1090専用アダプタから自動移行した並べ替え問題です（以後は通常のExerciseとして保存・編集されます）。";
     }
-    if (typeof ex.assembledText === "string" && ex.assembledText.length > 0) {
-      return "文節ならびかえ問題です（変換元: " + (ex.sourceExerciseId || "不明") + " / assembledText: " + ex.assembledText.length + "文字）。";
+    if (ex.assembledFromSource === true) {
+      return "文節ならびかえ問題です（元問題の表現の1つ。変換元: " + (ex.sourceExerciseId || "不明") + "）。";
     }
     return "並べ替え問題です。";
   },
@@ -546,13 +546,23 @@ var orderingHandler = {
       itemById[it.id] = it;
     });
 
-    // v2-30(文節ならびかえ): ex.assembledTextが非nullの場合、文節を連結すると1つの文章に戻る
-    // 変換由来の並べ替え問題として扱う。独立した選択肢の並べ替え(item-1090等)とはカードの
-    // ラベル表示・正解確認の見せ方だけを変え、ドラッグ＆ドロップ・判定・進捗保存は完全に共通のまま
-    // にする(exerciseTypeは増やさない、というユーザー指示にもとづく設計)。
-    var isSentenceMode = typeof ex.assembledText === "string" && ex.assembledText.length > 0;
+    // v2-30/v2-31(文節ならびかえ): ex.assembledFromSource===trueの場合、文節を連結すると
+    // 元問題の完成文に戻る「元問題の一つの表現方法」(ユーザー指示)として扱う。完成文は
+    // 凍結コピーを持たず、常にorderingItems/correctOrderの連結から導出する(唯一の正本が
+    // 元問題側にあり、ここではその表現の一致を都度確認するだけ、という設計のため)。
+    // 独立した選択肢の並べ替え(item-1090等)とはカードのラベル表示・正解確認の見せ方だけを変え、
+    // ドラッグ＆ドロップ・判定・進捗保存は完全に共通のままにする(exerciseTypeは増やさない、
+    // というユーザー指示にもとづく設計)。
+    var isSentenceMode = ex.assembledFromSource === true;
     function itemDisplayText(item) {
       return isSentenceMode ? item.text : item.label + " " + item.text;
+    }
+    function assembledSentenceFromOrder(order) {
+      return order
+        .map(function (id) {
+          return itemById[id].text;
+        })
+        .join("");
     }
 
     function shuffledStartOrder() {
@@ -728,11 +738,12 @@ var orderingHandler = {
 
       // v2-5: 全形式共通の順序（正解/不正解→正しい解答→解説→出典）に揃える。
       revealBox.appendChild(EVv2.createResultBanner(correct));
-      // v2-30(文節ならびかえ): 独立した選択肢の並べ替えはラベルを「→」でつないだ順序を示すが、
-      // 文章復元モードでは「完成した文章」そのもの(ex.assembledText、連結すると必ず一致する)を
-      // 見せる方が「並べ替えた結果、こういう文章になる」という体験に合う(ユーザー指示)。
+      // v2-30/v2-31(文節ならびかえ): 独立した選択肢の並べ替えはラベルを「→」でつないだ順序を
+      // 示すが、文章復元モードでは「完成した文章」そのもの(正解順に連結した結果。凍結コピーを
+      // 持たないため、正解順で都度組み立てる)を見せる方が「並べ替えた結果、こういう文章になる」
+      // という体験に合う(ユーザー指示)。
       var correctOrderText = isSentenceMode
-        ? ex.assembledText
+        ? assembledSentenceFromOrder(correctOrder)
         : correctOrder
             .map(function (id) {
               return itemById[id].label;

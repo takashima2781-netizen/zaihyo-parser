@@ -117,7 +117,7 @@ EVv2.buildPhraseReorderConversion = function (candidate, blankMarkerIndex) {
     stableItemIds: stableItemIds,
     contentFingerprints: sourceEx.contentFingerprints || [],
     prompt: null,
-    // 完成文そのもの(assembledText)は正解なので、問題文には出さない。汎用の指示文のみ表示する。
+    // 完成文そのものは正解なので、問題文には出さない。汎用の指示文のみ表示する。
     body: newRawSpanPlain("次の文章になるように、下の文節を正しい順番に並び替えなさい。"),
     choices: null,
     expectedAnswer: [],
@@ -141,10 +141,15 @@ EVv2.buildPhraseReorderConversion = function (candidate, blankMarkerIndex) {
     structure: sourceEx.structure || null,
     orderingItems: orderingItems,
     correctOrder: correctOrder,
-    // 文節を正しい順に連結すると必ずこの文章に戻る、という「常に戻れる正解」(ユーザー指示)。
-    // エディタ側(editForm.js)はこれを編集不可の参照値として扱い、現在の並びとの一致を表示する。
-    assembledText: assembledText,
+    // v2-31(元問題との統合): この並べ替え問題は完成文の凍結コピーを持たない。
+    // 「元問題の一つの表現方法」(ユーザー指示、2026-08-01)として、正解の完成文は常に
+    // orderingItems/correctOrderの連結から都度導出する(registry.js参照)。
+    // assembledFromSourceは、ラベル非表示・完成文reveal等の表示切り替えに使う印にすぎない。
+    assembledFromSource: true,
     sourceExerciseId: sourceEx.exerciseId,
+    // 独立小問(subQuestion)単位の変換のみ非null。エディタ(editForm.js)はこれを使って
+    // 元の中問を直接特定し、本文・正解の編集をその場で元問題へ書き戻す。
+    sourceSubQuestionIndex: subQuestionIndex,
     appEdit: { origin: "converted-from-" + sourceEx.exerciseType, editedAt: new Date().toISOString() },
   };
 

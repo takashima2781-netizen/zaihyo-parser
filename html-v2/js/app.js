@@ -343,7 +343,7 @@
     }
 
     // v2-30(文節ならびかえ): レビュー画面を開いたまま「編集」→保存した場合、下書きの内容
-    // (assembledTextとの一致表示・文節一覧のプレビュー)が古いままにならないよう再描画する。
+    // (本文/正解との一致表示・文節一覧のプレビュー)が古いままにならないよう再描画する。
     if (!els.conversionReview.hidden) renderConversionReview();
   }
   EVv2.commitDataEdit = commitDataEdit;
