@@ -1412,7 +1412,11 @@ header h1 {
   border-radius: var(--radius-sm);
   padding: var(--sp-2) var(--sp-3);
   font-family: inherit;
-  font-size: 0.9rem;
+  /* v2-37: 16px未満のフォームフィールドにフォーカスすると、iOS Safari等が
+     読みやすさのためページ全体を自動的に拡大してしまう（ユーザー報告の「アップに
+     なる」現象）。フォーカスのたびに毎回ズームされるのは使いにくいため、16px以上を
+     維持してこの自動ズームが発生しないようにする。 */
+  font-size: 16px;
   line-height: 1.5;
 }
 .edit-note {
