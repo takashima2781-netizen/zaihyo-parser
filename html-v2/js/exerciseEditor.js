@@ -176,10 +176,39 @@ function blankMultiBlankExercise() {
   };
 }
 
+// v2-29: 並べ替え問題（ordering）を正式な問題形式として新規作成できるようにする。
+// 中身（orderingItems/correctOrder）は空のまま作成し、editForm.js側の項目エディタで追加する。
+function blankOrderingExercise() {
+  var stableItemId = EVv2.generateUserStableItemId();
+  return {
+    exerciseId: EVv2.generateUserExerciseId(),
+    exerciseType: "ordering",
+    sourceBookStructureIds: [],
+    sourceItemIds: [],
+    stableItemIds: [stableItemId],
+    contentFingerprints: [],
+    prompt: null,
+    body: newRawSpan(""),
+    choices: null,
+    expectedAnswer: [],
+    judgement: null,
+    explanation: null,
+    answerForm: null,
+    withheldAnswerContent: null,
+    structureType: null,
+    subQuestions: null,
+    bodySegments: null,
+    instructionRaw: null,
+    orderingItems: [],
+    correctOrder: [],
+  };
+}
+
 var BLANK_FACTORIES = {
   true_false: blankTrueFalseExercise,
   single_blank: blankSingleBlankExercise,
   multi_blank: blankMultiBlankExercise,
+  ordering: blankOrderingExercise,
 };
 
 ExerciseEditor.isCreatableType = function (exerciseType) {
@@ -250,6 +279,21 @@ ExerciseEditor.deleteSubQuestion = function (ex, index) {
   ex.expectedAnswer.splice(index, 1);
   var stableIdx = ex.stableItemIds.indexOf(removed.stableItemId);
   if (stableIdx !== -1) ex.stableItemIds.splice(stableIdx, 1);
+  reindexSubQuestions(ex);
+  EVv2.markUserEdited(ex, false);
+  return true;
+};
+
+// v2-29: 同じ大問内での中問の並べ替え（移動ではなく順序変更）。subQuestions・expectedAnswerを
+// 同時にsplice-and-insertし、reindexSubQuestionsでorderを振り直す。
+ExerciseEditor.reorderSubQuestion = function (ex, fromIndex, toIndex) {
+  if (!ExerciseEditor.canHoldSubQuestions(ex)) return false;
+  var n = ex.subQuestions.length;
+  if (fromIndex < 0 || fromIndex >= n || toIndex < 0 || toIndex >= n || fromIndex === toIndex) return false;
+  var sq = ex.subQuestions.splice(fromIndex, 1)[0];
+  ex.subQuestions.splice(toIndex, 0, sq);
+  var mirrored = ex.expectedAnswer.splice(fromIndex, 1)[0];
+  ex.expectedAnswer.splice(toIndex, 0, mirrored);
   reindexSubQuestions(ex);
   EVv2.markUserEdited(ex, false);
   return true;
@@ -408,6 +452,29 @@ ExerciseEditor.moveGroupMember = function (ex, destRepresentative) {
     };
   }
   EVv2.markUserEdited(ex, false);
+};
+
+// v2-29: 同じグループ内での中問の並べ替え。true_falseの中問はsubQuestionsのような専用配列を
+// 持たず、state.data.exercises配列内の物理的な並び順がそのまま順序のため、グループの
+// メンバーだけを一旦引き抜き、新しい順序でまとめて元の位置（先頭メンバーがあった場所）へ
+// 挿入し直す。グループに属さない他のExerciseの位置は変えない。
+ExerciseEditor.reorderGroupMembers = function (exercises, members, fromIndex, toIndex) {
+  var n = members.length;
+  if (fromIndex < 0 || fromIndex >= n || toIndex < 0 || toIndex >= n || fromIndex === toIndex) return false;
+  var reordered = members.slice();
+  var moved = reordered.splice(fromIndex, 1)[0];
+  reordered.splice(toIndex, 0, moved);
+
+  var firstIdx = exercises.indexOf(members[0]);
+  members.forEach(function (m) {
+    var idx = exercises.indexOf(m);
+    if (idx !== -1) exercises.splice(idx, 1);
+  });
+  var insertAt = Math.min(firstIdx, exercises.length);
+  reordered.forEach(function (m, i) {
+    exercises.splice(insertAt + i, 0, m);
+  });
+  return true;
 };
 
 // 同じ論点（topic）内にある、exとは異なるtrue_falseグループの一覧（移動先候補）。
@@ -585,6 +652,70 @@ ExerciseEditor.applySegmentDraft = function (ex, draft) {
     ex.body = newRawSpan(newBodyText);
   }
 
+  EVv2.markUserEdited(ex, false);
+};
+
+// ---- 並べ替え問題（ordering）の項目編集 ----
+//
+// draftの並び順そのものが正解順序（correctOrder）になる、という設計にする
+// （カードを正しい順番に並べる＝そのまま正解になる、という直感的なUIにするため。
+// ユーザー指示、2026-08-01）。orderingItems配列の並びも保存時にcorrectOrderと
+// 同じ順に揃える（表示対象と正解順序を別々に持つ意味が実質無いため、常に一致させる。
+// 学習画面側は毎回シャッフルしてから出題するので、orderingItemsの並び自体が
+// 正解を漏らすことはない）。
+// ラベル（表示用の短い接頭辞、既存データはア/イ/ウ...）は保存のたびに位置から
+// A/B/C...で振り直す。item-1090からの移行直後はそのままカタカナラベルを保持し、
+// 実際にこの編集画面で保存した時にだけ振り直される。
+
+var ORDERING_LABEL_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
+ExerciseEditor.buildOrderingLabel = function (index) {
+  return ORDERING_LABEL_LETTERS[index] || "(" + (index + 1) + ")";
+};
+
+// { id, text, isNew }の配列。correctOrder順にorderingItemsから引く
+// （correctOrderが空・不整合な場合はorderingItemsの並び順にフォールバック）。
+ExerciseEditor.buildOrderingDraft = function (ex) {
+  var itemById = {};
+  (ex.orderingItems || []).forEach(function (it) {
+    itemById[it.id] = it;
+  });
+  var order =
+    ex.correctOrder && ex.correctOrder.length === (ex.orderingItems || []).length
+      ? ex.correctOrder
+      : (ex.orderingItems || []).map(function (it) {
+          return it.id;
+        });
+  return order
+    .map(function (id) {
+      var it = itemById[id];
+      return it ? { id: id, text: it.text, isNew: false } : null;
+    })
+    .filter(Boolean);
+};
+
+ExerciseEditor.createOrderingDraftItem = function () {
+  return { id: EVv2.generateUserBlankUnitId(), text: "", isNew: true };
+};
+
+ExerciseEditor.validateOrderingDraft = function (draft) {
+  if (draft.length < 2) {
+    return { ok: false, error: "並べ替え項目が足りません。少なくとも2件必要です。" };
+  }
+  for (var i = 0; i < draft.length; i++) {
+    if (!draft[i].text || !draft[i].text.trim()) {
+      return { ok: false, error: "項目" + (i + 1) + "の内容が空です。入力してから保存してください。" };
+    }
+  }
+  return { ok: true, error: null };
+};
+
+ExerciseEditor.applyOrderingDraft = function (ex, draft) {
+  ex.orderingItems = draft.map(function (block, i) {
+    return { id: block.id, label: ExerciseEditor.buildOrderingLabel(i), text: block.text };
+  });
+  ex.correctOrder = draft.map(function (block) {
+    return block.id;
+  });
   EVv2.markUserEdited(ex, false);
 };
 

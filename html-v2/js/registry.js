@@ -506,12 +506,13 @@ var multiBlankHandler = {
   },
 };
 
-// ---- ordering（item-1090限定の最小実装。v2-4本体、docs/v2_4_implementation_report.md） ----
+// ---- ordering（並べ替え問題。v2-29でExercise View本体に実在する正式な問題形式へ昇格） ----
 //
-// このハンドラが受け取るExerciseは、通常のExercise View由来のものではなく、
-// orderingAdapter.js(EVv2.buildOrderingViewIfApplicable)がitem-1090専用に合成した
-// オブジェクトのみである。BSM・Exercise Viewは変更しない。汎用のordering exerciseType
-// 設計・複数正解順・部分点は今回のスコープ外。
+// v2-29以前はitem-1090専用のアダプタ(orderingAdapter.js)が起動のたびに合成する一時
+// オブジェクトのみを対象にしていたが、item-1090は初回のみ本物のExerciseへ昇格されるように
+// なった（app.js materializeOrderingExercise）。以後はこのハンドラが受け取るExerciseは
+// 他の形式と同じくstate.data.exercisesに実在する通常のオブジェクトであり、複数正解順・
+// 部分点は今回もスコープ外だが、汎用のordering exerciseTypeとして扱う。
 function orderingArraysEqual(a, b) {
   if (a.length !== b.length) return false;
   for (var i = 0; i < a.length; i++) {
@@ -520,11 +521,15 @@ function orderingArraysEqual(a, b) {
   return true;
 }
 
+var DRAG_HANDLE_ICON_SVG =
+  '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>';
+
 var orderingHandler = {
-  // item-1090限定の暫定対応であることの注記はgetAnswerFormNote側(?debug=1時のみ表示)に残す。
   label: "並び替え",
-  getAnswerFormNote: function () {
-    return "この項目はwithheld(review_required)データを診断目的で並べ替え形式へ変換した暫定表示です（item-1090限定）。";
+  getAnswerFormNote: function (ex) {
+    return ex.appEdit && ex.appEdit.origin === "migrated-from-adapter"
+      ? "この項目はitem-1090専用アダプタから自動移行した並べ替え問題です（以後は通常のExerciseとして保存・編集されます）。"
+      : "並べ替え問題です。";
   },
   // 独自の複数要素UIを構築する（multi_blankと同じく、render.js側の共通choice/revealループは使わない）。
   // onNextはcreateExerciseCard経由で渡された「次の問題へ」の注入コールバック(省略可)。
@@ -551,7 +556,12 @@ var orderingHandler = {
       return attempt;
     }
 
+    // v2-29: renderInteractiveは次の問題へ移動・再挑戦・同じ問題の再出題のたびに毎回新しく
+    // 呼ばれる（既存の仕組み、render.js/app.js側）ため、uiStateはこのクロージャの中だけで
+    // 完結し、そのたびに自動的に作り直される。特別なリセット処理は不要。
     var uiState = { order: shuffledStartOrder(), answered: false };
+
+    var live = EVv2.createAriaLiveRegion();
 
     var listEl = document.createElement("ol");
     listEl.className = "ordering-list";
@@ -581,6 +591,7 @@ var orderingHandler = {
       uiState.order[idx] = uiState.order[target];
       uiState.order[target] = tmp;
       renderList();
+      live.announce(itemById[uiState.order[target]].label + "を" + (target + 1) + "番目に移動しました。");
     }
 
     function renderList() {
@@ -590,7 +601,7 @@ var orderingHandler = {
         var li = document.createElement("li");
         li.className = "ordering-item";
         // キーボード操作（Tabでのフォーカス移動、矢印キーでの移動）を阻害しないため、
-        // liそのものにもフォーカス・矢印キー操作を持たせる（ボタン操作が主、これは補助）。
+        // liそのものにもフォーカス・矢印キー操作を持たせる（ボタン操作・ドラッグが主、これは補助）。
         li.tabIndex = 0;
         li.setAttribute(
           "aria-label",
@@ -606,6 +617,14 @@ var orderingHandler = {
             move(idx, 1);
           }
         });
+
+        // v2-29: ドラッグ開始はこのハンドルに限定する（カード全体をドラッグ対象にすると
+        // テキスト選択・縦スクロールと競合するため）。
+        var handle = document.createElement("span");
+        handle.className = "drag-handle ordering-drag-handle";
+        handle.innerHTML = DRAG_HANDLE_ICON_SVG;
+        handle.setAttribute("aria-hidden", "true");
+        li.appendChild(handle);
 
         var posEl = document.createElement("span");
         posEl.className = "ordering-position";
@@ -643,15 +662,52 @@ var orderingHandler = {
         controls.appendChild(upBtn);
         controls.appendChild(downBtn);
         li.appendChild(controls);
+
+        // v2-29: 確定後のみ、位置ごとの正誤と「本来はここに何が来るべきか」を表示する
+        // （確定前は正解を一切漏らさない。既存のrevealBox表示タイミングとは別に、
+        // カードそのものに対応づけて出す、というユーザー要望に合わせた追加表示）。
+        if (uiState.answered) {
+          var isCorrectHere = correctOrder[idx] === id;
+          li.classList.add(isCorrectHere ? "ordering-item-correct" : "ordering-item-wrong");
+          var mark = document.createElement("span");
+          mark.className = "ordering-item-result " + (isCorrectHere ? "ordering-item-result-correct" : "ordering-item-result-wrong");
+          mark.textContent = isCorrectHere ? "○" : "×";
+          li.appendChild(mark);
+          if (!isCorrectHere) {
+            var correctItem = itemById[correctOrder[idx]];
+            var hint = document.createElement("div");
+            hint.className = "ordering-item-correct-hint";
+            hint.textContent = "正しくは: " + correctItem.label + " " + correctItem.text;
+            li.appendChild(hint);
+          }
+        }
+
         listEl.appendChild(li);
       });
     }
+
+    EVv2.attachDragReorder({
+      container: listEl,
+      handleSelector: ".drag-handle",
+      disabled: function () {
+        return uiState.answered;
+      },
+      onDrop: function (fromIndex, toIndex) {
+        var moved = uiState.order.splice(fromIndex, 1)[0];
+        uiState.order.splice(toIndex, 0, moved);
+        renderList();
+        live.announce(itemById[moved].label + "を" + (toIndex + 1) + "番目に移動しました。");
+      },
+      onCancel: function () {
+        renderList();
+      },
+    });
 
     answerBtn.addEventListener("click", function () {
       if (uiState.answered) return;
       uiState.answered = true;
       var correct = orderingArraysEqual(uiState.order, correctOrder);
-      renderList(); // 上下ボタンをdisabled状態で再描画する
+      renderList(); // 上下ボタンをdisabled状態にし、位置別の正誤マークを付けて再描画する
       answerBtn.disabled = true;
 
       revealBox.hidden = false;
@@ -665,8 +721,10 @@ var orderingHandler = {
         })
         .join(" → ");
       revealBox.appendChild(EVv2.createCorrectAnswerLine(correctOrderText));
-      revealBox.appendChild(EVv2.createExplanationLine(ex.explanationText));
-      var orderingSourceLine = EVv2.createSourceLine(ex.sourceRefs);
+      // v2-29: explanationTextはordering昇格時にexplanation.raw.text（他形式共通の形）へ
+      // 正規化済みのため、そちらを参照する。
+      revealBox.appendChild(EVv2.createExplanationLine(ex.explanation ? ex.explanation.raw.text : null));
+      var orderingSourceLine = EVv2.createSourceLine([ex.body].filter(Boolean));
       if (orderingSourceLine) revealBox.appendChild(orderingSourceLine);
 
       if (typeof EVv2.onExerciseAnswered === "function") {
@@ -702,6 +760,7 @@ var orderingHandler = {
     zones.answer.appendChild(listEl);
     zones.answer.appendChild(actionsEl);
     zones.answer.appendChild(revealBox);
+    zones.answer.appendChild(live.el);
   },
 };
 

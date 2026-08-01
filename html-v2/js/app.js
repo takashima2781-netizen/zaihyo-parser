@@ -185,7 +185,64 @@
   // 両方から呼ぶ共通処理。JSONの再パースは行わない（オブジェクト参照を維持し、
   // 学習セッション中のカード等、既に該当exerciseオブジェクトを参照している箇所にも
   // そのまま反映されるようにするため）。
+  // v2-29: item-1090（並べ替え問題）を、起動のたびに一時合成されるだけの表示専用オブジェクト
+  // （orderingAdapter.js、変更しない）から、state.data.exercises内に実在する本物のExerciseへ
+  // 昇格させる（初回のみ。ユーザー指示、2026-08-01）。以後は他の問題形式と全く同じに
+  // 編集・保存・学習・検索できる。既に昇格済み（sourceExerciseIdが一致するordering Exercise
+  // が既に存在する）場合は何もしない（毎回呼んでも安全＝冪等）。
+  function materializeOrderingExercise(data) {
+    var adapted = EVv2.buildOrderingViewIfApplicable(data);
+    if (!adapted) return false;
+
+    var alreadyMigrated = data.exercises.some(function (ex) {
+      return ex.exerciseType === "ordering" && ex.sourceExerciseId === adapted.sourceExerciseId;
+    });
+    if (alreadyMigrated) return false;
+
+    var target = (data.withheldExercises || []).filter(function (ex) {
+      return ex.exerciseId === adapted.sourceExerciseId;
+    })[0];
+
+    var materialized = {
+      exerciseId: adapted.exerciseId,
+      exerciseType: "ordering",
+      sourceBookStructureIds: (target && target.sourceBookStructureIds) || [],
+      sourceItemIds: adapted.sourceItemIds || [],
+      stableItemIds: adapted.stableItemIds || [],
+      contentFingerprints: (target && target.contentFingerprints) || [],
+      prompt: null,
+      body: adapted.body,
+      choices: null,
+      expectedAnswer: [],
+      judgement: null,
+      // v2-29: adapted.explanationTextは旧アダプタ出力のプレーン文字列。他形式と同じ
+      // explanation.raw.text（rawSpan）の形へ正規化し、編集モードの既存の解説編集
+      // （EVv2.ExerciseEditor.updateExplanationText）をそのまま使えるようにする。
+      explanation: adapted.explanationText
+        ? { raw: { text: adapted.explanationText, source: null, bsmNodeId: null, inherited: false }, role: null }
+        : null,
+      answerForm: null,
+      withheldAnswerContent: null,
+      structureType: null,
+      subQuestions: null,
+      bodySegments: null,
+      instructionRaw: (target && target.instructionRaw) || null,
+      structurePath: (target && target.structurePath) || [],
+      structure: (target && target.structure) || null,
+      orderingItems: adapted.orderingItems,
+      correctOrder: adapted.correctOrder,
+      sourceExerciseId: adapted.sourceExerciseId,
+      appEdit: { origin: "migrated-from-adapter", editedAt: new Date().toISOString() },
+    };
+
+    data.exercises.push(materialized);
+    return true;
+  }
+
   function refreshDerivedState() {
+    // 派生状態の再構築より前に一度だけ試みる。昇格が起きた場合は末尾でIndexedDBへ保存する。
+    var justMigrated = materializeOrderingExercise(state.data);
+
     // v2-7: single_blankの対象マーカー強調用。同じ本文を共有するmulti_blank兄弟の
     // bodySegmentsから、blankUnitId単位のマーカー位置情報を索引化する(docs/未作成、
     // html-v2/js/blankMarkerIndex.js参照)。
@@ -194,11 +251,9 @@
       blankMarkerIndex: EVv2.buildBlankMarkerIndex(state.data.exercises),
     };
 
-    // v2-4本体(docs/v2_4_implementation_report.md)。item-1090専用のordering変換を試みる。
-    // 対象外・変換失敗の場合はnullが返り、以降は現状どおり(withheld=非表示)のまま何も変わらない。
-    // Exercise View本体(state.data.exercises/withheldExercises)は一切書き換えない。
-    state.orderingView = EVv2.buildOrderingViewIfApplicable(state.data);
-    state.baseExercises = state.orderingView ? state.data.exercises.concat([state.orderingView]) : state.data.exercises;
+    // v2-29: orderingは昇格により他の形式と同じくstate.data.exercisesに実在するため、
+    // 以前のような一時オブジェクトのconcatは不要になった。
+    state.baseExercises = state.data.exercises;
 
     // v1.7.0のExercise View(structurePath/structure)を使い、学習設定のテーマ→節→論点
     // カスケード選択肢を構築する。データ再読み込み・編集保存のたびに毎回作り直す。
@@ -207,6 +262,20 @@
 
     applyFilter();
     updateStudySetupCount();
+
+    if (justMigrated) {
+      EVv2.dataRepository
+        .save(JSON.stringify(state.data), {
+          savedAt: new Date().toISOString(),
+          sourceLabel: "自動移行（並べ替え問題をExerciseへ昇格）",
+          schemaVersion: state.data.meta.schemaVersion,
+          exerciseCount: state.data.exercises.length,
+          withheldCount: state.data.withheldExercises.length,
+        })
+        .catch(function (e) {
+          console.warn("[EVv2 ordering migration] 昇格したデータの保存に失敗しました。この端末では次回起動時に再度昇格が試みられます。", e);
+        });
+    }
   }
 
   // v2-27(編集モード): 編集画面の「保存」で呼ばれる。EVv2.ExerciseEditor側の各関数が
@@ -285,7 +354,7 @@
     }
 
     refreshDerivedState();
-    console.log("[EVv2 orderingAdapter]", { applied: !!state.orderingView, view: state.orderingView });
+    console.log("[EVv2 ordering] 昇格済みordering Exercise数:", state.data.exercises.filter(function (ex) { return ex.exerciseType === "ordering"; }).length);
 
     var t2 = performance.now();
 
@@ -470,7 +539,9 @@
       "schemaVersion: " + m.schemaVersion + " / generatedAt: " + m.generatedAt + "\n" +
       "exercises: " + parsed.data.exercises.length +
       " / withheldExercises(通常はカード表示の対象外。answerForm集計・複合キー検査には含める): " + parsed.data.withheldExercises.length +
-      "\nordering(item-1090)アダプタ適用: " + (state.orderingView ? "有効（1件を並べ替え形式として表示）" : "無効（対象外または変換失敗、非表示のまま）");
+      "\nordering(並べ替え)Exercise件数: " +
+      state.data.exercises.filter(function (ex) { return ex.exerciseType === "ordering"; }).length +
+      "（v2-29以降、他の形式と同じくstate.data.exercisesに実在。item-1090のみ自動移行対応）";
     if (parsed.schemaWarning) {
       text += "\n⚠ " + parsed.schemaWarning;
     }
@@ -826,7 +897,9 @@
             return found ? found.label : id;
           })
           .join(" → "),
-        explanation: ex.explanationText || null,
+        // v2-29: orderingのexplanationも他形式と同じexplanation.raw.text（rawSpan）に正規化済み
+        // （旧explanationTextプレーン文字列は昇格時に変換される。読み取り側もここで統一する）。
+        explanation: ex.explanation ? ex.explanation.raw.text : null,
       };
     }
     return { answer: "(不明)", explanation: null };
