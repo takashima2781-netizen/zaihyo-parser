@@ -1552,3 +1552,105 @@ header h1 {
   font-size: 0.82rem;
   color: var(--danger);
 }
+
+#conversion-review-confirmed-details {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-top: var(--sp-3);
+}
+#conversion-review-confirmed-details summary {
+  cursor: pointer;
+  padding: 4px 0;
+}
+#conversion-review-confirmed-details .conversion-review-list {
+  margin-top: var(--sp-2);
+}
+
+/* ---- v2-30: 文節ならびかえ（ordering拡張）のエディタ内表示 ---- */
+.phrase-reorder-original-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding: var(--sp-3);
+  background: var(--surface-sunken);
+  border-radius: var(--radius-sm);
+}
+.phrase-reorder-original-text p {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+.phrase-reorder-reconstruction-line {
+  font-size: 0.82rem;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+.phrase-reorder-match {
+  color: var(--success);
+  border-color: var(--success);
+  background: var(--success-soft);
+}
+.phrase-reorder-mismatch {
+  color: var(--danger);
+  border-color: var(--danger);
+  background: var(--danger-soft);
+}
+
+/* ---- v2-30: 変換候補レビュー画面 ---- */
+.conversion-review-summary {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin: 0;
+}
+.conversion-review-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+.conversion-review-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  background: var(--surface-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.conversion-review-compare {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-3);
+}
+@media (max-width: 640px) {
+  .conversion-review-compare {
+    grid-template-columns: 1fr;
+  }
+}
+.conversion-review-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+.conversion-review-text {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  background: var(--surface-sunken);
+  border-radius: var(--radius-sm);
+  padding: var(--sp-2) var(--sp-3);
+}
+.conversion-review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+.conversion-review-actions .edit-structural-btn {
+  width: auto;
+  flex: 1 1 auto;
+}
+.conversion-review-confirm-btn {
+  flex: 1 1 auto;
+}

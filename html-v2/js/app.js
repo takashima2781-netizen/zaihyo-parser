@@ -51,6 +51,7 @@
     studySetupDockCount: document.getElementById("study-setup-dock-count"),
     startStudyBtn: document.getElementById("start-study-btn"),
     openBrowseViewBtn: document.getElementById("open-browse-view-btn"),
+    openConversionReviewBtn: document.getElementById("open-conversion-review-btn"),
     themeSwitch: document.getElementById("theme-switch"),
     studySession: document.getElementById("study-session"),
     studySessionProgress: document.getElementById("study-session-progress"),
@@ -77,6 +78,14 @@
     studyReviewDetailBody: document.getElementById("study-review-detail-body"),
     browseView: document.getElementById("browse-view"),
     backToSetupBtn: document.getElementById("back-to-setup-btn"),
+    conversionReview: document.getElementById("conversion-review"),
+    conversionReviewBackBtn: document.getElementById("conversion-review-back-btn"),
+    conversionReviewGenerateBtn: document.getElementById("conversion-review-generate-btn"),
+    conversionReviewBulkConfirmBtn: document.getElementById("conversion-review-bulk-confirm-btn"),
+    conversionReviewSummary: document.getElementById("conversion-review-summary"),
+    conversionReviewEmptyState: document.getElementById("conversion-review-empty-state"),
+    conversionReviewList: document.getElementById("conversion-review-list"),
+    conversionReviewConfirmedList: document.getElementById("conversion-review-confirmed-list"),
     fileInput: document.getElementById("ev-file-input"),
     fetchSampleBtn: document.getElementById("fetch-sample-btn"),
     dataSourceDetails: document.getElementById("data-source-details"),
@@ -144,12 +153,14 @@
     showStudySetup();
   }
 
-  // #main-app内の4画面（学習設定／学習セッション／振り返り／問題一覧）は同時に1つだけ表示する。
+  // #main-app内の5画面（学習設定／学習セッション／振り返り／問題一覧／変換レビュー）は
+  // 同時に1つだけ表示する。
   function showStudySetup() {
     els.studySetup.hidden = false;
     els.studySession.hidden = true;
     els.studyReview.hidden = true;
     els.browseView.hidden = true;
+    els.conversionReview.hidden = true;
     els.header.classList.remove("theme-switch-hidden");
     syncHeaderHeightVar();
     // 学習セッション終了直後などは修得状態が変わっている可能性があるため、都度再計算する。
@@ -160,6 +171,7 @@
     els.studySession.hidden = false;
     els.studyReview.hidden = true;
     els.browseView.hidden = true;
+    els.conversionReview.hidden = true;
     // v2-16/v2-20: 問題を解いている間はテーマ切替の代わりに進捗・終了ボタンを表示する
     // （ヘッダー内の同じ位置。CSS側のheader.theme-switch-hidden .study-session-headerが担う）。
     els.header.classList.add("theme-switch-hidden");
@@ -170,9 +182,21 @@
     els.studySession.hidden = true;
     els.studyReview.hidden = true;
     els.browseView.hidden = false;
+    els.conversionReview.hidden = true;
     els.header.classList.remove("theme-switch-hidden");
     syncHeaderHeightVar();
     if (state.data) applyFilter();
+  }
+  // v2-30(文節ならびかえ): 変換候補のレビュー画面。他の4画面と同じ排他表示の仲間に加える。
+  function showConversionReview() {
+    els.studySetup.hidden = true;
+    els.studySession.hidden = true;
+    els.studyReview.hidden = true;
+    els.browseView.hidden = true;
+    els.conversionReview.hidden = false;
+    els.header.classList.remove("theme-switch-hidden");
+    syncHeaderHeightVar();
+    if (state.data) renderConversionReview();
   }
 
   // GitHub Pages公開フェーズ（docs/exercise_view_full_output_separation_report.mdの続き）。
@@ -240,6 +264,10 @@
   }
 
   function refreshDerivedState() {
+    // v2-30(文節ならびかえ): 旧バージョンでキャッシュされたデータにはこのキーが無いため、
+    // ここで一度だけ初期化しておく(呼び出し元によらず必ず通る単一箇所)。
+    if (!Array.isArray(state.data.exerciseConversions)) state.data.exerciseConversions = [];
+
     // 派生状態の再構築より前に一度だけ試みる。昇格が起きた場合は末尾でIndexedDBへ保存する。
     var justMigrated = materializeOrderingExercise(state.data);
 
@@ -251,9 +279,13 @@
       blankMarkerIndex: EVv2.buildBlankMarkerIndex(state.data.exercises),
     };
 
-    // v2-29: orderingは昇格により他の形式と同じくstate.data.exercisesに実在するため、
-    // 以前のような一時オブジェクトのconcatは不要になった。
-    state.baseExercises = state.data.exercises;
+    // v2-30(文節ならびかえ): 変換の確定/未確定状態はstate.data.exerciseConversions側だけが
+    // 持つ(Exercise自体にはフラグを持たせない、ユーザー指示)。ここで都度導出し、confirmed済み
+    // 変換元と、pending中の生成物(ordering下書き)をそれぞれ出題対象から除外する。
+    var exclusion = EVv2.computePhraseReorderExclusionSets(state.data.exerciseConversions, state.data.exercises);
+    state.baseExercises = state.data.exercises.filter(function (ex) {
+      return !exclusion.excludedSourceIds[ex.exerciseId] && !exclusion.excludedDraftOrderingIds[ex.exerciseId];
+    });
 
     // v1.7.0のExercise View(structurePath/structure)を使い、学習設定のテーマ→節→論点
     // カスケード選択肢を構築する。データ再読み込み・編集保存のたびに毎回作り直す。
@@ -309,6 +341,10 @@
       studySession.index = newIndex !== -1 ? newIndex : Math.min(studySession.index, studySession.queue.length);
       renderStudySessionCard();
     }
+
+    // v2-30(文節ならびかえ): レビュー画面を開いたまま「編集」→保存した場合、下書きの内容
+    // (assembledTextとの一致表示・文節一覧のプレビュー)が古いままにならないよう再描画する。
+    if (!els.conversionReview.hidden) renderConversionReview();
   }
   EVv2.commitDataEdit = commitDataEdit;
   EVv2.getEditableExercises = function () {
@@ -639,6 +675,226 @@
       els.loadMoreBtn.textContent = "さらに読み込む（残り" + remaining + "件）";
     }
   }
+
+  // ---- v2-30(文節ならびかえ): 変換候補レビュー画面。自己採点形式(共有本文型)の穴埋め・
+  // 多重穴埋めから自動生成したordering下書きを、元問題と見比べながら確定/却下する。 ----
+
+  function findExerciseByIdIn(exercises, exerciseId) {
+    return (
+      exercises.filter(function (ex) {
+        return ex.exerciseId === exerciseId;
+      })[0] || null
+    );
+  }
+
+  // subQuestionIndexが指定されている場合(独立小問型からの変換)は、その中問1件の本文・正解
+  // だけを表示する(Exercise丸ごとのbody/expectedAnswerは中問ごとに別内容を持つため、
+  // 該当しない中問の内容を紛れ込ませない)。
+  function conversionSourcePreviewText(sourceEx, subQuestionIndex) {
+    if (!sourceEx) return "(元問題が見つかりません)";
+    if (subQuestionIndex != null) {
+      var sq = sourceEx.subQuestions && sourceEx.subQuestions[subQuestionIndex];
+      if (!sq) return "(元の中問が見つかりません)";
+      return sq.body.text + (sq.expectedAnswer ? "\n正解: " + sq.expectedAnswer.text : "");
+    }
+    var span = EVv2.getQuestionRawSpan(sourceEx);
+    var bodyText = span ? span.text : "(本文なし)";
+    var answers = (sourceEx.expectedAnswer || [])
+      .map(function (a) {
+        return a.answerText ? a.answerText.text : "";
+      })
+      .filter(Boolean)
+      .join(" ／ ");
+    return bodyText + (answers ? "\n正解: " + answers : "");
+  }
+
+  function pendingPhraseReorderConversions() {
+    return (state.data.exerciseConversions || []).filter(function (c) {
+      return c.kind === EVv2.PHRASE_REORDER_KIND && c.status === "pending";
+    });
+  }
+
+  function buildConversionReviewCard(conv, isConfirmed) {
+    var sourceEx = findExerciseByIdIn(state.data.exercises, conv.sourceExerciseId);
+    var orderingEx = findExerciseByIdIn(state.data.exercises, conv.orderingExerciseId);
+
+    var card = document.createElement("article");
+    card.className = "conversion-review-card";
+
+    if (!orderingEx) {
+      card.textContent = "変換後のデータが見つかりません（conversionId: " + conv.conversionId + "）。";
+      return card;
+    }
+
+    var breadcrumb = document.createElement("div");
+    breadcrumb.className = "structure-breadcrumb";
+    var levels = ["theme", "section", "topic"]
+      .map(function (k) {
+        return orderingEx.structure && orderingEx.structure[k] ? orderingEx.structure[k].titleRaw.text : null;
+      })
+      .filter(Boolean);
+    breadcrumb.textContent = levels.join(" › ") || "(分類なし)";
+    card.appendChild(breadcrumb);
+
+    var compare = document.createElement("div");
+    compare.className = "conversion-review-compare";
+
+    var sourceCol = document.createElement("div");
+    sourceCol.className = "conversion-review-col";
+    var sourceLabel = document.createElement("span");
+    sourceLabel.className = "eyebrow";
+    sourceLabel.textContent =
+      "元問題（" + (conv.sourceExerciseType === "multi_blank" ? "多重穴埋め" : "穴埋め") + (conv.sourceSubQuestionIndex != null ? "・独立小問" : "") + "）";
+    sourceCol.appendChild(sourceLabel);
+    var sourceBody = document.createElement("p");
+    sourceBody.className = "conversion-review-text";
+    sourceBody.textContent = conversionSourcePreviewText(sourceEx, conv.sourceSubQuestionIndex);
+    sourceCol.appendChild(sourceBody);
+    compare.appendChild(sourceCol);
+
+    var resultCol = document.createElement("div");
+    resultCol.className = "conversion-review-col";
+    var resultLabel = document.createElement("span");
+    resultLabel.className = "eyebrow";
+    resultLabel.textContent = "変換後（並び替え・下書き、区切りは｜で表示）";
+    resultCol.appendChild(resultLabel);
+    var resultBody = document.createElement("p");
+    resultBody.className = "conversion-review-text";
+    resultBody.textContent = orderingEx.orderingItems
+      .map(function (it) {
+        return it.text;
+      })
+      .join("｜");
+    resultCol.appendChild(resultBody);
+    compare.appendChild(resultCol);
+
+    card.appendChild(compare);
+
+    var actions = document.createElement("div");
+    actions.className = "conversion-review-actions";
+
+    var editBtn = document.createElement("button");
+    editBtn.type = "button";
+    editBtn.className = "edit-structural-btn";
+    editBtn.textContent = "編集";
+    editBtn.addEventListener("click", function () {
+      EVv2.openEditScreen(orderingEx);
+    });
+    actions.appendChild(editBtn);
+
+    if (isConfirmed) {
+      // v2-30: 確定後でも「取り消して元の問題に戻す」を可能にする(ユーザー指示)。
+      // データ上は却下と全く同じ操作(変換記録とordering下書きを削除する)で、元問題は
+      // 最初から一切変更していないため、これだけで変換前の状態に完全に戻る。
+      var revertBtn = document.createElement("button");
+      revertBtn.type = "button";
+      revertBtn.className = "edit-structural-btn danger-btn";
+      revertBtn.textContent = "取り消す（元の問題に戻す）";
+      revertBtn.addEventListener("click", function () {
+        EVv2.confirmDialog("この変換を取り消しますか？並べ替え問題は削除され、元の穴埋め問題が再び出題対象に戻ります。").then(function (ok) {
+          if (!ok) return;
+          EVv2.discardPhraseReorderConversion(state.data, conv.conversionId);
+          EVv2.commitDataEdit();
+        });
+      });
+      actions.appendChild(revertBtn);
+    } else {
+      var confirmBtn = document.createElement("button");
+      confirmBtn.type = "button";
+      confirmBtn.className = "dock-cta conversion-review-confirm-btn";
+      confirmBtn.textContent = "確定";
+      confirmBtn.addEventListener("click", function () {
+        EVv2.confirmPhraseReorderConversion(state.data, conv.conversionId);
+        EVv2.commitDataEdit();
+      });
+      actions.appendChild(confirmBtn);
+
+      var discardBtn = document.createElement("button");
+      discardBtn.type = "button";
+      discardBtn.className = "edit-structural-btn danger-btn";
+      discardBtn.textContent = "却下";
+      discardBtn.addEventListener("click", function () {
+        EVv2.confirmDialog("この変換候補を却下しますか？元の問題はそのまま残ります。").then(function (ok) {
+          if (!ok) return;
+          EVv2.discardPhraseReorderConversion(state.data, conv.conversionId);
+          EVv2.commitDataEdit();
+        });
+      });
+      actions.appendChild(discardBtn);
+    }
+
+    card.appendChild(actions);
+    return card;
+  }
+
+  function confirmedPhraseReorderConversions() {
+    return (state.data.exerciseConversions || []).filter(function (c) {
+      return c.kind === EVv2.PHRASE_REORDER_KIND && c.status === "confirmed";
+    });
+  }
+
+  function renderConfirmedConversionsList() {
+    var confirmed = confirmedPhraseReorderConversions();
+    els.conversionReviewConfirmedList.innerHTML = "";
+    if (confirmed.length === 0) {
+      var none = document.createElement("p");
+      none.className = "edit-note";
+      none.textContent = "確定済みの変換はまだありません。";
+      els.conversionReviewConfirmedList.appendChild(none);
+      return;
+    }
+    var frag = document.createDocumentFragment();
+    confirmed.forEach(function (conv) {
+      frag.appendChild(buildConversionReviewCard(conv, true));
+    });
+    els.conversionReviewConfirmedList.appendChild(frag);
+  }
+
+  function renderConversionReview() {
+    var conversions = pendingPhraseReorderConversions();
+    renderConfirmedConversionsList();
+
+    els.conversionReviewList.innerHTML = "";
+    if (conversions.length === 0) {
+      els.conversionReviewEmptyState.hidden = false;
+      els.conversionReviewEmptyState.textContent =
+        "レビュー待ちの変換候補はありません。「変換候補を生成」を押すと、自己採点形式（共有本文型）の穴埋め・多重穴埋めから自動で下書きを作成します。";
+    } else {
+      els.conversionReviewEmptyState.hidden = true;
+      var frag = document.createDocumentFragment();
+      conversions.forEach(function (conv) {
+        frag.appendChild(buildConversionReviewCard(conv, false));
+      });
+      els.conversionReviewList.appendChild(frag);
+    }
+
+    els.conversionReviewSummary.textContent = "レビュー待ち: " + conversions.length + "件";
+  }
+
+  els.openConversionReviewBtn.addEventListener("click", function () {
+    showConversionReview();
+  });
+  els.conversionReviewBackBtn.addEventListener("click", function () {
+    showStudySetup();
+  });
+  els.conversionReviewGenerateBtn.addEventListener("click", function () {
+    var summary = EVv2.runPhraseReorderBatch(state.data, state.context);
+    EVv2.commitDataEdit();
+    els.conversionReviewSummary.textContent =
+      "今回生成: " + summary.created + "件 / 自動変換できず対象外: " + summary.skipped + "件 / " +
+      "レビュー待ち合計: " + pendingPhraseReorderConversions().length + "件";
+  });
+  els.conversionReviewBulkConfirmBtn.addEventListener("click", function () {
+    var pending = pendingPhraseReorderConversions();
+    if (pending.length === 0) return;
+    EVv2.confirmDialog("表示中の" + pending.length + "件をすべて確定しますか？").then(function (ok) {
+      if (!ok) return;
+      pending.forEach(function (c) {
+        EVv2.confirmPhraseReorderConversion(state.data, c.conversionId);
+      });
+      EVv2.commitDataEdit();
+    });
+  });
 
   // ---- 学習セッション（1問ずつ学習する画面）。一覧表示(state.filtered)とは独立して
   // studySession.queueを持つ。出題テーマ(theme→section→topic)・問題形式・出題モードの

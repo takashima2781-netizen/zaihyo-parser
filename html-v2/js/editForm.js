@@ -692,11 +692,49 @@ window.EVv2 = EVv2;
 
   function renderOrderingEditor(ex, mountEl) {
     var draft = EVv2.ExerciseEditor.buildOrderingDraft(ex);
+    // v2-30(文節ならびかえ): assembledTextは「文節を正しい順に連結すると必ず戻る文章」
+    // （変換時点の原文、ユーザー指示により編集不可の参照値として扱う）。
+    var isSentenceMode = typeof ex.assembledText === "string" && ex.assembledText.length > 0;
 
     var note = document.createElement("p");
     note.className = "edit-note";
     note.textContent = "並んでいる順番がそのまま正解の順序になります。学習画面では毎回シャッフルして出題されます。";
     mountEl.appendChild(note);
+
+    var reconstructionLine = null;
+    if (isSentenceMode) {
+      var sourceNote = document.createElement("p");
+      sourceNote.className = "edit-note";
+      sourceNote.textContent = "この問題は自己採点形式の問題から変換されました。下の「元の文章」と一致するように、文節の区切り・並び・文言を調整してください。";
+      mountEl.appendChild(sourceNote);
+
+      var originalTextBox = document.createElement("div");
+      originalTextBox.className = "phrase-reorder-original-text";
+      var originalTextLabel = document.createElement("span");
+      originalTextLabel.className = "eyebrow";
+      originalTextLabel.textContent = "元の文章（常に戻れる正解）";
+      originalTextBox.appendChild(originalTextLabel);
+      var originalTextBody = document.createElement("p");
+      originalTextBody.textContent = ex.assembledText;
+      originalTextBox.appendChild(originalTextBody);
+      mountEl.appendChild(originalTextBox);
+
+      reconstructionLine = document.createElement("p");
+      reconstructionLine.className = "phrase-reorder-reconstruction-line";
+      mountEl.appendChild(reconstructionLine);
+    }
+
+    function updateReconstructionLine() {
+      if (!reconstructionLine) return;
+      var joined = draft
+        .map(function (item) {
+          return item.text;
+        })
+        .join("");
+      var matches = joined === ex.assembledText;
+      reconstructionLine.className = "phrase-reorder-reconstruction-line" + (matches ? " phrase-reorder-match" : " phrase-reorder-mismatch");
+      reconstructionLine.textContent = (matches ? "✓ 元の文章と一致しています: " : "⚠ 元の文章と一致しません（言い回しを調整した場合はそのままで問題ありません）: ") + joined;
+    }
 
     var listEl = document.createElement("div");
     listEl.className = "ordering-editor-list";
@@ -725,6 +763,7 @@ window.EVv2 = EVv2;
       textarea.value = item.text;
       textarea.addEventListener("input", function () {
         item.text = textarea.value;
+        updateReconstructionLine();
       });
       card.appendChild(textarea);
 
@@ -759,6 +798,23 @@ window.EVv2 = EVv2;
       });
       actions.appendChild(downBtn);
 
+      // v2-30(文節ならびかえ): 分割はまず「テキスト編集＋項目追加」で対応する方針
+      // （ユーザー指示。使ってみて分割ボタンが必要になったら別途追加する）。結合は区切りの
+      // 調整で最も頻度が高い操作と見込まれるため、文章復元モード限定でボタンを用意する。
+      if (isSentenceMode && index < draft.length - 1) {
+        var mergeBtn = document.createElement("button");
+        mergeBtn.type = "button";
+        mergeBtn.className = "segment-move-btn";
+        mergeBtn.textContent = "次と結合";
+        mergeBtn.setAttribute("aria-label", "次の項目と結合する");
+        mergeBtn.addEventListener("click", function () {
+          draft[index].text = draft[index].text + draft[index + 1].text;
+          draft.splice(index + 1, 1);
+          renderItems();
+        });
+        actions.appendChild(mergeBtn);
+      }
+
       var deleteBtn = document.createElement("button");
       deleteBtn.type = "button";
       deleteBtn.className = "edit-structural-btn danger-btn";
@@ -779,6 +835,7 @@ window.EVv2 = EVv2;
       draft.forEach(function (item, index) {
         listEl.appendChild(buildItemEl(item, index));
       });
+      updateReconstructionLine();
     }
 
     EVv2.attachDragReorder({
@@ -892,6 +949,11 @@ window.EVv2 = EVv2;
       bodyEl.appendChild(buildTextField("問題文", ex.body ? ex.body.text : "", function (v) {
         EVv2.ExerciseEditor.updateBodyText(ex, v);
       }, 3));
+      // v2-30(文節ならびかえ): 解説はordering全般で編集可能にする（従来この画面には解説欄が
+      // 無かったが、変換由来の項目は元の穴埋めの解説を引き継いでおり、レビュー時に直せる必要があるため）。
+      bodyEl.appendChild(buildTextField("解説", ex.explanation && ex.explanation.raw ? ex.explanation.raw.text : "", function (v) {
+        EVv2.ExerciseEditor.updateExplanationText(ex, v);
+      }, 2));
 
       var orderingLabel = document.createElement("span");
       orderingLabel.className = "eyebrow";

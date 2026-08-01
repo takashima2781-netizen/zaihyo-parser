@@ -527,9 +527,13 @@ var DRAG_HANDLE_ICON_SVG =
 var orderingHandler = {
   label: "並び替え",
   getAnswerFormNote: function (ex) {
-    return ex.appEdit && ex.appEdit.origin === "migrated-from-adapter"
-      ? "この項目はitem-1090専用アダプタから自動移行した並べ替え問題です（以後は通常のExerciseとして保存・編集されます）。"
-      : "並べ替え問題です。";
+    if (ex.appEdit && ex.appEdit.origin === "migrated-from-adapter") {
+      return "この項目はitem-1090専用アダプタから自動移行した並べ替え問題です（以後は通常のExerciseとして保存・編集されます）。";
+    }
+    if (typeof ex.assembledText === "string" && ex.assembledText.length > 0) {
+      return "文節ならびかえ問題です（変換元: " + (ex.sourceExerciseId || "不明") + " / assembledText: " + ex.assembledText.length + "文字）。";
+    }
+    return "並べ替え問題です。";
   },
   // 独自の複数要素UIを構築する（multi_blankと同じく、render.js側の共通choice/revealループは使わない）。
   // onNextはcreateExerciseCard経由で渡された「次の問題へ」の注入コールバック(省略可)。
@@ -541,6 +545,15 @@ var orderingHandler = {
     items.forEach(function (it) {
       itemById[it.id] = it;
     });
+
+    // v2-30(文節ならびかえ): ex.assembledTextが非nullの場合、文節を連結すると1つの文章に戻る
+    // 変換由来の並べ替え問題として扱う。独立した選択肢の並べ替え(item-1090等)とはカードの
+    // ラベル表示・正解確認の見せ方だけを変え、ドラッグ＆ドロップ・判定・進捗保存は完全に共通のまま
+    // にする(exerciseTypeは増やさない、というユーザー指示にもとづく設計)。
+    var isSentenceMode = typeof ex.assembledText === "string" && ex.assembledText.length > 0;
+    function itemDisplayText(item) {
+      return isSentenceMode ? item.text : item.label + " " + item.text;
+    }
 
     function shuffledStartOrder() {
       var ids = items.map(function (it) {
@@ -605,7 +618,7 @@ var orderingHandler = {
         li.tabIndex = 0;
         li.setAttribute(
           "aria-label",
-          (idx + 1) + "番目: " + item.label + " " + item.text + "。矢印キーの上下で順番を移動できます。"
+          (idx + 1) + "番目: " + itemDisplayText(item) + "。矢印キーの上下で順番を移動できます。"
         );
         li.addEventListener("keydown", function (e) {
           if (uiState.answered) return;
@@ -633,7 +646,7 @@ var orderingHandler = {
 
         var textEl = document.createElement("span");
         textEl.className = "ordering-text";
-        textEl.textContent = item.label + " " + item.text;
+        textEl.textContent = itemDisplayText(item);
         li.appendChild(textEl);
 
         var controls = document.createElement("span");
@@ -677,7 +690,7 @@ var orderingHandler = {
             var correctItem = itemById[correctOrder[idx]];
             var hint = document.createElement("div");
             hint.className = "ordering-item-correct-hint";
-            hint.textContent = "正しくは: " + correctItem.label + " " + correctItem.text;
+            hint.textContent = "正しくは: " + itemDisplayText(correctItem);
             li.appendChild(hint);
           }
         }
@@ -715,11 +728,16 @@ var orderingHandler = {
 
       // v2-5: 全形式共通の順序（正解/不正解→正しい解答→解説→出典）に揃える。
       revealBox.appendChild(EVv2.createResultBanner(correct));
-      var correctOrderText = correctOrder
-        .map(function (id) {
-          return itemById[id].label;
-        })
-        .join(" → ");
+      // v2-30(文節ならびかえ): 独立した選択肢の並べ替えはラベルを「→」でつないだ順序を示すが、
+      // 文章復元モードでは「完成した文章」そのもの(ex.assembledText、連結すると必ず一致する)を
+      // 見せる方が「並べ替えた結果、こういう文章になる」という体験に合う(ユーザー指示)。
+      var correctOrderText = isSentenceMode
+        ? ex.assembledText
+        : correctOrder
+            .map(function (id) {
+              return itemById[id].label;
+            })
+            .join(" → ");
       revealBox.appendChild(EVv2.createCorrectAnswerLine(correctOrderText));
       // v2-29: explanationTextはordering昇格時にexplanation.raw.text（他形式共通の形）へ
       // 正規化済みのため、そちらを参照する。

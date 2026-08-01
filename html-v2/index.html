@@ -111,6 +111,7 @@
   </div>
 
   <button type="button" id="open-browse-view-btn" class="list-view-btn">問題一覧を見る（検索・デバッグ用）</button>
+  <button type="button" id="open-conversion-review-btn" class="list-view-btn">自己採点問題を並び替え問題に変換</button>
 
   <div class="dock">
     <div class="dock-inner">
@@ -219,6 +220,41 @@
 </div>
 <!-- /#browse-view -->
 
+<!-- v2-30: 文節ならびかえ変換のレビュー画面。自己採点形式(共有本文型)の穴埋め・多重穴埋めを
+     自動で並べ替え問題(ordering)の下書きに変換し、ここで元問題と変換後を見比べながら
+     確定/却下できる。確定するまで元の問題はそのまま出題され続ける(可逆、ユーザー指示)。 -->
+<div id="conversion-review" hidden>
+
+<div class="control-row">
+  <button type="button" id="conversion-review-back-btn">← 学習設定に戻る</button>
+</div>
+
+<section class="controls">
+  <p class="data-source-help">
+    自己採点形式（共有本文型）の穴埋め・多重穴埋めを、文節ならびかえ問題（並び替え）へ変換します。
+    自動変換はあくまで下書きです。内容を確認し、気になる問題だけ「編集」で調整してから確定してください。
+    確定するまで元の問題はそのまま出題され続けます。却下・取り消しはいつでも可能です。
+  </p>
+  <div class="control-row">
+    <button type="button" id="conversion-review-generate-btn">変換候補を生成</button>
+    <button type="button" id="conversion-review-bulk-confirm-btn">表示中をすべて確定</button>
+  </div>
+  <p id="conversion-review-summary" class="conversion-review-summary"></p>
+</section>
+
+<div id="conversion-review-empty-state" class="empty-state" hidden></div>
+<div id="conversion-review-list" class="conversion-review-list"></div>
+
+<!-- v2-30: 確定済みの変換も、あとから「取り消して元の問題に戻す」ことができるようにする
+     （ユーザー指示: 確定後でも可逆にしたい）。既定では折りたたんでおく。 -->
+<details id="conversion-review-confirmed-details">
+  <summary>確定済みの変換を表示（取り消しもここから行えます）</summary>
+  <div id="conversion-review-confirmed-list" class="conversion-review-list"></div>
+</details>
+
+</div>
+<!-- /#conversion-review -->
+
 </div>
 <!-- /#main-app -->
 
@@ -283,6 +319,8 @@
 <script src="js/progressStore.js"></script>
 <script src="js/orderingAdapter.js"></script>
 <script src="js/blankMarkerIndex.js"></script>
+<script src="js/phraseSegmenter.js"></script>
+<script src="js/conversionManager.js"></script>
 <script src="js/registry.js"></script>
 <script src="js/render.js"></script>
 <script src="js/editMenu.js"></script>
