@@ -1400,3 +1400,63 @@ header h1 {
   flex: 1 1 160px;
   min-width: 0;
 }
+
+/* ---- v2-28: 共有本文型multi_blankのブロックエディタ（文章／空欄） ---- */
+.segment-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.segment-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  background: var(--surface-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.segment-block-blank {
+  border-left: 3px solid var(--accent);
+}
+.segment-block-text {
+  border-left: 3px solid var(--border-strong);
+}
+.segment-block-actions {
+  align-items: center;
+}
+.segment-move-btn {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 4px 10px;
+  font-size: 1rem;
+  flex: 0 0 auto;
+}
+
+/* ---- v2-28: 保存時の整合性エラー（編集画面ヘッダー直下、常設スロット） ---- */
+.edit-error {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-4);
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 0.85rem;
+  border-bottom: 1px solid var(--border);
+}
+.edit-error[hidden] {
+  display: none;
+}
+
+/* ---- v2-28: 学習画面（多重穴埋め確定後）の空欄ごとの正解・解説 ---- */
+.multiblank-unit-info {
+  margin-top: 6px;
+  font-size: 0.85rem;
+}
+.multiblank-unit-answer-line {
+  margin: 0;
+  color: var(--text);
+  font-weight: 600;
+}
+.multiblank-unit-explanation-line {
+  margin: 2px 0 0;
+  color: var(--text-muted);
+}

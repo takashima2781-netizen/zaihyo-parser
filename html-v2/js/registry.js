@@ -385,6 +385,23 @@ var multiBlankHandler = {
           "multiblank-unit-result " + (isCorrect ? "multiblank-unit-result-correct" : "multiblank-unit-result-wrong");
         resultMark.textContent = isCorrect ? "○" : "×";
         unitLabelEls[idx].appendChild(resultMark);
+
+        // v2-28: 確定後、空欄ごとに「正解」「解説」（入力されている場合のみ）を対応づけて表示する。
+        // 解答前には出さない（このブロック自体がconfirmAnswers()内、確定時のみ実行されるため）。
+        var answerUnit = ex.expectedAnswer && ex.expectedAnswer[idx];
+        var infoBox = document.createElement("div");
+        infoBox.className = "multiblank-unit-info";
+        var answerLine = document.createElement("p");
+        answerLine.className = "multiblank-unit-answer-line";
+        answerLine.textContent = "正解：" + set.correct;
+        infoBox.appendChild(answerLine);
+        if (answerUnit && answerUnit.explanationRaw && answerUnit.explanationRaw.text) {
+          var explLine = document.createElement("p");
+          explLine.className = "multiblank-unit-explanation-line";
+          explLine.textContent = "解説：" + answerUnit.explanationRaw.text;
+          infoBox.appendChild(explLine);
+        }
+        unitBoxEls[idx].appendChild(infoBox);
       });
 
       var allCorrect = correctCount === choiceSets.length;
@@ -449,6 +466,9 @@ var multiBlankHandler = {
     var unitsWrap = document.createElement("div");
     unitsWrap.className = "multiblank-units";
     var unitLabelEls = [];
+    // v2-28(空欄ごとの解説表示): 確定後に「正解／解説」の情報行を追加する先として、
+    // 各unitのコンテナ要素も保持しておく。
+    var unitBoxEls = [];
 
     choiceSets.forEach(function (set, idx) {
       var unitBox = document.createElement("div");
@@ -458,6 +478,7 @@ var multiBlankHandler = {
       label.textContent = "空欄" + (idx + 1);
       unitBox.appendChild(label);
       unitLabelEls.push(label);
+      unitBoxEls.push(unitBox);
 
       var choicesWrap = document.createElement("div");
       choicesWrap.className = "choices";

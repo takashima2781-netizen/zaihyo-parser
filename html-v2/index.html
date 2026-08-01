@@ -251,6 +251,9 @@
     <span class="edit-screen-title">問題を編集</span>
     <button type="button" id="edit-screen-save-btn" class="edit-screen-header-btn edit-screen-save-btn">保存</button>
   </div>
+  <!-- v2-28: 保存時の整合性エラー表示。bodyEl（renderBody()のたびに中身が総入れ替えされる）の
+       外に置き、バリデーション失敗時に編集途中の内容を再描画で消さずにエラーだけ出せるようにする。 -->
+  <div id="edit-screen-error" class="edit-error" hidden></div>
   <div id="edit-screen-body" class="edit-screen-body"></div>
 </div>
 

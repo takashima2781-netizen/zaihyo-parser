@@ -16,6 +16,7 @@ window.EVv2 = EVv2;
 
   var screen = null;
   var bodyEl = null;
+  var errorEl = null;
   var cancelBtn = null;
   var saveBtn = null;
   var currentEx = null;
@@ -24,26 +25,54 @@ window.EVv2 = EVv2;
   // このIDからメンバーを再取得する（EVv2.ExerciseEditor.findGroupMembers参照）。
   var currentGroupId = null;
   var pendingFieldReaders = [];
+  // v2-28(共有本文型multi_blankの構造化編集): 通常のテキストフィールド群
+  // （pendingFieldReaders）とは別に、bodySegments一式をまとめて検証・反映する必要があるため、
+  // 専用のvalidate/commitを持つオブジェクトをここに保持する。true_false・subQuestions方式・
+  // 共有本文を持たない画面では常にnull。
+  var activeSegmentEditor = null;
 
   function ensureEls() {
     if (screen) return;
     screen = document.getElementById("edit-screen");
     bodyEl = document.getElementById("edit-screen-body");
+    errorEl = document.getElementById("edit-screen-error");
     cancelBtn = document.getElementById("edit-screen-cancel-btn");
     saveBtn = document.getElementById("edit-screen-save-btn");
     cancelBtn.addEventListener("click", closeScreen);
     saveBtn.addEventListener("click", function () {
+      if (activeSegmentEditor) {
+        var result = activeSegmentEditor.validate();
+        if (!result.ok) {
+          showSaveError(result.error);
+          return;
+        }
+        activeSegmentEditor.commit();
+      }
       applyFormToLiveEx();
       EVv2.commitDataEdit();
       closeScreen();
     });
   }
 
+  function showSaveError(msg) {
+    if (!errorEl) return;
+    errorEl.hidden = false;
+    errorEl.textContent = msg;
+  }
+
+  function clearSaveError() {
+    if (!errorEl) return;
+    errorEl.hidden = true;
+    errorEl.textContent = "";
+  }
+
   function closeScreen() {
     if (screen) screen.hidden = true;
     if (bodyEl) bodyEl.innerHTML = "";
+    clearSaveError();
     currentEx = null;
     currentGroupId = null;
+    activeSegmentEditor = null;
     pendingFieldReaders = [];
   }
 
@@ -377,6 +406,160 @@ window.EVv2 = EVv2;
     return btn;
   }
 
+  // ---- 共有本文型multi_blank（bodySegments方式）のブロックエディタ ----
+  // 本文を「文章」「空欄」のブロック列として表示・編集する。exerciseEditor.jsの
+  // buildSegmentDraft/validateSegmentDraft/applySegmentDraftがデータ側の実体を持ち、
+  // ここではブロック一覧の描画と、並び替え・追加・削除操作のみを担当する。
+  // 保存確定まではmountEl配下だけを再描画し（bodyEl全体は再描画しない）、他フィールド
+  // （解説欄など）の入力途中の値を消さないようにする。
+
+  function renderSegmentEditor(ex, mountEl) {
+    var draft = EVv2.ExerciseEditor.buildSegmentDraft(ex);
+
+    function blankPositionLabel(index) {
+      var before = draft.slice(0, index).filter(function (b) {
+        return b.kind === "blank";
+      }).length;
+      return before + 1;
+    }
+
+    function buildBlockEl(block, index) {
+      var card = document.createElement("div");
+      card.className = "segment-block " + (block.kind === "blank" ? "segment-block-blank" : "segment-block-text");
+
+      var heading = document.createElement("div");
+      heading.className = "edit-subquestion-heading";
+      heading.textContent = block.kind === "blank" ? "空欄" + blankPositionLabel(index) : "文章";
+      card.appendChild(heading);
+
+      if (block.kind === "text") {
+        var textarea = document.createElement("textarea");
+        textarea.className = "edit-textarea";
+        textarea.rows = 2;
+        textarea.value = block.text;
+        textarea.addEventListener("input", function () {
+          block.text = textarea.value;
+        });
+        card.appendChild(textarea);
+      } else {
+        var answerGroup = document.createElement("div");
+        answerGroup.className = "field-group edit-field";
+        var answerLabel = document.createElement("span");
+        answerLabel.className = "eyebrow";
+        answerLabel.textContent = "正解";
+        answerGroup.appendChild(answerLabel);
+        var answerInput = document.createElement("textarea");
+        answerInput.className = "edit-textarea";
+        answerInput.rows = 2;
+        answerInput.value = block.answerText;
+        answerInput.addEventListener("input", function () {
+          block.answerText = answerInput.value;
+        });
+        answerGroup.appendChild(answerInput);
+        card.appendChild(answerGroup);
+
+        var explGroup = document.createElement("div");
+        explGroup.className = "field-group edit-field";
+        var explLabel = document.createElement("span");
+        explLabel.className = "eyebrow";
+        explLabel.textContent = "解説（任意）";
+        explGroup.appendChild(explLabel);
+        var explInput = document.createElement("textarea");
+        explInput.className = "edit-textarea";
+        explInput.rows = 2;
+        explInput.value = block.explanationText;
+        explInput.addEventListener("input", function () {
+          block.explanationText = explInput.value;
+        });
+        explGroup.appendChild(explInput);
+        card.appendChild(explGroup);
+      }
+
+      var actions = document.createElement("div");
+      actions.className = "edit-subquestion-actions segment-block-actions";
+
+      var upBtn = document.createElement("button");
+      upBtn.type = "button";
+      upBtn.className = "segment-move-btn";
+      upBtn.textContent = "↑";
+      upBtn.setAttribute("aria-label", "上へ移動");
+      upBtn.disabled = index === 0;
+      upBtn.addEventListener("click", function () {
+        var tmp = draft[index - 1];
+        draft[index - 1] = draft[index];
+        draft[index] = tmp;
+        renderBlocks();
+      });
+      actions.appendChild(upBtn);
+
+      var downBtn = document.createElement("button");
+      downBtn.type = "button";
+      downBtn.className = "segment-move-btn";
+      downBtn.textContent = "↓";
+      downBtn.setAttribute("aria-label", "下へ移動");
+      downBtn.disabled = index === draft.length - 1;
+      downBtn.addEventListener("click", function () {
+        var tmp = draft[index + 1];
+        draft[index + 1] = draft[index];
+        draft[index] = tmp;
+        renderBlocks();
+      });
+      actions.appendChild(downBtn);
+
+      var deleteBtn = document.createElement("button");
+      deleteBtn.type = "button";
+      deleteBtn.className = "edit-structural-btn danger-btn";
+      deleteBtn.textContent = block.kind === "blank" ? "この空欄を削除" : "この文章を削除";
+      deleteBtn.addEventListener("click", function () {
+        draft.splice(index, 1);
+        renderBlocks();
+      });
+      actions.appendChild(deleteBtn);
+
+      card.appendChild(actions);
+      return card;
+    }
+
+    function renderBlocks() {
+      clearSaveError();
+      mountEl.innerHTML = "";
+      draft.forEach(function (block, index) {
+        mountEl.appendChild(buildBlockEl(block, index));
+      });
+
+      var addTextBtn = document.createElement("button");
+      addTextBtn.type = "button";
+      addTextBtn.className = "edit-structural-btn";
+      addTextBtn.textContent = "＋ 文章を追加";
+      addTextBtn.addEventListener("click", function () {
+        draft.push(EVv2.ExerciseEditor.createTextDraftBlock());
+        renderBlocks();
+      });
+      mountEl.appendChild(addTextBtn);
+
+      var addBlankBtn = document.createElement("button");
+      addBlankBtn.type = "button";
+      addBlankBtn.className = "edit-structural-btn";
+      addBlankBtn.textContent = "＋ 空欄を追加";
+      addBlankBtn.addEventListener("click", function () {
+        draft.push(EVv2.ExerciseEditor.createBlankDraftBlock());
+        renderBlocks();
+      });
+      mountEl.appendChild(addBlankBtn);
+    }
+
+    renderBlocks();
+
+    return {
+      validate: function () {
+        return EVv2.ExerciseEditor.validateSegmentDraft(draft);
+      },
+      commit: function () {
+        EVv2.ExerciseEditor.applySegmentDraft(ex, draft);
+      },
+    };
+  }
+
   // ---- 大問レベルの構造編集セクション ----
 
   function buildStructuralSection(ex) {
@@ -422,6 +605,8 @@ window.EVv2 = EVv2;
     var ex = currentEx;
     bodyEl.innerHTML = "";
     pendingFieldReaders = [];
+    activeSegmentEditor = null;
+    clearSaveError();
 
     // true_false（○×）は「大問＝共有指示文グループ」という別モデルなので、専用の描画に委譲する
     // （currentGroupId起点でグループを毎回再取得するため、currentEx自体がグループから
@@ -445,22 +630,29 @@ window.EVv2 = EVv2;
       return;
     }
 
+    // multi_blankは1つのExerciseが既に「大問」そのものなので、true_falseのような
+    // グループ横断更新は不要。このExercise自身のinstructionRawを直接編集する。
+    bodyEl.appendChild(buildTextField("大問（共通の指示文）", ex.instructionRaw ? ex.instructionRaw.text : "", function (v) {
+      EVv2.ExerciseEditor.updateInstructionText(ex, v);
+    }, 3));
+
     if (EVv2.ExerciseEditor.canHoldSubQuestions(ex)) {
       ex.subQuestions.forEach(function (sq, i) {
         bodyEl.appendChild(buildSubQuestionRow(ex, sq, i));
       });
       bodyEl.appendChild(buildAddSubQuestionButton(ex));
     } else {
-      var note2 = document.createElement("p");
-      note2.className = "edit-note";
-      note2.textContent =
-        "この大問は共有本文（1つの問題文の中に複数の空欄マーカーを持つ形式）のため、問題文はここでは編集できません。正解のみ編集できます。";
-      bodyEl.appendChild(note2);
-      (ex.expectedAnswer || []).forEach(function (item, i) {
-        bodyEl.appendChild(buildTextField("正解（空欄" + (i + 1) + "）", item.answerText.text, function (v) {
-          EVv2.ExerciseEditor.updateExpectedAnswerText(ex, i, v);
-        }, 2));
-      });
+      // v2-28: 共有本文（1つの問題文の中に複数の空欄マーカーを持つ形式）は、文章／空欄の
+      // ブロックエディタで編集する。本文中の空欄数・順序とexpectedAnswer等は
+      // ExerciseEditor.applySegmentDraftが一括で再生成するため、ここでの個別編集はしない。
+      var segmentLabel = document.createElement("span");
+      segmentLabel.className = "eyebrow";
+      segmentLabel.textContent = "問題文（文章・空欄のブロック）";
+      bodyEl.appendChild(segmentLabel);
+      var segmentContainer = document.createElement("div");
+      segmentContainer.className = "segment-editor";
+      bodyEl.appendChild(segmentContainer);
+      activeSegmentEditor = renderSegmentEditor(ex, segmentContainer);
     }
     bodyEl.appendChild(buildTextField("解説", ex.explanation ? ex.explanation.raw.text : "", function (v) {
       EVv2.ExerciseEditor.updateExplanationText(ex, v);

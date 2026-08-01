@@ -39,6 +39,18 @@ ExerciseEditor.updateBodyText = function (ex, newText) {
   EVv2.markUserEdited(ex, false);
 };
 
+// 大問（Exercise）自身が持つ共通指示文。true_falseのグループ共有指示文
+// （updateGroupInstructionText、複数Exerciseに同時反映）とは異なり、こちらは
+// multi_blank等、1つのExerciseが単独で持つinstructionRawを更新する。
+ExerciseEditor.updateInstructionText = function (ex, newText) {
+  if (ex.instructionRaw) {
+    setRawSpanText(ex.instructionRaw, newText);
+  } else {
+    ex.instructionRaw = newRawSpan(newText);
+  }
+  EVv2.markUserEdited(ex, false);
+};
+
 ExerciseEditor.updateExplanationText = function (ex, newText) {
   if (ex.explanation && ex.explanation.raw) {
     setRawSpanText(ex.explanation.raw, newText);
@@ -415,6 +427,165 @@ ExerciseEditor.listOtherGroupsInTopic = function (exercises, ex) {
     result.push(e);
   });
   return result;
+};
+
+// ---- 共有本文型multi_blank（bodySegments方式）の構造化編集 ----
+//
+// body.textとbodySegments（構造化表現）は完全に導出関係にあることを実データで確認済み
+// （bodySegmentsを連結するとbody.textと完全一致。121件中不一致0件、2026-08-01調査）。
+// そのため編集はbodySegmentsを唯一の入力（draft）とし、body.text・expectedAnswerは
+// 保存時にdraftから再生成する（2つを別々に編集させて食い違わせない設計）。
+// ユーザー指示（2026-08-01）で、空欄ごとの解説（expectedAnswer[].explanationRaw、新規
+// フィールド）も同じdraftで扱う。
+
+var CIRCLED_DIGITS = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳".split("");
+// 実データでは①〜⑯までの使用を確認済み（21件超の空欄は未確認）。21件目以降は
+// 丸数字が尽きるため"(21)"形式にフォールバックする。
+ExerciseEditor.buildBlankLabel = function (index) {
+  return CIRCLED_DIGITS[index] || "(" + (index + 1) + ")";
+};
+
+// ex.bodySegments/ex.expectedAnswerから編集用ブロック配列（draft）を組み立てる。
+// draftの各要素は { kind: "text", text } または
+// { kind: "blank", blankUnitId, sourceItemId, stableItemId, answerText, explanationText, isNew }。
+ExerciseEditor.buildSegmentDraft = function (ex) {
+  var answerByUnitId = {};
+  (ex.expectedAnswer || []).forEach(function (item) {
+    answerByUnitId[item.blankUnitId] = item;
+  });
+  return (ex.bodySegments || []).map(function (seg) {
+    if (seg.type === "text") {
+      return { kind: "text", text: seg.text };
+    }
+    var answer = answerByUnitId[seg.blankUnitId];
+    return {
+      kind: "blank",
+      blankUnitId: seg.blankUnitId,
+      sourceItemId: answer ? answer.sourceItemId : null,
+      stableItemId: answer ? answer.stableItemId : null,
+      answerText: answer && answer.answerText ? answer.answerText.text : "",
+      explanationText: answer && answer.explanationRaw ? answer.explanationRaw.text : "",
+      isNew: false,
+    };
+  });
+};
+
+ExerciseEditor.createBlankDraftBlock = function () {
+  return {
+    kind: "blank",
+    blankUnitId: EVv2.generateUserBlankUnitId(),
+    sourceItemId: null,
+    stableItemId: null,
+    answerText: "",
+    explanationText: "",
+    isNew: true,
+  };
+};
+
+ExerciseEditor.createTextDraftBlock = function () {
+  return { kind: "text", text: "" };
+};
+
+// draft（ブロック配列）の整合性チェック。呼び出し側（editForm.js）は保存前に必ず呼び、
+// ok:falseの場合はapplySegmentDraftを呼ばずerrorをそのまま表示する。
+ExerciseEditor.validateSegmentDraft = function (draft) {
+  var blanks = draft.filter(function (b) {
+    return b.kind === "blank";
+  });
+  if (blanks.length === 0) {
+    return { ok: false, error: "空欄が1つもありません。少なくとも1つの空欄が必要です。" };
+  }
+  for (var i = 0; i < blanks.length; i++) {
+    if (!blanks[i].answerText || !blanks[i].answerText.trim()) {
+      return { ok: false, error: "空欄" + (i + 1) + "の正解が空です。入力してから保存してください。" };
+    }
+  }
+  return { ok: true, error: null };
+};
+
+// draftをexへ反映する。bodySegments・body.text・expectedAnswer（+stableItemIds）を
+// 一括で再生成するため、この3者が食い違う状態は構造的に起こらない。呼び出し側は
+// 事前にvalidateSegmentDraftでok:trueを確認しておくこと（このメソッド自体は検証しない）。
+// 既存の空欄（isNew:false）はblankUnitIdで元のanswerText/explanationRawのrawSpan
+// オブジェクトを引き継ぎ、captureOriginalTextによる原文保持を壊さない
+// （新しいrawSpanを作り直すのは新規追加分のみ）。
+ExerciseEditor.applySegmentDraft = function (ex, draft) {
+  var originalAnswerByUnitId = {};
+  (ex.expectedAnswer || []).forEach(function (item) {
+    originalAnswerByUnitId[item.blankUnitId] = item;
+  });
+
+  var bodySegments = [];
+  var expectedAnswer = [];
+  var stableItemIds = [];
+  var blankIndex = 0;
+
+  draft.forEach(function (block) {
+    if (block.kind === "text") {
+      bodySegments.push({ type: "text", text: block.text || "" });
+      return;
+    }
+
+    var label = ExerciseEditor.buildBlankLabel(blankIndex);
+    var order = blankIndex + 1;
+    var original = originalAnswerByUnitId[block.blankUnitId];
+    var stableItemId = (original && original.stableItemId) || block.stableItemId || EVv2.generateUserStableItemId();
+
+    bodySegments.push({
+      type: "blank",
+      blankId: block.blankUnitId,
+      label: label,
+      blankUnitId: block.blankUnitId,
+      order: order,
+    });
+
+    var answerSpan;
+    if (original && original.answerText) {
+      answerSpan = original.answerText;
+      setRawSpanText(answerSpan, block.answerText);
+    } else {
+      answerSpan = newRawSpan(block.answerText);
+    }
+
+    var explanationSpan = null;
+    if (block.explanationText && block.explanationText.trim()) {
+      if (original && original.explanationRaw) {
+        explanationSpan = original.explanationRaw;
+        setRawSpanText(explanationSpan, block.explanationText);
+      } else {
+        explanationSpan = newRawSpan(block.explanationText);
+      }
+    }
+
+    var answerItem = {
+      blankUnitId: block.blankUnitId,
+      sourceItemId: (original && original.sourceItemId) || block.sourceItemId || null,
+      stableItemId: stableItemId,
+      answerText: answerSpan,
+    };
+    if (explanationSpan) answerItem.explanationRaw = explanationSpan;
+
+    expectedAnswer.push(answerItem);
+    stableItemIds.push(stableItemId);
+    blankIndex += 1;
+  });
+
+  ex.bodySegments = bodySegments;
+  ex.expectedAnswer = expectedAnswer;
+  ex.stableItemIds = stableItemIds;
+
+  var newBodyText = bodySegments
+    .map(function (seg) {
+      return seg.type === "text" ? seg.text : seg.label;
+    })
+    .join("");
+  if (ex.body) {
+    setRawSpanText(ex.body, newBodyText);
+  } else {
+    ex.body = newRawSpan(newBodyText);
+  }
+
+  EVv2.markUserEdited(ex, false);
 };
 
 EVv2.ExerciseEditor = ExerciseEditor;
