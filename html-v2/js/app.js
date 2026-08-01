@@ -59,6 +59,12 @@
     endStudyConfirmBackdrop: document.getElementById("end-study-confirm"),
     endStudyConfirmYesBtn: document.getElementById("end-study-confirm-yes"),
     endStudyConfirmNoBtn: document.getElementById("end-study-confirm-no"),
+    editMenuBtn: document.getElementById("edit-menu-btn"),
+    exportEditedDataBtn: document.getElementById("export-edited-data-btn"),
+    genericConfirmBackdrop: document.getElementById("generic-confirm"),
+    genericConfirmTitle: document.getElementById("generic-confirm-title"),
+    genericConfirmYesBtn: document.getElementById("generic-confirm-yes"),
+    genericConfirmNoBtn: document.getElementById("generic-confirm-no"),
     studyReview: document.getElementById("study-review"),
     studyReviewListView: document.getElementById("study-review-list-view"),
     studyReviewDetailView: document.getElementById("study-review-detail-view"),
@@ -173,6 +179,73 @@
   // opts.skipCacheSave: IndexedDBキャッシュから復元した内容をそのまま書き戻さないためのフラグ。
   // opts.cachedAt: キャッシュ復元時、状態表示に「最初に保存された時刻」を出すためのISO文字列
   // （省略時は現在時刻＝新規読み込み扱い）。
+  // v2-27(編集モード): state.dataの中身(exercises配列)をミューテートした後、派生状態
+  // （distractor pool・マーカー索引・orderingアダプタ・テーマ階層・一覧フィルタ・
+  // 学習設定の件数表示）を作り直す。onLoaded（新規読み込み時）・commitDataEdit（編集保存時）の
+  // 両方から呼ぶ共通処理。JSONの再パースは行わない（オブジェクト参照を維持し、
+  // 学習セッション中のカード等、既に該当exerciseオブジェクトを参照している箇所にも
+  // そのまま反映されるようにするため）。
+  function refreshDerivedState() {
+    // v2-7: single_blankの対象マーカー強調用。同じ本文を共有するmulti_blank兄弟の
+    // bodySegmentsから、blankUnitId単位のマーカー位置情報を索引化する(docs/未作成、
+    // html-v2/js/blankMarkerIndex.js参照)。
+    state.context = {
+      singleBlankPool: EVv2.buildSingleBlankAnswerPool(state.data.exercises),
+      blankMarkerIndex: EVv2.buildBlankMarkerIndex(state.data.exercises),
+    };
+
+    // v2-4本体(docs/v2_4_implementation_report.md)。item-1090専用のordering変換を試みる。
+    // 対象外・変換失敗の場合はnullが返り、以降は現状どおり(withheld=非表示)のまま何も変わらない。
+    // Exercise View本体(state.data.exercises/withheldExercises)は一切書き換えない。
+    state.orderingView = EVv2.buildOrderingViewIfApplicable(state.data);
+    state.baseExercises = state.orderingView ? state.data.exercises.concat([state.orderingView]) : state.data.exercises;
+
+    // v1.7.0のExercise View(structurePath/structure)を使い、学習設定のテーマ→節→論点
+    // カスケード選択肢を構築する。データ再読み込み・編集保存のたびに毎回作り直す。
+    state.themeHierarchy = buildThemeHierarchy(state.baseExercises);
+    populateThemeSelect();
+
+    applyFilter();
+    updateStudySetupCount();
+  }
+
+  // v2-27(編集モード): 編集画面の「保存」で呼ばれる。EVv2.ExerciseEditor側の各関数が
+  // state.data.exercises内のオブジェクトを直接ミューテートしている前提で、
+  // 派生状態の再構築とIndexedDBへの保存（EVv2.dataRepository経由、将来差し替え可能）を行う。
+  // 学習セッション表示中は、削除等でキューから消えた項目を整合させたうえでカードを再描画する。
+  function commitDataEdit() {
+    refreshDerivedState();
+
+    var jsonText = JSON.stringify(state.data);
+    EVv2.dataRepository
+      .save(jsonText, {
+        savedAt: new Date().toISOString(),
+        sourceLabel: "編集（アプリ内エディタ）",
+        schemaVersion: state.data.meta.schemaVersion,
+        exerciseCount: state.data.exercises.length,
+        withheldCount: state.data.withheldExercises.length,
+      })
+      .catch(function (e) {
+        console.warn("[EVv2 editStore] 編集内容のIndexedDB保存に失敗しました。この端末に保存されない可能性があります。", e);
+      });
+    renderDataSourceStatus("編集（アプリ内エディタ）", new Date().toISOString());
+
+    if (!els.studySession.hidden) {
+      var currentExRef = studySession.queue[studySession.index];
+      var baseSet = state.baseExercises;
+      studySession.queue = studySession.queue.filter(function (ex) {
+        return baseSet.indexOf(ex) !== -1;
+      });
+      var newIndex = studySession.queue.indexOf(currentExRef);
+      studySession.index = newIndex !== -1 ? newIndex : Math.min(studySession.index, studySession.queue.length);
+      renderStudySessionCard();
+    }
+  }
+  EVv2.commitDataEdit = commitDataEdit;
+  EVv2.getEditableExercises = function () {
+    return state.data.exercises;
+  };
+
   function onLoaded(jsonText, sourceLabel, opts) {
     opts = opts || {};
     var isFirstLoad = !state.data;
@@ -194,39 +267,25 @@
     var t1 = performance.now();
 
     state.data = parsed.data;
-    // v2-7: single_blankの対象マーカー強調用。同じ本文を共有するmulti_blank兄弟の
-    // bodySegmentsから、blankUnitId単位のマーカー位置情報を索引化する(docs/未作成、
-    // html-v2/js/blankMarkerIndex.js参照)。
-    state.context = {
-      singleBlankPool: EVv2.buildSingleBlankAnswerPool(parsed.data.exercises),
-      blankMarkerIndex: EVv2.buildBlankMarkerIndex(parsed.data.exercises),
-    };
 
     var savedAt = opts.cachedAt || new Date().toISOString();
     renderDataSourceStatus(sourceLabel, savedAt);
     if (!opts.skipCacheSave) {
-      EVv2.saveDataCache(jsonText, {
-        savedAt: savedAt,
-        sourceLabel: sourceLabel,
-        schemaVersion: parsed.data.meta.schemaVersion,
-        exerciseCount: parsed.data.exercises.length,
-        withheldCount: parsed.data.withheldExercises.length,
-      }).catch(function (e) {
-        console.warn("[EVv2 dataCache] 保存に失敗しました。次回起動時にこの端末で自動読み込みできない場合があります。", e);
-      });
+      EVv2.dataRepository
+        .save(jsonText, {
+          savedAt: savedAt,
+          sourceLabel: sourceLabel,
+          schemaVersion: parsed.data.meta.schemaVersion,
+          exerciseCount: parsed.data.exercises.length,
+          withheldCount: parsed.data.withheldExercises.length,
+        })
+        .catch(function (e) {
+          console.warn("[EVv2 dataCache] 保存に失敗しました。次回起動時にこの端末で自動読み込みできない場合があります。", e);
+        });
     }
 
-    // v2-4本体(docs/v2_4_implementation_report.md)。item-1090専用のordering変換を試みる。
-    // 対象外・変換失敗の場合はnullが返り、以降は現状どおり(withheld=非表示)のまま何も変わらない。
-    // Exercise View本体(parsed.data.exercises/withheldExercises)は一切書き換えない。
-    state.orderingView = EVv2.buildOrderingViewIfApplicable(parsed.data);
-    state.baseExercises = state.orderingView ? parsed.data.exercises.concat([state.orderingView]) : parsed.data.exercises;
+    refreshDerivedState();
     console.log("[EVv2 orderingAdapter]", { applied: !!state.orderingView, view: state.orderingView });
-
-    // v1.7.0のExercise View(structurePath/structure)を使い、学習設定のテーマ→節→論点
-    // カスケード選択肢を構築する。データ再読み込み時にも毎回作り直す。
-    state.themeHierarchy = buildThemeHierarchy(state.baseExercises);
-    populateThemeSelect();
 
     var t2 = performance.now();
 
@@ -235,20 +294,17 @@
     renderProgressKeyDiagnosis(parsed.data);
     renderMultiBlankDiagnosis(parsed.data, state.context);
     renderProgressStorageStatus();
-    applyFilter();
     var t3 = performance.now();
 
     if (isFirstLoad) {
       setInitialSetupLoading(false);
       showMainApp();
-    } else {
-      updateStudySetupCount();
     }
 
     var msg =
       "JSON.parse: " + (t1 - t0).toFixed(1) + "ms / " +
-      "前処理(distractor pool構築): " + (t2 - t1).toFixed(1) + "ms / " +
-      "初期描画(" + state.renderedCount + "件): " + (t3 - t2).toFixed(1) + "ms / " +
+      "前処理+初期描画(distractor pool構築等): " + (t2 - t1).toFixed(1) + "ms / " +
+      "診断パネル描画(" + state.renderedCount + "件): " + (t3 - t2).toFixed(1) + "ms / " +
       "合計: " + (t3 - t0).toFixed(1) + "ms / " +
       "入力サイズ: " + (jsonText.length / 1024 / 1024).toFixed(2) + "MB";
     els.timingPanel.textContent = msg;
@@ -1166,6 +1222,59 @@
     showBrowseView();
   });
 
+  // v2-27(編集モード): 汎用の確認ダイアログ。「はい/いいえ」の結果をPromise<boolean>で返す。
+  // end-study-confirm（学習終了専用）とは別の#generic-confirmを使い回す。
+  function confirmDialog(message) {
+    els.genericConfirmTitle.textContent = message;
+    els.genericConfirmBackdrop.hidden = false;
+    return new Promise(function (resolve) {
+      function cleanup(result) {
+        els.genericConfirmBackdrop.hidden = true;
+        els.genericConfirmYesBtn.removeEventListener("click", onYes);
+        els.genericConfirmNoBtn.removeEventListener("click", onNo);
+        resolve(result);
+      }
+      function onYes() {
+        cleanup(true);
+      }
+      function onNo() {
+        cleanup(false);
+      }
+      els.genericConfirmYesBtn.addEventListener("click", onYes);
+      els.genericConfirmNoBtn.addEventListener("click", onNo);
+    });
+  }
+  EVv2.confirmDialog = confirmDialog;
+
+  // v2-27(編集モード): 学習セッション画面のヘッダーにある≡ボタン。
+  // 現状「問題を編集」以外のメニュー項目が未実装で、ボトムシートを経由すると
+  // 実質1択のワンクッションになってしまうため、当面は編集画面へ直接遷移させる
+  // （ユーザー指示、2026-08-01）。EVv2.editMenuItems・EVv2.openEditMenu自体は
+  // 将来項目が増えた時点で使えるよう残してある（editMenu.js）。
+  els.editMenuBtn.addEventListener("click", function () {
+    var ex = studySession.queue[studySession.index];
+    if (!ex) return;
+    EVv2.openEditScreen(ex);
+  });
+
+  // v2-27(編集モード): 編集済みデータ（appEdit付き）をJSONとしてダウンロードする。
+  // リポジトリのマスターデータ（html-v2/data/exercise_view_full.json）更新に使う想定
+  // （インポートは既存のev-file-input／initial-file-inputでそのまま読み込める）。
+  els.exportEditedDataBtn.addEventListener("click", function () {
+    if (!state.data) return;
+    var jsonText = JSON.stringify(state.data, null, 2);
+    var blob = new Blob([jsonText], { type: "application/json" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    var ts = new Date().toISOString().replace(/[:.]/g, "-");
+    a.href = url;
+    a.download = "exercise_view_full.edited-" + ts + ".json";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  });
+
   els.backToSetupBtn.addEventListener("click", function () {
     showStudySetup();
   });
@@ -1231,7 +1340,7 @@
   // ローカル開発（npm run app:serve、html-v2/serve.mjs経由）では従来どおりfetchが成功し、
   // 常に最新の同期済みデータを使う（キャッシュより優先）。
   function tryLoadFromCache(onNoCache) {
-    EVv2.loadDataCache().then(function (cached) {
+    EVv2.dataRepository.load().then(function (cached) {
       if (cached && cached.jsonText) {
         var label = "この端末のキャッシュ" + (cached.meta && cached.meta.sourceLabel ? "（元: " + cached.meta.sourceLabel + "）" : "");
         onLoaded(cached.jsonText, label, {

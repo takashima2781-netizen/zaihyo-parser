@@ -1227,3 +1227,176 @@ header h1 {
 .modal-btn {
   flex: 1 1 auto;
 }
+
+/* ==== v2-27: 編集モード（≡メニュー・ボトムシート・編集画面） ==== */
+.edit-menu-btn {
+  flex: 0 0 auto;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border-radius: 999px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-faint);
+}
+.edit-menu-btn:hover,
+.edit-menu-btn:focus-visible {
+  background: var(--surface-card);
+  color: var(--text-muted);
+}
+
+/* ---- ボトムシート：下端アンカー、.modal-backdropの中身だけ差し替える ---- */
+.sheet-backdrop {
+  align-items: flex-end;
+  padding: 0;
+}
+.sheet-dialog {
+  background: var(--surface-card);
+  color: var(--text);
+  width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+  border-radius: var(--radius) var(--radius) 0 0;
+  padding: var(--sp-3) var(--sp-4) max(var(--sp-3), env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.sheet-list {
+  display: flex;
+  flex-direction: column;
+}
+.sheet-item {
+  text-align: left;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  padding: 14px 4px;
+}
+.sheet-item:last-child {
+  border-bottom: none;
+}
+.sheet-item-disabled {
+  color: var(--text-faint);
+}
+.sheet-cancel-btn {
+  margin-top: var(--sp-2);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+}
+
+/* ---- 編集画面：全画面オーバーレイ。#study-sessionと同じ「固定ヘッダー＋独立スクロール」 ---- */
+.edit-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 110;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+}
+.edit-screen[hidden] {
+  display: none;
+}
+.edit-screen-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--header-bg);
+  border-bottom: 1px solid var(--border);
+}
+.edit-screen-title {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.edit-screen-header-btn {
+  flex: 0 0 auto;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  padding: 6px 4px;
+}
+.edit-screen-save-btn {
+  color: var(--accent);
+  font-weight: 700;
+}
+.edit-screen-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+/* ---- 編集画面の中身：フォーム部品 ---- */
+.edit-meta-line {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin: 0;
+}
+.edit-field textarea.edit-textarea {
+  width: 100%;
+  resize: vertical;
+  background: var(--surface-card);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: var(--sp-2) var(--sp-3);
+  font-family: inherit;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+.edit-note {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  background: var(--surface-sunken);
+  border-radius: var(--radius-sm);
+  padding: var(--sp-3);
+  margin: 0;
+}
+.edit-section-divider {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 0;
+}
+.edit-structural-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.edit-structural-btn {
+  width: 100%;
+}
+.edit-subquestion-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  background: var(--surface-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.edit-subquestion-heading {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.edit-subquestion-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  align-items: center;
+}
+.edit-subquestion-actions .edit-structural-btn {
+  width: auto;
+  flex: 1 1 auto;
+}
+.edit-move-select {
+  flex: 1 1 160px;
+  min-width: 0;
+}
