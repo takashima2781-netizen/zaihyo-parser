@@ -521,8 +521,8 @@ function orderingArraysEqual(a, b) {
   return true;
 }
 
-var DRAG_HANDLE_ICON_SVG =
-  '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>';
+var ORDERING_DRAG_HANDLE_ICON_SVG =
+  '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>';
 
 var orderingHandler = {
   label: "並び替え",
@@ -579,15 +579,40 @@ var orderingHandler = {
       return attempt;
     }
 
+    // v2-33(タップ選択方式): ドラッグ・上下ボタンでの並べ替えをやめ、選択肢をタップした順に
+    // 回答欄へ積み上げていく方式に変更した（ユーザー指示。個々のパーツを動かすのではなく、
+    // タップ順=回答順という体験の方が分かりやすいため）。uiState.answerがタップした順。
+    // 選択肢プール(まだ回答欄に入れていないもの)はshuffledOrderから、回答欄に入っていない
+    // ものだけを都度導出する（プール自体の並びを別管理しない。回答欄から戻した項目も
+    // 元のシャッフル順の位置へ自然に復帰する）。
+    //
     // v2-29: renderInteractiveは次の問題へ移動・再挑戦・同じ問題の再出題のたびに毎回新しく
-    // 呼ばれる（既存の仕組み、render.js/app.js側）ため、uiStateはこのクロージャの中だけで
-    // 完結し、そのたびに自動的に作り直される。特別なリセット処理は不要。
-    var uiState = { order: shuffledStartOrder(), answered: false };
+    // 呼ばれる（既存の仕組み、render.js/app.js側）ため、uiState/shuffledOrderはこのクロージャの
+    // 中だけで完結し、そのたびに自動的に作り直される。特別なリセット処理は不要。
+    var shuffledOrder = shuffledStartOrder();
+    var uiState = { answer: [], answered: false };
+
+    function poolIds() {
+      return shuffledOrder.filter(function (id) {
+        return uiState.answer.indexOf(id) === -1;
+      });
+    }
 
     var live = EVv2.createAriaLiveRegion();
 
-    var listEl = document.createElement("ol");
-    listEl.className = "ordering-list";
+    var poolLabel = document.createElement("div");
+    poolLabel.className = "eyebrow";
+    poolLabel.textContent = "選択肢（タップした順に下の回答欄へ並びます）";
+
+    var poolEl = document.createElement("div");
+    poolEl.className = "ordering-pool";
+
+    var answerLabel = document.createElement("div");
+    answerLabel.className = "eyebrow";
+    answerLabel.textContent = "回答";
+
+    var answerListEl = document.createElement("ol");
+    answerListEl.className = "ordering-list";
 
     var actionsEl = document.createElement("div");
     actionsEl.className = "ordering-actions";
@@ -606,85 +631,85 @@ var orderingHandler = {
     revealBox.className = "reveal-box";
     revealBox.hidden = true;
 
-    function move(idx, delta) {
-      if (uiState.answered) return;
-      var target = idx + delta;
-      if (target < 0 || target >= uiState.order.length) return;
-      var tmp = uiState.order[idx];
-      uiState.order[idx] = uiState.order[target];
-      uiState.order[target] = tmp;
-      renderList();
-      live.announce(itemById[uiState.order[target]].label + "を" + (target + 1) + "番目に移動しました。");
+    function renderPool() {
+      poolEl.innerHTML = "";
+      var ids = poolIds();
+      if (ids.length === 0) {
+        var empty = document.createElement("p");
+        empty.className = "ordering-pool-empty";
+        empty.textContent = "(すべて回答欄に移動しました)";
+        poolEl.appendChild(empty);
+        return;
+      }
+      ids.forEach(function (id) {
+        var item = itemById[id];
+        var chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "ordering-chip";
+        chip.textContent = itemDisplayText(item);
+        chip.disabled = uiState.answered;
+        chip.setAttribute("aria-label", itemDisplayText(item) + "を回答欄の次の位置に置く。");
+        chip.addEventListener("click", function () {
+          if (uiState.answered) return;
+          uiState.answer.push(id);
+          renderAll();
+          live.announce(itemDisplayText(item) + "を" + uiState.answer.length + "番目に置きました。");
+        });
+        poolEl.appendChild(chip);
+      });
     }
 
-    function renderList() {
-      listEl.innerHTML = "";
-      uiState.order.forEach(function (id, idx) {
+    function renderAnswerList() {
+      answerListEl.innerHTML = "";
+      if (uiState.answer.length === 0) {
+        var placeholder = document.createElement("li");
+        placeholder.className = "ordering-answer-placeholder";
+        placeholder.textContent = "上の選択肢をタップした順に、ここへ並びます。";
+        answerListEl.appendChild(placeholder);
+        return;
+      }
+      uiState.answer.forEach(function (id, idx) {
         var item = itemById[id];
         var li = document.createElement("li");
         li.className = "ordering-item";
-        // キーボード操作（Tabでのフォーカス移動、矢印キーでの移動）を阻害しないため、
-        // liそのものにもフォーカス・矢印キー操作を持たせる（ボタン操作・ドラッグが主、これは補助）。
-        li.tabIndex = 0;
-        li.setAttribute(
-          "aria-label",
-          (idx + 1) + "番目: " + itemDisplayText(item) + "。矢印キーの上下で順番を移動できます。"
-        );
-        li.addEventListener("keydown", function (e) {
-          if (uiState.answered) return;
-          if (e.key === "ArrowUp") {
-            e.preventDefault();
-            move(idx, -1);
-          } else if (e.key === "ArrowDown") {
-            e.preventDefault();
-            move(idx, 1);
-          }
-        });
 
-        // v2-29: ドラッグ開始はこのハンドルに限定する（カード全体をドラッグ対象にすると
-        // テキスト選択・縦スクロールと競合するため）。
+        // v2-34: タップでの積み上げに加えて、既に回答欄に置いた項目同士の順番はドラッグでも
+        // 入れ替えられるようにする（ユーザー指示: タップ方式とドラッグ方式を併用したい）。
+        // ハンドル(このspan)からのドラッグ開始に限定し、本文ボタンのタップ＝選択肢へ戻す、
+        // という既存の操作とは競合しない（別要素・別ジェスチャーのため）。
         var handle = document.createElement("span");
-        handle.className = "drag-handle ordering-drag-handle";
-        handle.innerHTML = DRAG_HANDLE_ICON_SVG;
+        handle.className = "drag-handle";
+        handle.innerHTML = ORDERING_DRAG_HANDLE_ICON_SVG;
         handle.setAttribute("aria-hidden", "true");
         li.appendChild(handle);
+
+        var btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "ordering-answer-item-btn";
+        btn.disabled = uiState.answered;
+        btn.setAttribute(
+          "aria-label",
+          (idx + 1) + "番目: " + itemDisplayText(item) + (uiState.answered ? "。" : "。タップで選択肢に戻す、ハンドルをドラッグで順番を入れ替えられます。")
+        );
 
         var posEl = document.createElement("span");
         posEl.className = "ordering-position";
         posEl.textContent = String(idx + 1);
-        li.appendChild(posEl);
+        btn.appendChild(posEl);
 
         var textEl = document.createElement("span");
         textEl.className = "ordering-text";
         textEl.textContent = itemDisplayText(item);
-        li.appendChild(textEl);
+        btn.appendChild(textEl);
 
-        var controls = document.createElement("span");
-        controls.className = "ordering-controls";
-
-        var upBtn = document.createElement("button");
-        upBtn.type = "button";
-        upBtn.className = "ordering-move-btn";
-        upBtn.textContent = "↑";
-        upBtn.setAttribute("aria-label", "上へ移動");
-        upBtn.disabled = uiState.answered || idx === 0;
-        upBtn.addEventListener("click", function () {
-          move(idx, -1);
+        btn.addEventListener("click", function () {
+          if (uiState.answered) return;
+          uiState.answer.splice(idx, 1);
+          renderAll();
+          live.announce(itemDisplayText(item) + "を選択肢に戻しました。");
         });
 
-        var downBtn = document.createElement("button");
-        downBtn.type = "button";
-        downBtn.className = "ordering-move-btn";
-        downBtn.textContent = "↓";
-        downBtn.setAttribute("aria-label", "下へ移動");
-        downBtn.disabled = uiState.answered || idx === uiState.order.length - 1;
-        downBtn.addEventListener("click", function () {
-          move(idx, 1);
-        });
-
-        controls.appendChild(upBtn);
-        controls.appendChild(downBtn);
-        li.appendChild(controls);
+        li.appendChild(btn);
 
         // v2-29: 確定後のみ、位置ごとの正誤と「本来はここに何が来るべきか」を表示する
         // （確定前は正解を一切漏らさない。既存のrevealBox表示タイミングとは別に、
@@ -705,32 +730,38 @@ var orderingHandler = {
           }
         }
 
-        listEl.appendChild(li);
+        answerListEl.appendChild(li);
       });
     }
 
+    function renderAll() {
+      renderPool();
+      renderAnswerList();
+      answerBtn.disabled = uiState.answered || uiState.answer.length !== items.length;
+    }
+
     EVv2.attachDragReorder({
-      container: listEl,
+      container: answerListEl,
       handleSelector: ".drag-handle",
       disabled: function () {
         return uiState.answered;
       },
       onDrop: function (fromIndex, toIndex) {
-        var moved = uiState.order.splice(fromIndex, 1)[0];
-        uiState.order.splice(toIndex, 0, moved);
-        renderList();
+        var moved = uiState.answer.splice(fromIndex, 1)[0];
+        uiState.answer.splice(toIndex, 0, moved);
+        renderAll();
         live.announce(itemById[moved].label + "を" + (toIndex + 1) + "番目に移動しました。");
       },
       onCancel: function () {
-        renderList();
+        renderAll();
       },
     });
 
     answerBtn.addEventListener("click", function () {
-      if (uiState.answered) return;
+      if (uiState.answered || uiState.answer.length !== items.length) return;
       uiState.answered = true;
-      var correct = orderingArraysEqual(uiState.order, correctOrder);
-      renderList(); // 上下ボタンをdisabled状態にし、位置別の正誤マークを付けて再描画する
+      var correct = orderingArraysEqual(uiState.answer, correctOrder);
+      renderAll(); // 選択肢を無効化し、位置別の正誤マークを付けて再描画する
       answerBtn.disabled = true;
 
       revealBox.hidden = false;
@@ -757,7 +788,7 @@ var orderingHandler = {
       if (orderingSourceLine) revealBox.appendChild(orderingSourceLine);
 
       if (typeof EVv2.onExerciseAnswered === "function") {
-        var submittedOrderText = uiState.order
+        var submittedOrderText = uiState.answer
           .map(function (id) {
             return itemById[id].label;
           })
@@ -776,17 +807,20 @@ var orderingHandler = {
     });
 
     resetBtn.addEventListener("click", function () {
-      // 「再挑戦時に初期化」：回答結果・順序を破棄し、新しいシャッフルからやり直す。
-      uiState.order = shuffledStartOrder();
+      // 「再挑戦時に初期化」：回答結果・積み上げ順を破棄し、新しいシャッフルからやり直す。
+      shuffledOrder = shuffledStartOrder();
+      uiState.answer = [];
       uiState.answered = false;
-      answerBtn.disabled = false;
       revealBox.hidden = true;
       revealBox.innerHTML = "";
-      renderList();
+      renderAll();
     });
 
-    renderList();
-    zones.answer.appendChild(listEl);
+    renderAll();
+    zones.answer.appendChild(poolLabel);
+    zones.answer.appendChild(poolEl);
+    zones.answer.appendChild(answerLabel);
+    zones.answer.appendChild(answerListEl);
     zones.answer.appendChild(actionsEl);
     zones.answer.appendChild(revealBox);
     zones.answer.appendChild(live.el);

@@ -1113,49 +1113,112 @@ header h1 {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 .ordering-item {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  /* v2-35: テキストが2行以上に折り返した時、ハンドル・番号を中央揃えにすると
+     行の境目あたりに浮いて見えて崩れて見える（ユーザー指摘）。先頭行の高さに
+     揃うよう、上揃えにする。 */
+  align-items: flex-start;
+  gap: 6px;
   flex-wrap: wrap;
   background: var(--surface-card);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  padding: 8px;
+  padding: 6px;
 }
 .ordering-item:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+/* v2-35: 学習画面のドラッグハンドルはeditForm.js側の編集画面とは共有していないため
+   （.ordering-itemの子要素のみ）、ここだけ小さくしてもエディタ側には影響しない。
+   ユーザー指示「できる限りピースは小さく」に合わせて共通の.drag-handle(44px)より縮める。 */
+.ordering-item .drag-handle {
+  min-width: 28px;
+  min-height: 28px;
+  margin-top: 1px;
+}
 .ordering-position {
   flex: 0 0 auto;
-  min-width: 24px;
-  height: 24px;
+  min-width: 18px;
+  height: 18px;
   border-radius: 50%;
   background: var(--accent-fill);
   color: var(--accent-ink);
-  font-size: 0.75rem;
+  font-size: 0.65rem;
   font-weight: bold;
   display: flex;
   align-items: center;
   justify-content: center;
+  margin-top: 3px;
 }
 .ordering-text {
-  flex: 1 1 160px;
-  font-size: 0.95rem;
+  flex: 1 1 140px;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  padding: 3px 0;
 }
-.ordering-controls {
+/* v2-33: 選択肢プール（タップすると回答欄の末尾に積み上がる）。1つ1つを1行に収める。
+   v2-35: ユーザー指示でできる限り小さく（パディング・文字サイズを縮小）。 */
+.ordering-pool {
   display: flex;
-  gap: 4px;
-  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: var(--sp-3);
 }
-.ordering-move-btn {
-  min-width: 44px;
-  min-height: 44px;
+.ordering-chip {
+  flex: 0 0 auto;
+  max-width: 100%;
+  min-height: 30px;
   padding: 4px 10px;
-  font-size: 1rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-card);
+  color: var(--text);
+  font-size: 0.85rem;
+  line-height: 1.3;
+}
+.ordering-chip:disabled {
+  opacity: 0.5;
+}
+.ordering-pool-empty {
+  font-size: 0.85rem;
+  color: var(--text-faint);
+  margin: 0 0 var(--sp-3);
+}
+.ordering-answer-placeholder {
+  font-size: 0.85rem;
+  color: var(--text-faint);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  text-align: center;
+}
+/* 回答欄の各項目（タップで選択肢に戻す）。position circle + textのみなので1行に収まる。
+   v2-36: flex-basisがauto（既定）だと、中の長文テキストが「折り返さなかった場合の幅」
+   （max-content）を基準にハンドル側と合わせて行に収まるか判定されてしまい、実際には
+   収まる場合でもハンドルだけが別行に押し出されてしまう不具合があった（ユーザー報告）。
+   flex-basis:0にして中身のテキスト幅を無視させ、gap分の余白さえあれば必ずハンドルと
+   同じ行に収まるようにする。 */
+.ordering-answer-item-btn {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  flex: 1 1 0%;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.ordering-answer-item-btn:disabled {
+  cursor: default;
 }
 .ordering-actions {
   display: flex;
@@ -1526,10 +1589,7 @@ header h1 {
   gap: var(--sp-2);
 }
 
-/* ---- 学習画面：並べ替えカードのドラッグハンドル・確定後の位置別正誤 ---- */
-.ordering-drag-handle {
-  color: var(--text-faint);
-}
+/* ---- 学習画面：並べ替えカードの確定後の位置別正誤 ---- */
 .ordering-item-result {
   flex: 0 0 auto;
   font-weight: bold;
@@ -1595,6 +1655,18 @@ header h1 {
   color: var(--danger);
   border-color: var(--danger);
   background: var(--danger-soft);
+}
+.phrase-reorder-diff-row-label {
+  font-weight: 600;
+}
+.phrase-reorder-diff-match {
+  color: var(--success);
+}
+.phrase-reorder-diff-mismatch {
+  color: var(--danger);
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  font-weight: 700;
 }
 
 /* ---- v2-30: 変換候補レビュー画面 ---- */

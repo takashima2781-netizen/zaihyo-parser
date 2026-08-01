@@ -724,6 +724,29 @@ window.EVv2 = EVv2;
       return bodyTextarea.value + " " + answerTextarea.value;
     }
 
+    function escapeHtmlForDiff(s) {
+      return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
+    // 完全一致か否かの2値だけでは、長い文章のどこから食い違っているのか分からない
+    // （ユーザー指示: 前方一致でどこまで合っているか可視化してほしい）。そこで
+    // 先頭から何文字目まで一致しているか(前方一致の長さ)を求め、一致部分と食い違い以降を
+    // 色分けして両方の文字列を並べて表示する。
+    function commonPrefixLength(a, b) {
+      var max = Math.min(a.length, b.length);
+      var i = 0;
+      while (i < max && a.charAt(i) === b.charAt(i)) i++;
+      return i;
+    }
+
+    function highlightPrefixHtml(text, prefixLen) {
+      var head = escapeHtmlForDiff(text.slice(0, prefixLen));
+      var tail = escapeHtmlForDiff(text.slice(prefixLen));
+      var html = '<span class="phrase-reorder-diff-match">' + head + "</span>";
+      if (tail) html += '<span class="phrase-reorder-diff-mismatch">' + tail + "</span>";
+      return html;
+    }
+
     function updateReconstructionLine() {
       if (!reconstructionLine) return;
       var joined = draft
@@ -731,10 +754,20 @@ window.EVv2 = EVv2;
           return item.text;
         })
         .join("");
-      var matches = joined === currentReferenceText();
+      var reference = currentReferenceText();
+      var matches = joined === reference;
       reconstructionLine.className = "phrase-reorder-reconstruction-line" + (matches ? " phrase-reorder-match" : " phrase-reorder-mismatch");
-      reconstructionLine.textContent =
-        (matches ? "✓ 本文＋正解の連結と一致しています: " : "⚠ 本文＋正解の連結と一致しません（この状態では保存できません）: ") + joined;
+      if (matches) {
+        reconstructionLine.textContent = "✓ 本文＋正解の連結と一致しています: " + joined;
+        return;
+      }
+      var prefixLen = commonPrefixLength(joined, reference);
+      reconstructionLine.innerHTML =
+        "⚠ 本文＋正解の連結と一致しません（この状態では保存できません）。一致している範囲を緑、ズレている範囲を赤で表示します。" +
+        '<br><span class="phrase-reorder-diff-row-label">文節を連結: </span>' +
+        highlightPrefixHtml(joined, prefixLen) +
+        '<br><span class="phrase-reorder-diff-row-label">本文＋正解: </span>' +
+        highlightPrefixHtml(reference, prefixLen);
     }
 
     if (isSentenceMode) {
