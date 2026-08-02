@@ -229,6 +229,50 @@ EVv2.toggleChecked = function (exerciseKey, exerciseType) {
   return cloneRecord(rec);
 };
 
+// 学習履歴を他端末へ持ち出すためのエクスポート。保存形式(persist()と同じ{version, records})を
+// そのまま整形JSON化するだけ（問題データのExercise View JSONとは別の、完全に独立したファイル）。
+EVv2.exportProgressData = function () {
+  var map = ensureLoaded();
+  var records = Object.keys(map).map(function (k) {
+    return map[k];
+  });
+  return JSON.stringify({ version: EVv2.STORAGE_SCHEMA_VERSION, records: records }, null, 2);
+};
+
+// 他端末からエクスポートされた学習履歴を読み込み、この端末の学習履歴を丸ごと置き換える
+// （マージはしない。問題データのJSONインポートと同じ「置き換え」方式に揃える）。
+// 個々のレコードの検証はloadProgressStoreInternalと同じsanitizeRecordを再利用する
+// （不正なレコードは個別に無視して続行、致命的な形式不正のみ失敗として返す）。
+// 呼び出し側で置き換えの確認ダイアログを出すこと（ここでは確認しない）。
+EVv2.importProgressData = function (jsonText) {
+  var parsed;
+  try {
+    parsed = JSON.parse(jsonText);
+  } catch (e) {
+    return { ok: false, error: "JSONとして読み込めませんでした。" };
+  }
+  if (!parsed || typeof parsed !== "object") {
+    return { ok: false, error: "データの形式が不正です。" };
+  }
+  if (parsed.version !== EVv2.STORAGE_SCHEMA_VERSION) {
+    return { ok: false, error: "対応していない形式です（version: " + parsed.version + "）。" };
+  }
+  var records = Array.isArray(parsed.records) ? parsed.records : [];
+  var map = {};
+  var skippedCount = 0;
+  records.forEach(function (rawRecord) {
+    var rec = sanitizeRecord(rawRecord);
+    if (!rec) {
+      skippedCount += 1;
+      return;
+    }
+    map[rec.exerciseKey] = rec;
+  });
+  progressMap = map;
+  persist();
+  return { ok: true, importedCount: Object.keys(map).length, skippedCount: skippedCount };
+};
+
 // 学習履歴を全件削除する(呼び出し側で確認ダイアログを出すこと。ここでは確認しない)。
 EVv2.resetAllProgress = function () {
   progressMap = {};

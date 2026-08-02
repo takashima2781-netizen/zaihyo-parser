@@ -252,8 +252,58 @@ header h1 {
   cursor: pointer;
   padding: 4px 0;
 }
-.data-source-details .control-row {
-  margin-top: 8px;
+/* v2-43/v2-47: インポート/エクスポートを「親（インポート／エクスポート、見出し行）→子
+   （ファイルごと、字下げ＋箇条書き記号）」の構成にする（ユーザー指示）。<details>自体には
+   .control-rowを付けない（付けるとdisplay:flexになり、summaryと子要素が横並びに
+   崩れてしまうため）。各子は原則2行以内（ラベル行＋操作行）に収める。 */
+.io-item {
+  position: relative;
+  padding: 8px 0 8px 18px;
+  border-top: 1px solid var(--border);
+}
+.io-item:first-of-type {
+  border-top: none;
+  padding-top: 4px;
+}
+.io-item::before {
+  content: "・";
+  position: absolute;
+  left: 2px;
+  top: 8px;
+  color: var(--text-faint);
+}
+.io-item:first-of-type::before {
+  top: 4px;
+}
+.io-item-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.io-item-label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+.io-item-row .io-item-label {
+  margin-bottom: 0;
+}
+.io-item-link {
+  flex: 0 0 auto;
+  min-height: 0;
+  padding: 2px 4px;
+  font-size: 0.78rem;
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  text-decoration: underline;
+}
+.io-item-btn {
+  width: 100%;
+  text-align: left;
 }
 .data-source-help {
   font-size: 0.85rem;
@@ -572,15 +622,12 @@ header h1 {
   margin-bottom: var(--sp-3);
 }
 
-/* ---- 教材ピッカー：閉じた状態は1行の要約、開くとチップの棚が展開する ---- */
-/* 下のチップグリッド（問題形式・出題モード）と同じ枠の太さ・色・ピル形状にし、
-   画面全体で「アクセントの枠＝選べる場所」という見た目のルールを統一する。 */
-.picker-summary {
+/* ---- v2-40: テーマ選択。以前は「タップで展開→中にさらにテーマのプルダウン」という
+   二重構造だったが、二段階になっていて分かりにくい（ユーザー指摘）ため、単一のプルダウンに
+   統合した。下のチップグリッド（問題形式・出題モード）と同じ枠の太さ・色・ピル形状にし、
+   画面全体で「アクセントの枠＝選べる場所」という見た目のルールを統一する。 ---- */
+.theme-select {
   width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--sp-3);
   background: var(--surface-card);
   border: 1.5px solid var(--accent);
   border-radius: 999px;
@@ -590,49 +637,6 @@ header h1 {
   font-weight: 700;
   color: var(--text);
   cursor: pointer;
-  min-height: 0;
-  text-align: left;
-}
-.picker-summary .chevron {
-  color: var(--accent);
-  transition: transform .15s ease;
-  flex-shrink: 0;
-}
-.picker-summary[aria-expanded="true"] .chevron {
-  transform: rotate(180deg);
-}
-.picker-panel {
-  margin-top: var(--sp-3);
-  padding: var(--sp-4);
-  background: var(--surface-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-3);
-}
-.picker-panel[hidden] {
-  display: none;
-}
-@media (prefers-reduced-motion: reduce) {
-  .picker-summary .chevron {
-    transition: none;
-  }
-}
-
-/* ---- 教材ピッカー内のプルダウン：テーマ数が多いため横スクロールチップではなくselectにする ---- */
-.picker-field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.picker-field label {
-  font-size: .78rem;
-  color: var(--text-muted);
-  font-weight: 600;
-}
-.picker-field select {
-  width: 100%;
 }
 
 /* ---- チップ共通部品：問題形式・出題モードのグリッド、振り返り画面の絞り込みで共有 ---- */
@@ -868,6 +872,11 @@ header h1 {
   margin-bottom: 6px;
   word-break: break-all;
 }
+/* v2-45/v2-47: 問題番号（No.）。デバッグ画面限定だった.browse-id-badgeを廃止し、学習画面も
+   含めて全カードの問題形式バッジの左に常時表示する（ユーザー指示）。.id-line(?debug=1限定の
+   詳細診断行)とは別物。見た目は問題形式バッジ(.badge)と完全に揃える（ユーザー指示）ため、
+   render.js側で"badge exercise-number-badge"の2クラスを付与し、専用の見た目は持たせない
+   （.ex-card-top .badgeがそのまま適用される）。 */
 .progress-panel {
   display: flex;
   flex-wrap: nowrap;
@@ -1011,6 +1020,26 @@ header h1 {
   border: 1px solid var(--accent);
   background: transparent;
   color: var(--text);
+}
+/* v2-44: 4択などの選択肢ボタンは、並び替え問題のチップ（.ordering-chip）と同程度の
+   サイズ感にする（ユーザー指摘: 表示が大きすぎる）。.choice-btn自体は自己採点○×・
+   並べ替えの回答/初期化ボタン等でも共有しているため、.choices配下だけに絞って縮小する。 */
+.choices .choice-btn {
+  flex: 0 0 auto;
+  min-width: 0;
+  min-height: 30px;
+  padding: 4px 10px;
+  font-size: 0.85rem;
+}
+/* v2-48: 丸バツ(true_false)の○×ボタンは、上のchoices縮小の対象から外し元の大きさに戻す
+   （ユーザー指示: 4択は縮小したいが○×はそのままでよい。true_falseとsingle_blankの4択は
+   render.js側で.choices/.choice-btnを共有しているため、ここで打ち消す）。 */
+.choices-true_false .choice-btn {
+  flex: 1 1 auto;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 8px 12px;
+  font-size: 0.92rem;
 }
 .choice-correct,
 .choice-correct-hint {

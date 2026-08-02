@@ -319,6 +319,19 @@ EVv2.createExerciseCard = function (ex, context, onNext) {
   var topRow = document.createElement("div");
   topRow.className = "ex-card-top";
 
+  // v2-45/v2-47(問題番号): 会話中にこの問題を短い番号で名指しできるように、問題形式バッジの
+  // 左に「No. 数字」を表示する（ユーザー指示。デバッグ画面限定だったものを学習画面にも
+  // 拡張した）。番号自体はapp.js側で作る通し番号（context.exerciseNumberMap）に依存し、
+  // ここでは受け取った値をそのまま表示するだけ（無ければ何も出さない、推測しない）。
+  // 見た目は問題形式バッジと揃えるため、同じ"badge"クラスを使う（ユーザー指示）。
+  if (context && context.exerciseNumberMap && context.exerciseNumberMap[ex.exerciseId] != null) {
+    var numberBadge = document.createElement("span");
+    numberBadge.className = "badge exercise-number-badge";
+    numberBadge.textContent = "No. " + context.exerciseNumberMap[ex.exerciseId];
+    numberBadge.title = ex.exerciseId;
+    topRow.appendChild(numberBadge);
+  }
+
   var badge = document.createElement("span");
   badge.className = "badge" + (handler ? "" : " badge-unsupported");
   badge.textContent = handler ? handler.label : "未対応形式 (" + ex.exerciseType + ")";
@@ -443,7 +456,11 @@ EVv2.createExerciseCard = function (ex, context, onNext) {
     // v2-7: 本文側の対象マーカー強調(appendQuestionBody)が適用された場合のみ、
     // 選択肢側にも同系色の細い上枠線を付けて視覚的に結びつける(single_blank限定。
     // true_falseはmarkerHighlightAppliedが常にfalseのため影響しない)。
-    choicesWrap.className = "choices" + (markerHighlightApplied ? " choices-marker-linked" : "");
+    // v2-48: true_false(○×)とsingle_blank(4択)はここを共有しているが、CSS側で
+    // ○×だけサイズを打ち消せるよう、exerciseType別のクラスも付ける（ユーザー指示：
+    // 4択は縮小したいが○×は元の大きさのままにしたい）。
+    choicesWrap.className =
+      "choices choices-" + ex.exerciseType + (markerHighlightApplied ? " choices-marker-linked" : "");
     var answered = false;
     var choices = handler.getChoices(ex, context);
 

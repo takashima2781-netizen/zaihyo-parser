@@ -79,25 +79,8 @@
 
 <section id="study-setup">
   <div class="field-group">
-    <span class="eyebrow">教材を選ぶ</span>
-    <button type="button" class="picker-summary" id="study-setup-picker-toggle" aria-expanded="false" aria-controls="study-setup-picker-panel">
-      <span id="study-setup-picker-summary-text"></span>
-      <svg class="chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
-    </button>
-    <div class="picker-panel" id="study-setup-picker-panel" hidden>
-      <div class="picker-field">
-        <label for="study-setup-theme-select">テーマ</label>
-        <select id="study-setup-theme-select"></select>
-      </div>
-      <div class="picker-field">
-        <label for="study-setup-section-select">節</label>
-        <select id="study-setup-section-select"></select>
-      </div>
-      <div class="picker-field">
-        <label for="study-setup-topic-select">論点</label>
-        <select id="study-setup-topic-select"></select>
-      </div>
-    </div>
+    <span class="eyebrow">テーマを選ぶ</span>
+    <select id="study-setup-theme-select" class="theme-select"></select>
   </div>
 
   <div class="field-group">
@@ -153,46 +136,42 @@
 </div>
 
 <section class="controls">
-  <details class="control-row data-source-details" id="data-source-details">
-    <summary>データソースを変更する（通常は操作不要）</summary>
-    <p class="data-source-help">
-      問題データを更新したい場合はここから読み込んでください。
-    </p>
-    <div class="control-row">
-      <label for="ev-file-input">Exercise View JSON（例: output/exercise_view_full.json）を選択:</label>
-    </div>
-    <div class="control-row">
+  <details class="data-source-details" id="import-details">
+    <summary>インポート</summary>
+    <div class="io-item">
+      <div class="io-item-row">
+        <span class="io-item-label">問題データ</span>
+        <button type="button" id="fetch-sample-btn" class="io-item-link">再読み込み</button>
+      </div>
       <input type="file" id="ev-file-input" accept="application/json,.json">
     </div>
-    <div class="control-row">
-      <button type="button" id="fetch-sample-btn">./data/exercise_view_full.json を再読み込み（HTTPサーバー経由時のみ動作）</button>
-    </div>
-    <p class="data-source-help">
-      アプリ内で編集した内容を含む、現在このデータをまとめてJSONとしてダウンロードできます。
-      マスターデータ（リポジトリ側のexercise_view_full.json）の更新に使ってください。
-    </p>
-    <div class="control-row">
-      <button type="button" id="export-edited-data-btn">編集済みデータをエクスポート（ダウンロード）</button>
+    <div class="io-item">
+      <span class="io-item-label">学習履歴（置き換え）</span>
+      <input type="file" id="progress-file-input" accept="application/json,.json">
     </div>
   </details>
-  <div class="control-row">
-    <label for="type-filter">表示形式フィルタ:</label>
-    <select id="type-filter">
-      <option value="all">全て</option>
-      <option value="true_false">true_false</option>
-      <option value="single_blank">single_blank</option>
-      <option value="multi_blank">multi_blank</option>
-      <option value="ordering">ordering（item-1090限定）</option>
-      <option value="unsupported">未対応形式のみ</option>
-    </select>
+
+  <details class="data-source-details" id="export-details">
+    <summary>エクスポート</summary>
+    <div class="io-item">
+      <button type="button" id="export-edited-data-btn" class="io-item-btn">問題データ</button>
+    </div>
+    <div class="io-item">
+      <button type="button" id="export-progress-btn" class="io-item-btn">学習履歴</button>
+    </div>
+  </details>
+
+  <div class="field-group">
+    <span class="eyebrow">テーマ</span>
+    <select id="browse-theme-select" class="theme-select"></select>
   </div>
-  <div class="control-row">
-    <label for="study-mode-filter">出題モード:</label>
-    <select id="study-mode-filter">
-      <option value="all">全ての問題</option>
-      <option value="unmastered">未修得の問題</option>
-      <option value="checked">チェック問題</option>
-    </select>
+  <div class="field-group">
+    <span class="eyebrow">問題形式</span>
+    <div id="browse-type-chips" class="chip-grid fill"></div>
+  </div>
+  <div class="field-group">
+    <span class="eyebrow">出題モード</span>
+    <div id="browse-mode-chips" class="chip-grid fill"></div>
   </div>
 </section>
 

@@ -624,8 +624,8 @@ var orderingHandler = {
     resetBtn.type = "button";
     resetBtn.className = "choice-btn ordering-reset-btn";
     resetBtn.textContent = "初期状態に戻す";
-    actionsEl.appendChild(answerBtn);
     actionsEl.appendChild(resetBtn);
+    actionsEl.appendChild(answerBtn);
 
     var revealBox = document.createElement("div");
     revealBox.className = "reveal-box";

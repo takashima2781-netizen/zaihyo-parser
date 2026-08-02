@@ -12,7 +12,8 @@
     filtered: [],
     renderedCount: 0,
     batchSize: 30,
-    themeHierarchy: [], // 学習設定のテーマ→節→論点カスケード選択用（buildThemeHierarchyが構築）
+    themeHierarchy: [], // 学習設定のテーマ選択用（buildThemeHierarchyが構築）
+    exerciseNumberMap: {}, // exerciseId -> 短い通し番号（問題一覧画面の表示用）
   };
 
   // 1問ずつ学習するセッション画面専用の状態（一覧表示state.filteredとは独立）。
@@ -40,13 +41,8 @@
     mainApp: document.getElementById("main-app"),
     studySetup: document.getElementById("study-setup"),
     studySetupThemeSelect: document.getElementById("study-setup-theme-select"),
-    studySetupSectionSelect: document.getElementById("study-setup-section-select"),
-    studySetupTopicSelect: document.getElementById("study-setup-topic-select"),
     studySetupTypeChips: document.getElementById("study-setup-type-chips"),
     studySetupModeChips: document.getElementById("study-setup-mode-chips"),
-    studySetupPickerToggle: document.getElementById("study-setup-picker-toggle"),
-    studySetupPickerPanel: document.getElementById("study-setup-picker-panel"),
-    studySetupPickerSummaryText: document.getElementById("study-setup-picker-summary-text"),
     studySetupDockSummary: document.getElementById("study-setup-dock-summary"),
     studySetupDockCount: document.getElementById("study-setup-dock-count"),
     startStudyBtn: document.getElementById("start-study-btn"),
@@ -88,11 +84,11 @@
     conversionReviewConfirmedList: document.getElementById("conversion-review-confirmed-list"),
     fileInput: document.getElementById("ev-file-input"),
     fetchSampleBtn: document.getElementById("fetch-sample-btn"),
-    dataSourceDetails: document.getElementById("data-source-details"),
     dataSourceStatus: document.getElementById("data-source-status"),
     metaPanel: document.getElementById("meta-panel"),
-    filterSelect: document.getElementById("type-filter"),
-    studyModeSelect: document.getElementById("study-mode-filter"),
+    browseThemeSelect: document.getElementById("browse-theme-select"),
+    browseTypeChips: document.getElementById("browse-type-chips"),
+    browseModeChips: document.getElementById("browse-mode-chips"),
     list: document.getElementById("exercise-list"),
     emptyState: document.getElementById("empty-state"),
     loadMoreBtn: document.getElementById("load-more-btn"),
@@ -103,6 +99,8 @@
     multiBlankPanel: document.getElementById("multi-blank-panel"),
     progressStoragePanel: document.getElementById("progress-storage-panel"),
     resetProgressBtn: document.getElementById("reset-progress-btn"),
+    exportProgressBtn: document.getElementById("export-progress-btn"),
+    progressFileInput: document.getElementById("progress-file-input"),
     debugPanels: document.getElementById("debug-panels"),
   };
 
@@ -286,6 +284,18 @@
     state.baseExercises = state.data.exercises.filter(function (ex) {
       return !exclusion.excludedSourceIds[ex.exerciseId] && !exclusion.excludedDraftOrderingIds[ex.exerciseId];
     });
+
+    // v2-43/v2-45(問題番号): 生のexerciseId（長く読み上げにくい）の代わりに、会話中に
+    // 名指しできる短い通し番号を割り当てる。state.baseExercisesの並び順に対する1始まりの
+    // 連番（推測でIDを短縮せず、単なる位置番号）。データの読み込み・編集保存のたびに
+    // 作り直すため、構成が変わればこの番号もずれ得る（同一セッション内で問題を指し示す
+    // ための番号であり、永続的な識別子ではない）。render.js側のcreateExerciseCardが
+    // 学習画面・問題一覧画面の両方でNo.表示に使うため、state.contextにも載せる。
+    state.exerciseNumberMap = {};
+    state.baseExercises.forEach(function (ex, idx) {
+      state.exerciseNumberMap[ex.exerciseId] = idx + 1;
+    });
+    state.context.exerciseNumberMap = state.exerciseNumberMap;
 
     // v1.7.0のExercise View(structurePath/structure)を使い、学習設定のテーマ→節→論点
     // カスケード選択肢を構築する。データ再読み込み・編集保存のたびに毎回作り直す。
@@ -615,12 +625,13 @@
   }
 
   function applyFilter() {
-    var type = els.filterSelect.value;
-    var studyMode = els.studyModeSelect.value;
+    var type = browseTypeChipGroup.getValue();
+    var studyMode = browseModeChipGroup.getValue();
+    var themeId = els.browseThemeSelect.value;
     var all = state.baseExercises || state.data.exercises;
     var byType = filterByType(all, type);
     state.filtered = byType.filter(function (ex) {
-      return matchesStudyMode(ex, studyMode);
+      return matchesStudyMode(ex, studyMode) && matchesThemeHierarchy(ex, themeId);
     });
 
     els.list.innerHTML = "";
@@ -658,6 +669,8 @@
     var frag = document.createDocumentFragment();
     next.forEach(function (ex) {
       try {
+        // v2-45: 問題番号（No.）はrender.js側のcreateExerciseCardがcontext.exerciseNumberMap
+        // を見て自前で表示するようになった（学習画面にも拡張したため、ここでの後付けは廃止）。
         frag.appendChild(EVv2.createExerciseCard(ex, state.context));
       } catch (e) {
         console.error("カード描画失敗", ex.exerciseId, e);
@@ -897,39 +910,24 @@
   });
 
   // ---- 学習セッション（1問ずつ学習する画面）。一覧表示(state.filtered)とは独立して
-  // studySession.queueを持つ。出題テーマ(theme→section→topic)・問題形式・出題モードの
-  // 3軸で絞り込む（学習スタイル・出題順は未定義のため引き続き対象外）。 ----
+  // studySession.queueを持つ。出題テーマ・問題形式・出題モードの3軸で絞り込む
+  // （学習スタイル・出題順は未定義のため引き続き対象外）。
+  // v2-39: 節・論点までの絞り込みは使われていなかったため廃止し、テーマのみにした
+  // （ユーザー指示）。 ----
 
-  // Exercise Viewのstructure(v1.7.0、theme/section/topic)から、テーマ→節→論点の
-  // カスケード選択肢を構築する。ex.structureにtopic(またはsection)が無い項目もある
-  // （BSM上、checkSectionが直接section配下に付く等、階層の深さが一定でないため。原則6・7、
-  // 推測で埋めない）。その場合はそのexerciseを該当する上位階層までのみ登録し、
-  // 存在しない下位階層は持たせない（matchesThemeHierarchyが「その階層を指定されたら除外」する）。
+  // Exercise Viewのstructure(v1.7.0、theme/section/topic)から、テーマの選択肢を構築する。
+  // ex.structureにthemeが無い項目もある（原則6・7、推測で埋めない）ため、その場合は
+  // そのexerciseを登録しない（matchesThemeHierarchyが「テーマを指定されたら除外」する）。
   function buildThemeHierarchy(exercises) {
     var themes = [];
     var themeMap = {};
     exercises.forEach(function (ex) {
       var s = ex.structure;
       if (!s || !s.theme) return;
-      var themeEntry = themeMap[s.theme.structureNodeId];
-      if (!themeEntry) {
-        themeEntry = { id: s.theme.structureNodeId, title: s.theme.titleRaw.text, sectionsOrder: [], sectionsMap: {} };
-        themeMap[themeEntry.id] = themeEntry;
-        themes.push(themeEntry);
-      }
-      if (!s.section) return;
-      var sectionEntry = themeEntry.sectionsMap[s.section.structureNodeId];
-      if (!sectionEntry) {
-        sectionEntry = { id: s.section.structureNodeId, title: s.section.titleRaw.text, topicsOrder: [], topicsMap: {} };
-        themeEntry.sectionsMap[sectionEntry.id] = sectionEntry;
-        themeEntry.sectionsOrder.push(sectionEntry);
-      }
-      if (!s.topic) return;
-      if (!sectionEntry.topicsMap[s.topic.structureNodeId]) {
-        var topicEntry = { id: s.topic.structureNodeId, title: s.topic.titleRaw.text };
-        sectionEntry.topicsMap[topicEntry.id] = topicEntry;
-        sectionEntry.topicsOrder.push(topicEntry);
-      }
+      if (themeMap[s.theme.structureNodeId]) return;
+      var themeEntry = { id: s.theme.structureNodeId, title: s.theme.titleRaw.text };
+      themeMap[themeEntry.id] = themeEntry;
+      themes.push(themeEntry);
     });
     return themes;
   }
@@ -937,14 +935,9 @@
   function findTheme(themeId) {
     return state.themeHierarchy.filter(function (t) { return t.id === themeId; })[0] || null;
   }
-  function findSection(themeId, sectionId) {
-    var theme = findTheme(themeId);
-    return (theme && theme.sectionsMap[sectionId]) || null;
-  }
 
   // v2-15(教材ピッカーをプルダウンへ差し戻し): テーマは27件超あり、横スクロールのチップは
-  // 操作性が悪いためselectに戻す。データの意味づけ(themeHierarchy・structureNodeId)や
-  // カスケード（テーマ→節→論点）のロジック自体はv2-13から変更していない。
+  // 操作性が悪いためselectに戻す。
   function populateSelectOptions(selectEl, nodes, labelFn) {
     selectEl.innerHTML = "";
     var allOpt = document.createElement("option");
@@ -969,28 +962,10 @@
 
   function populateThemeSelect() {
     populateSelectOptions(els.studySetupThemeSelect, state.themeHierarchy, formatThemeTitle);
-    populateSectionSelect("all");
-    populateTopicSelect("all", "all");
-  }
-  function populateSectionSelect(themeId) {
-    var theme = findTheme(themeId);
-    populateSelectOptions(els.studySetupSectionSelect, theme ? theme.sectionsOrder : []);
-  }
-  function populateTopicSelect(themeId, sectionId) {
-    var section = findSection(themeId, sectionId);
-    populateSelectOptions(els.studySetupTopicSelect, section ? section.topicsOrder : []);
+    populateSelectOptions(els.browseThemeSelect, state.themeHierarchy, formatThemeTitle);
   }
 
-  els.studySetupThemeSelect.addEventListener("change", function () {
-    populateSectionSelect(els.studySetupThemeSelect.value);
-    populateTopicSelect(els.studySetupThemeSelect.value, "all");
-    updateStudySetupCount();
-  });
-  els.studySetupSectionSelect.addEventListener("change", function () {
-    populateTopicSelect(els.studySetupThemeSelect.value, els.studySetupSectionSelect.value);
-    updateStudySetupCount();
-  });
-  els.studySetupTopicSelect.addEventListener("change", updateStudySetupCount);
+  els.studySetupThemeSelect.addEventListener("change", updateStudySetupCount);
 
   // 問題形式は英語のexerciseTypeそのままだと直感的でないため、日本語ラベルで表示する
   // （フィルタの実装値・buildStudyQueueが参照する値は従来のexerciseType文字列のまま）。
@@ -1017,14 +992,35 @@
     onChange: updateStudySetupCount,
   });
 
-  // themeId/sectionId/topicIdはそれぞれ"all"または具体的なstructureNodeId。
-  // 該当する階層情報を持たないExercise（buildThemeHierarchyのコメント参照）は、
-  // 具体的なIDを指定された時点で該当なしとして除外する（推測で一致させない）。
-  function matchesThemeHierarchy(ex, themeId, sectionId, topicId) {
+  // v2-41(デバッグモード改善): 問題一覧（検索・デバッグ用）画面の絞り込みを、学習設定画面と
+  // 同じ部品（テーマselect・チップグループ）に揃える（ユーザー指示）。問題形式は
+  // 「未対応形式のみ」というデバッグ専用の選択肢を追加で持つため、TYPE_ITEMSをそのまま
+  // 使い回さず専用の配列にする。
+  var DEBUG_TYPE_ITEMS = TYPE_ITEMS.concat([{ value: "unsupported", label: "未対応形式のみ" }]);
+  var browseTypeChipGroup = EVv2.createChipGroup(els.browseTypeChips, {
+    items: DEBUG_TYPE_ITEMS,
+    value: "all",
+    onChange: function () {
+      if (state.data) applyFilter();
+    },
+  });
+  var browseModeChipGroup = EVv2.createChipGroup(els.browseModeChips, {
+    items: MODE_ITEMS,
+    value: "all",
+    onChange: function () {
+      if (state.data) applyFilter();
+    },
+  });
+  els.browseThemeSelect.addEventListener("change", function () {
+    if (state.data) applyFilter();
+  });
+
+  // themeIdは"all"または具体的なstructureNodeId。該当する階層情報を持たないExercise
+  // （buildThemeHierarchyのコメント参照）は、具体的なIDを指定された時点で該当なしとして
+  // 除外する（推測で一致させない）。
+  function matchesThemeHierarchy(ex, themeId) {
     var s = ex.structure;
     if (themeId !== "all" && (!s || !s.theme || s.theme.structureNodeId !== themeId)) return false;
-    if (sectionId !== "all" && (!s || !s.section || s.section.structureNodeId !== sectionId)) return false;
-    if (topicId !== "all" && (!s || !s.topic || s.topic.structureNodeId !== topicId)) return false;
     return true;
   }
 
@@ -1032,17 +1028,17 @@
     var type = typeChipGroup.getValue();
     var studyMode = modeChipGroup.getValue();
     var themeId = els.studySetupThemeSelect.value;
-    var sectionId = els.studySetupSectionSelect.value;
-    var topicId = els.studySetupTopicSelect.value;
     var all = state.baseExercises || state.data.exercises;
     var byType = filterByType(all, type);
     return byType.filter(function (ex) {
-      return matchesStudyMode(ex, studyMode) && matchesThemeHierarchy(ex, themeId, sectionId, topicId);
+      return matchesStudyMode(ex, studyMode) && matchesThemeHierarchy(ex, themeId);
     });
   }
 
-  // v2-14(教材ピッカー・ドックUI化): 教材ピッカーの要約行と、画面下部に常時固定した
-  // ドック（現在の絞り込み内容の一文＋開始ボタン）を、設定変更のたびに再計算する。
+  // v2-14(教材ピッカー・ドックUI化): 画面下部に常時固定したドック（現在の絞り込み内容の
+  // 一文＋開始ボタン）を、設定変更のたびに再計算する。
+  // v2-40: テーマ選択はネイティブのselectに一本化した（選択中の値はselect自体が表示する
+  // ため、別途要約テキストを持たせる必要が無くなった）。
   function updateStudySetupCount() {
     var count = buildStudyQueue().length;
     var themeId = els.studySetupThemeSelect.value;
@@ -1050,9 +1046,6 @@
     var themeLabel = theme ? formatThemeTitle(theme.title) : "すべて";
     var typeLabel = typeChipGroup.getLabel() || "全て";
     var modeLabel = modeChipGroup.getLabel() || "すべての問題";
-
-    // 問題数は下部のドックに一本化する（ピッカー要約行では重複させない）。
-    els.studySetupPickerSummaryText.textContent = themeLabel;
 
     els.studySetupDockSummary.textContent = "";
     if (count === 0) {
@@ -1455,13 +1448,6 @@
   }
   els.startStudyBtn.addEventListener("click", startStudyFromSetup);
 
-  // v2-14: 教材ピッカーの開閉。実際の並び替え・選択ロジックはchipGroupが担う。
-  els.studySetupPickerToggle.addEventListener("click", function () {
-    var willOpen = els.studySetupPickerPanel.hidden;
-    els.studySetupPickerPanel.hidden = !willOpen;
-    els.studySetupPickerToggle.setAttribute("aria-expanded", String(willOpen));
-  });
-
   // v2-13: テーマ（システム／ライト／ダーク）切替。永続化・data-theme適用はthemeStore.jsが担う。
   function refreshThemeSwitchUI() {
     var pref = EVv2.getThemePreference();
@@ -1695,12 +1681,6 @@
     });
   }
 
-  els.filterSelect.addEventListener("change", function () {
-    if (state.data) applyFilter();
-  });
-  els.studyModeSelect.addEventListener("change", function () {
-    if (state.data) applyFilter();
-  });
   els.loadMoreBtn.addEventListener("click", renderNextBatch);
 
   // v2-3(docs/v2_3_implementation_report.md §7)。実行前に確認ダイアログを表示する。
@@ -1712,6 +1692,58 @@
     EVv2.resetAllProgress();
     renderProgressStorageStatus();
     if (state.data) applyFilter();
+  });
+
+  // v2-38(学習履歴の端末間受け渡し): 問題データ(exportEditedDataBtn)とは別の、
+  // localStorage側(progressStore.js)のエクスポート/インポート。他端末の学習履歴を
+  // 持ち込む際は丸ごと置き換えになる(マージはしない)ため、実行前に確認する。
+  els.exportProgressBtn.addEventListener("click", function () {
+    var jsonText = EVv2.exportProgressData();
+    var blob = new Blob([jsonText], { type: "application/json" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    var ts = new Date().toISOString().replace(/[:.]/g, "-");
+    a.href = url;
+    a.download = "zaihyo-drill-progress." + ts + ".json";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  });
+
+  els.progressFileInput.addEventListener("change", function (e) {
+    var file = e.target.files && e.target.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function () {
+      var ok = window.confirm(
+        "この端末の学習履歴（正誤回数・連続正解数・修得状態・チェック状態）を、選択したファイルの内容で置き換えます。今のこの端末の学習履歴は失われます。よろしいですか？"
+      );
+      if (!ok) {
+        els.progressFileInput.value = "";
+        return;
+      }
+      var result = EVv2.importProgressData(String(reader.result));
+      if (!result.ok) {
+        window.alert("学習履歴の読み込みに失敗しました: " + result.error);
+        els.progressFileInput.value = "";
+        return;
+      }
+      renderProgressStorageStatus();
+      if (state.data) applyFilter();
+      els.progressFileInput.value = "";
+      window.alert(
+        "学習履歴" +
+          result.importedCount +
+          "件を読み込みました。" +
+          (result.skippedCount > 0 ? "（形式不正のため" + result.skippedCount + "件は無視しました）" : "")
+      );
+    };
+    reader.onerror = function () {
+      window.alert("ファイルの読み込みに失敗しました。");
+      els.progressFileInput.value = "";
+    };
+    reader.readAsText(file);
   });
 
   if (location.protocol === "file:") {
