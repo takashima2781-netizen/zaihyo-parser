@@ -15,12 +15,45 @@ Knowledgeの状態表現(旧`status`3値)が「内容の確信度」「一般性
 異なる意味で使われていた点、(c) Derived Knowledgeの`statement`を単一
 文字列に固定していた点、の3点を中心に5・6・7・8・12節を改訂した。
 
-**改訂について(第3版・本版)**: 第2版でのraw定義(「教材上の忠実な表現」に
+**改訂について(第3版)**: 第2版でのraw定義(「教材上の忠実な表現」に
 一本化)について、機械抽出結果そのものを保持しないことの妥当性を再評価
 した結果、`raw`を`sourceFaithful`に改称した上で、機械抽出の生出力を
 `extractionRaw`として条件付きで別途保持する4概念モデルへ変更した(7節)。
 これに伴い2・3・8・9節の該当箇所を更新している。5・6節(3軸状態モデル・
 kind別content)はユーザー承認済みのため変更していない。
+
+**改訂について(第4版・本版・現時点の正式設計)**: 第3版までの設計を、
+実際の教材データ(基礎コース1冊目)を用いた小規模なプロトタイプ検証
+(`planning/book1_prototype_validation_plan.md`→
+`book1_prototype_validation_results.md`)、その結果を受けたデータモデル
+改訂案(`planning/data_model_revision_proposal_round1.md`)、およびその
+改訂案の再検証(`planning/data_model_revision_round1_recheck.md`)を経て
+確定した。今回の改訂範囲は次のとおり(5-2節・7節・9〜12節、および新設の
+13節)。
+
+- `calculation_formula`/`solution_technique`の`content`に、忠実な式
+  表現とは別の**任意の**構造化表現(`structure`)を追加し、その最小語彙を
+  `term`/`operator`/`fraction`/`group`/`power`の5種類として確定した
+  (5-2節)。
+- `journal_pattern`の`content`で、確定した勘定科目とプレースホルダを
+  型として区別し(`kind: "fixed" | "placeholder"`)、金額プレースホルダを
+  `amountSlots`として分離した(5-2節)。
+- `sourceRefs`に`role`(definition/restatement/application/example)を
+  追加し、`evidence.occurrenceCount`を`evidence.byRole`(role別内訳)へ
+  変更した(5-2節・6節)。
+- `table`というblockKindのSource側`parsed`構造を、行見出し・列見出し・
+  セルの最小限の2次元グリッドとして確定した(3節)。
+- 記号(「／」等)の文脈依存の意味解釈について、汎用的なスパン注釈の
+  仕組みは導入せず、「意味解釈は仕訳表記が期待される文脈(journal_
+  template・tableのセル)に限定して試みる」という運用方針に留めることを
+  確定した(7節)。
+- Source粒度(ContentBlockをどこまで細かく分割するか)が、
+  `sourceRefs.role`の一意性に直接影響するという、Parser設計への重要な
+  申し送りを13節として新設した。
+
+これらの検証経緯・なぜこの構造に至ったかは、上記4ファイルに詳しく
+記録されている。**本ファイルは「現時点の正式設計」の役割を持ち、
+検証記録の役割は上記4ファイルが担う**、という役割分担とする。
 
 ---
 
@@ -145,6 +178,35 @@ kind別content)はユーザー承認済みのため変更していない。
 }
 ```
 
+**`table`blockKindの`parsed`構造(確定・第4版で追加)**: 表形式の
+ブロック(比較表等)は、`sourceFaithful`に表全体の忠実なテキストを
+保持したうえで、`parsed`へ行見出し・列見出し・セルの**単純な2次元
+グリッド**を持たせる(セルの結合・多階層見出し・セル内部のさらなる
+構造化は行わない、最小限の構造)。
+
+```jsonc
+{
+  "type": "ContentBlock",
+  "blockKind": "table",
+  "sourceFaithful": "...(表全体の忠実なテキスト。正本)",
+  "parsed": {
+    "columnHeaders": ["方式Ａ", "方式Ｂ", "方式Ｃ", "方式Ｄ"],  // 架空
+    "rowHeaders": ["期首", "仕入時", "決算整理前", "決算整理後"],  // 架空
+    "cells": [
+      ["...", "...", "...", "..."],
+      ["科目Ｘ／科目Ｙ", "科目Ｘ／科目Ｚ", "...", "..."],
+      ["...", "...", "...", "..."],
+      ["...", "...", "...", "..."]
+    ]
+  },
+  "diag": { "note": "セル内の／は本表の文脈では簡略仕訳表記(借方／貸方)として使われている" }
+}
+```
+
+`diag`に「この表全体で／をどう解釈すべきか」という**表単位の注記を
+1つだけ**持たせれば十分であり、セルごとに個別の解釈情報を持たせる
+必要はない(7節も参照)。
+
 補足:
 
 - `blockKind`は最低でも調査で確認した`worked_example`(設例)・
@@ -218,7 +280,9 @@ kind別content)はユーザー承認済みのため変更していない。
   "content": { /* 5-2節。knowledgeKindごとに形が異なる */ },
 
   "sourceRefs": [
-    { "sourceBlockId": "block-99-1-formula-1", "role": "primary" }
+    // role(確定・第4版で追加): definition/restatement/application/example
+    // など、SourceがこのKnowledgeに対して果たす役割(open vocabulary)
+    { "sourceBlockId": "block-99-1-formula-1", "role": "definition" }
   ],
 
   // A. 内容確信度(このKnowledgeの記述自体をどの程度信頼できるか)
@@ -229,8 +293,9 @@ kind別content)はユーザー承認済みのため変更していない。
   },
 
   // B. 一般性・反復性の証拠(判断材料としてのみ保持。閾値判定には使わない)
+  // occurrenceCountという単一値ではなく、role別の内訳(byRole)で持つ(確定・第4版)
   "evidence": {
-    "occurrenceCount": 1,
+    "byRole": { "definition": 1 },
     "distinctThemes": ["theme-99"],
     "distinctBooks": ["book-1"],
     "crossesBaseAdvanced": false
@@ -252,64 +317,117 @@ kind別content)はユーザー承認済みのため変更していない。
 
 - 「1回しか登場しないが、教材に明確に記載されている解法」
   → `contentConfidence.level = verified_from_source`(確信度は高い) /
-    `evidence.occurrenceCount = 1`(証拠は少ない) /
+    `evidence.byRole = {definition: 1}`(証拠は少ない) /
     `consolidation.state = single_source`(統合の論点なし)
-- 「同一テーマ内で数十回反復されるが、抽出結果が壊れやすい式」
-  → `contentConfidence.level = reconstructed`(復元に頼っており確信度は
-    中程度) / `evidence.occurrenceCount = 34`(証拠は豊富) /
-    `consolidation.state = merged_confirmed`
+- 「1回だけ用語ベースで定義され、その後は再掲されず複数箇所で数値
+  適用されるだけの式」(実データで確認: 定額法の計算式がテーマ8で
+  定義され、テーマ8・9内の複数の設例脚注で適用される)
+  → `contentConfidence.level = verified_from_source` /
+    `evidence.byRole = {definition: 1, application: 4}`(定義と適用を
+    分けて集計。単純合算はしない) / `consolidation.state =
+    merged_confirmed`
 
 出現回数の多さが、そのままKnowledgeの確信度や統合可否を意味しない、
 という前提をデータ構造の時点で強制する設計になっている。
 
-### 5-2. `content`はknowledgeKindごとに異なる構造を持つ(statement固定を廃止)
+### 5-2. `content`はknowledgeKindごとに異なる構造を持つ(statement固定を廃止。第4版で確定)
 
 旧版では`statement`という単一の文字列フィールドにすべてのKnowledgeの
 内容を詰め込んでいたが、仕訳の型・算定式・方程式解法では最終的に必要な
 構造が異なりうるため、これを廃止し、Sourceの`parsed`と同様に**kind別に
-形が異なる`content`オブジェクト**とする。以下は3つの`knowledgeKind`
-それぞれについての、現時点での**イメージ例**(確定スキーマではない。
-10節のとおり具体的なフィールドは今後の実データで調整する)。
+形が異なる`content`オブジェクト**とする。
+
+実データ検証(`book1_prototype_validation_results.md`・改訂案round1・
+再検証recheck)を経て、3つの`knowledgeKind`それぞれの`content`は
+以下の形で確定した。**いずれも、次の3つの異なる概念を混同しない**、
+という原則を前提とする。
+
+1. **教材上の忠実な式表現**(`rawTemplate`/`rawFormula`/`rawExample`)。
+   常に必須。これが唯一の正本(SSOT)である。
+2. **構造化された式**(`structure`。任意)。あくまで1の忠実な表現を
+   補助する構造情報であり、1の代わりにはならない。
+3. **学習用に利用する表現**。今回は設計しない(Exercise層の責務。
+   6節「Exercise層はまだ詳細設計しない」を継続)。
 
 ```jsonc
-// knowledgeKind: "journal_pattern" の content イメージ
+// knowledgeKind: "journal_pattern" の content(確定)
 {
-  "rawTemplate": "(借) 繰入費用 ××× (貸) ＸＹＺ引当金 ×××",  // 架空の例
-  "debitAccounts": ["繰入費用"],
-  "creditAccounts": ["ＸＹＺ引当金"],
-  "placeholderRoles": [{ "token": "×××", "role": "amount" }]
+  "rawTemplate": "(借) 繰入費用 ××× (貸) ○○○ ×××",  // 架空の例。正本
+  "debitAccounts": [
+    { "kind": "fixed", "value": "繰入費用" }              // 確定した科目
+  ],
+  "creditAccounts": [
+    { "kind": "placeholder", "token": "○○○", "undetermined": "account_name" }  // 科目自体が不定
+  ],
+  "amountSlots": [
+    { "token": "×××", "role": "amount" }                 // 金額のプレースホルダ(科目とは別管理)
+  ]
 }
 
-// knowledgeKind: "calculation_formula" の content イメージ
+// knowledgeKind: "calculation_formula" の content(確定)
 {
-  "rawFormula": "（対象額－既計上額）×設定率＝当期繰入額",  // 架空の例
-  "termsRaw": ["対象額", "既計上額", "設定率", "当期繰入額"]
+  "rawFormula": "（対象額－既計上額）×（１期間／全期間）＝当期計上額",  // 架空の例。正本
+  "structure": {                        // 任意。分数・グルーピング等がある場合のみ意味を持つ
+    "kind": "sequence",                 // open vocabulary
+    "tokens": [
+      { "kind": "group", "tokens": [
+          { "kind": "term", "value": "対象額" },
+          { "kind": "operator", "value": "－" },
+          { "kind": "term", "value": "既計上額" }
+      ]},
+      { "kind": "operator", "value": "×" },
+      { "kind": "fraction",
+        "numerator":   [{ "kind": "term", "value": "１期間" }],
+        "denominator": [{ "kind": "term", "value": "全期間" }] },
+      { "kind": "operator", "value": "＝" },
+      { "kind": "term", "value": "当期計上額" }
+    ]
+  }
 }
 
-// knowledgeKind: "solution_technique" の content イメージ
+// knowledgeKind: "solution_technique" の content(確定)
 {
-  "rawExample": "Ｘ－0.24Ｘ＝91,200 → 0.76Ｘ＝91,200 → Ｘ＝120,000",  // 架空化した例
+  "rawExample": "Ｙ－0.3Ｙ＝70,000 → 0.7Ｙ＝70,000 → Ｙ＝100,000",  // 架空化した例。正本
+  "steps": [                            // 任意。複数ステップがある場合のみ
+    { "rawStep": "Ｙ－0.3Ｙ＝70,000" },
+    { "rawStep": "0.7Ｙ＝70,000" },
+    { "rawStep": "Ｙ＝100,000" }
+  ],
   "technique": "linear_equation_backsolve",
   "appliesWhen": "既知の帳簿価額等から取得原価のような未知額を逆算する場合"
 }
 ```
 
+**`structure.tokens`のkind語彙(確定)**: `term`(項)・`operator`
+(演算子)・`fraction`(分子/分母を持つ分数)・`group`(丸括弧による明示的
+グルーピング)・`power`(base/exponentを持つべき乗)の**5種類**。
+実データで必要性が確認されたのはこの5種類であり、汎用的な数式ASTには
+しない。**`group`で明示的に囲まれていないトークン列は、通常の数式と
+同じ演算子優先順位(×・÷は－・＋より先に結合する)で読む**、という
+解釈規約を前提とする。この5種類も含め、kind自体はopen vocabularyであり、
+将来新しい崩れ方が見つかれば種別を追加してよい(固定enumにしない)。
+
 いずれの`content`も、少なくとも1つは「原文に近い忠実なテキスト」
-(`rawTemplate`/`rawFormula`/`rawExample`)を持つことを緩い共通ルールとする
+(`rawTemplate`/`rawFormula`/`rawExample`)を持つことを共通ルールとする
 (要約・言い換え禁止の原則をDerived Knowledge側でも守るため)。それ以外の
-構造化フィールドは、`knowledgeKind`ごとに自由に増減してよい。
+構造化フィールド(`structure`・`steps`・`debitAccounts`等)は、
+`knowledgeKind`ごとに自由に増減してよい。
 
 `sourceRefs`は配列であり、以下すべてを自然に表現できる(旧版から変更なし)。
 
 - **1 Source → 1 Knowledge**: `sourceRefs`が1件のみ(上記例)。
 - **複数Source → 1 Knowledge**: 同じ計算式が複数テーマで確認された場合
   (調査レポート6節の「定額法の計算式がテーマ8→9で反復」に相当)、
-  `sourceRefs`に複数の`sourceBlockId`を追加し、`evidence.occurrenceCount`・
-  `distinctThemes`を増やし、`consolidation.state`を`merged_confirmed`にする。
+  `sourceRefs`に複数の`sourceBlockId`を追加し、`role`(定義か適用か等)を
+  それぞれ付与し、`evidence.byRole`・`distinctThemes`を更新し、
+  `consolidation.state`を`merged_confirmed`にする。
 - **1 Source → 複数Knowledge**: 1つの仕訳型ボックスに`※1`・`※2`のように
   複数の補足式がぶら下がる場合(調査レポート3節)、同じ`sourceBlockId`を
   参照する複数のDerivedKnowledgeを作り、`sourceRefs`側に`anchor: "note1"`
   のような補足識別子を持たせて、どの補足式に対応するかを区別する。
+  実データ検証の結果、`sourceRefs.role`が1要素=1roleで自然に分類できた
+  のは、**Sourceの粒度をこの`※1`・`※2`のような脚注単位まで細かく
+  分割していたことが前提**だった。この点は13節で申し送る。
 
 ---
 
@@ -323,9 +441,9 @@ kind別content)はユーザー承認済みのため変更していない。
 ```
 SourceBlock[block-A] "（残高－既存額）×率＝当期計上額"(テーマ50、教材に明記)
    → DerivedKnowledge[dk-A]
-     sourceRefs=[block-A]
+     sourceRefs=[{block-A, role: definition}]
      contentConfidence.level=verified_from_source(原文どおり転記、確信度は高い)
-     evidence.occurrenceCount=1(証拠はまだ少ない)
+     evidence.byRole={definition: 1}(証拠はまだ少ない)
      consolidation.state=single_source(統合の論点自体が発生しない)
 ```
 
@@ -335,18 +453,22 @@ SourceBlock[block-A] "（残高－既存額）×率＝当期計上額"(テーマ
 **② 複数Source → 1 Knowledge(反復確認により統合、証拠が豊富)**
 
 ```
-SourceBlock[block-B1] 同じ計算式(テーマ50)
-SourceBlock[block-B2] 同じ計算式が別資産に適用(テーマ51)
+SourceBlock[block-B1] 計算式が定義される(テーマ50)
+SourceBlock[block-B2] 定義を再掲せず、別資産へ数値適用される(テーマ51)
    → DerivedKnowledge[dk-B]
-     sourceRefs=[block-B1, block-B2]
+     sourceRefs=[{block-B1, role: definition}, {block-B2, role: application}]
      contentConfidence.level=verified_from_source
-     evidence.occurrenceCount=2, distinctThemes=[theme-50, theme-51]
+     evidence.byRole={definition: 1, application: 1}, distinctThemes=[theme-50, theme-51]
      consolidation.state=merged_confirmed(同一知識として統合してよいと判断済み)
 ```
 
 「2箇所以上だからconfirmed」という閾値判定はしない。ここでの
 `merged_confirmed`は、出現回数そのものではなく、**2つのSourceが同一の
 知識を表しているという統合判断が(暫定的にせよ)行われたこと**を表す。
+また、`role`を区別せず単純に「2箇所」と数えるのではなく、「定義1箇所・
+適用1箇所」という内訳を保持することで、後から見て「独立に2回書かれて
+いる」のか「1回定義され1回適用されている」のかを区別できる(実データ
+検証で判明した、定額法の計算式の実際の反復構造に合わせた表現)。
 
 **③ 1 Source → 複数Knowledge(1ボックス内の複数補足式)**
 
@@ -537,6 +659,23 @@ C軸だけ**であり、旧版のように「unresolved」という1つのラベ
 今後の呼称とする(このファイル内でも本節以降はこの4概念で統一する)。
 なお、いずれも暫定名であり、スキーマの正式コード化時に変更してよい。
 
+### 7-7. 記号の文脈依存の意味解釈(汎用スパン注釈は導入しない。第4版で確定)
+
+「／」のように、同じ記号がブロックの文脈によって異なる意味を持つ場合
+(比較表セル内での簡略仕訳表記 vs 為替レートの単位表記)がある。実データ
+検証の結果、これに対して**ブロック内の特定の範囲(スパン)へ注釈を
+付ける汎用的な仕組みは導入しない**ことを確定する。
+
+理由: 記号の意味解釈が必要になるのは、**仕訳表記が期待される文脈
+(`journal_template`ブロックや`table`のセル、3節参照)に限られる**。
+それ以外の場所(`worked_example`の問題文プロパー文等)に出てくる記号は、
+単に`sourceFaithful`の地の文の一部として保持すればよく、意味の解釈
+自体を試みる必要がない。したがって、「記号の意味解釈は、仕訳表記が
+期待される文脈に限定して試み、それ以外の地の文では試みない」という
+**運用方針**で足り、スキーマへ新しいフィールドを追加する必要はない
+(1ケースのために汎用的な仕組みを導入することを避けた、という判断も
+含む)。
+
 ---
 
 ## 8. unknown / unresolvedの扱い
@@ -559,7 +698,7 @@ C軸だけ**であり、旧版のように「unresolved」という1つのラベ
   - **統合してよいか未確定**な場合(6節④)は、`consolidation.state`を
     `merge_candidate`にし、`possibleDuplicateOf`で候補をリンクする。
     内容自体の確信度(A軸)は下げない。
-  - **反復・一般性が乏しい**こと自体は`evidence.occurrenceCount`が
+  - **反復・一般性が乏しい**こと自体は`evidence.byRole`の値が
     小さいという事実として保持するだけであり、それ自体を理由に
     Knowledgeを「弱い」「未確定」とは扱わない(統合提案・CLAUDE.md原則4
     のとおり、出現回数は判断材料であって確定ルールの根拠にはしない。
@@ -584,6 +723,13 @@ C軸だけ**であり、旧版のように「unresolved」という1つのラベ
 | (改訂)出現回数の多さと内容確信度・統合可否は別問題 | `status`という単一フィールドを廃止し、`contentConfidence`/`evidence`/`consolidation`の3軸へ分離(5節・6節・8節) |
 | (改訂)rawが「原文の忠実な表現」か「機械抽出の生出力」か曖昧だった | `raw`を「教材上の表現を要約・言い換えなしに忠実に書き写したもの」に定義を確定し、機械抽出との差異は`diag`側の監査情報として保持(7節) |
 | (改訂)仕訳の型・算定式・方程式解法で必要な構造が異なる | Derived Knowledgeの`statement`(単一文字列)を廃止し、`knowledgeKind`ごとに形が異なる`content`オブジェクトへ変更(5-2節) |
+| (第4版)term/operator/fractionだけでは丸括弧のグルーピングが表現できず、構造を一意に読み戻せなかった(実データ検証で判明) | `structure.tokens`へ`group`トークン種別を追加し、「groupが無い箇所は演算子優先順位で読む」規約を明記(5-2節) |
+| (第4版)指数を含む式(定率法の複数年分計算)が表現できなかった | `structure.tokens`へ`power`トークン種別を追加(5-2節) |
+| (第4版)`○○○`(科目不定)をそのまま文字列で扱うと確定科目名と区別できなかった | `journal_pattern`の`debitAccounts`/`creditAccounts`を`{kind:"fixed"\|"placeholder", ...}`型にし、金額プレースホルダは`amountSlots`として分離(5-2節) |
+| (第4版)`sourceRefs`が「定義」と「(再掲せず)適用」を区別できなかった | `sourceRefs`に`role`(definition/restatement/application/example)を追加し、`evidence.occurrenceCount`を`evidence.byRole`へ変更(5-2節・6節) |
+| (第4版)`table`ブロックのcontent構造が未設計だった | 行見出し・列見出し・セルの最小2次元グリッドを`parsed`として確定(3節) |
+| (第4版)為替レート表記の「／」がブロック単位の`parsed`では扱えなかった | 汎用スパン注釈は導入せず、「意味解釈は仕訳表記が期待される文脈に限定する」運用方針で解決(7-7節) |
+| (第4版)`sourceRefs.role`が1要素=1roleで機能したのは、Sourceの粒度が脚注単位まで細かい場合のみだった | Parser設計への申し送り事項として13節に明記 |
 
 ---
 
@@ -597,17 +743,24 @@ C軸だけ**であり、旧版のように「unresolved」という1つのラベ
 - コラム・Q&Aを本当に一律Derived Knowledge対象外としてよいか(例外の
   有無は他冊を見ないと分からない。ただし4節のとおり、個別例外を許す設計
   自体は既に採用している)
-- `parsed`・`content`の具体的なフィールド定義(ブロック種別・
-  knowledgeKindごとに変わる想定だが、実データが少なく網羅的な設計は
-  できない)
+- `parsed`(`table`以外のblockKind)・`content`のうち、今回の3
+  knowledgeKind(journal_pattern/calculation_formula/solution_technique)
+  以外の具体的なフィールド定義(実データが少なく網羅的な設計はできない)
 - `contentConfidence.level`・`consolidation.state`の具体的な語彙(今回
   例示した`verified_from_source`/`reconstructed`/`uncertain`、
   `single_source`/`merged_confirmed`/`merge_candidate`/`merge_rejected`は
   いずれもイメージ例であり、確定した値一覧ではない)
+- `sourceRefs.role`の語彙(`application`と`example`が実際に区別できる
+  概念か、今回のような脚注単位の細かい粒度では`example`の出番が確認
+  できなかった。13節も参照)
 - `extractionRaw`を保持する/省略する境界(「`sourceFaithful`と完全一致
   すれば省略」で十分か、軽微な差異(全角/半角の揺れ等)まで含めて厳密に
   一致判定するか)、および`diag`の具体的なフィールド構成(7-4節の例は
   イメージであり確定していない)
+- `structure.tokens`のkind語彙(`term`/`operator`/`fraction`/`group`/
+  `power`)が、No.1巻以外の教材でも過不足ないか
+  (`structure`を自動生成するか人手で作るかというParser実装上の判断も
+  含め、保留)
 - 基礎/上級統合の具体的な判定ロジック(本冊は基礎コースのみのため判断
   材料がない。`evidence.crossesBaseAdvanced`のような証拠フィールドは
   用意したが、それをどう判断に使うかは決めていない)
@@ -631,8 +784,8 @@ C軸だけ**であり、旧版のように「unresolved」という1つのラベ
 
 ## 12. 実装前にユーザーが判断すべき事項
 
-今回のレビューで、次の5点は**ユーザーの判断として既に決定済み**である。
-今後の設計・実装はこれを前提として進める。
+これまでのレビューで、次の事項は**ユーザーの判断として既に決定済み**
+である。今後の設計・実装はこれを前提として進める。
 
 | 事項 | 決定内容 |
 |---|---|
@@ -641,11 +794,43 @@ C軸だけ**であり、旧版のように「unresolved」という1つのラベ
 | コラム/Q&A/図解/分類表 | Sourceには保持する。Derived Knowledgeへの自動昇格はさせないが、「一律対象外」と固定せず、個別に学習上独立した知識が見つかった場合はDerived化できる設計とする(4節) |
 | Derived Knowledgeの確信度・確定基準 | 「2箇所以上でconfirmed」という出現回数ベースのルールは採用しない。出現回数は`evidence`として保持し、内容確信度・統合判断とは分離する(5節・8節) |
 | `parsed`層の自動化範囲 | 今は決めない。スキーマ設計と最小実装を通じて、機械的に安全に処理できる範囲を確認してから決める |
+| `structure.tokens`のkind語彙 | **承認済み(最終形)**。`term`/`operator`/`fraction`/`group`/`power`の5種類を、実データによる必要性確認を経て正式採用。固定enumにはしない(5-2節) |
+| `sourceRefs.role`・`evidence.byRole` | **承認済み(最終形)**。`role`(definition/restatement/application/example等)を導入し、`evidence.occurrenceCount`という単一値は廃止(5-2節・6節) |
+| `journal_pattern`のfixed/placeholder/amountSlots | **承認済み(最終形)**。確定した勘定科目とプレースホルダを型で区別し、金額プレースホルダは科目のプレースホルダと別管理とする(5-2節) |
+| `table`のcontent(parsed)構造 | **承認済み(最終形)**。行見出し・列見出し・セルの最小2次元グリッド。結合・多階層見出しは対象外(3節) |
+| 記号の文脈依存の意味解釈(span annotation) | **導入しないことを承認済み**。意味解釈は仕訳表記が期待される文脈に限定する運用方針のみとする(7-7節) |
 
 **まだ判断されていない事項**(次フェーズ以降で改めて相談する):
 
 - 方程式による解法テクニックを独立したDerived Knowledgeとして扱う価値が
   あるか(10節。1件のみの確認のため保留)
 - `contentConfidence.level`・`consolidation.state`の正式な語彙一覧
+- `sourceRefs.role`の`application`と`example`が実際に区別できる概念か
+  (13節の粒度に関する申し送りとあわせて、Parser設計時に判断する)
 - Source層・Derived Knowledge層のフィールド名・型を、この設計案どおりに
   コード化してよいか(スキーマの正式な確定・実装の承認)
+
+---
+
+## 13. Parser設計への申し送り事項(Source粒度について)
+
+**重要**: 実データ検証(`planning/data_model_revision_round1_recheck.md`
+ケース4a)で、`sourceRefs`の1要素が1つの`role`だけで自然に分類できた
+のは、**Sourceブロックの粒度を`※1`・`※2`のような脚注(意味単位)まで
+細かく分割していたことが前提**だった。もしSourceの粒度を粗くし、
+「設例全体」を1つのContentBlockとして扱った場合は、その1ブロックが
+「知識の具体例(`example`)」と「数値を当てはめた適用(`application`)」の
+両方に見える可能性が高いことが分かっている。
+
+**これはDerived Knowledgeモデル自体(3軸状態モデル・`sourceRefs.role`)
+を変更する理由にはしない。** 一方で、次のParser設計(教材構造分析から
+Sourceを機械的に組み立てる部分の設計)においては、**Sourceの分割粒度を
+「PDFレイアウト上のブロック」だけで決めるのではなく、「Derived
+Knowledgeとの意味的関係(定義か・適用かなど)を一意に表現できる粒度」も
+考慮に入れて設計する必要がある**。
+
+ただし、これを「必ず脚注単位に分割する」という一般ルールとして今の
+時点で固定はしない。今回確認できたのは「Source粒度が粗すぎると、1つの
+Sourceが複数roleを同時に持ちうる」という設計上の制約であり、具体的な
+分割基準はParser設計のフェーズで、実際の教材構造分析結果と突き合わせ
+ながら決める。
