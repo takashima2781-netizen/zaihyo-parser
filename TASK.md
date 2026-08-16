@@ -6,8 +6,11 @@
 ## 現在のフェーズ
 
 **Parser設計(PDF→Source層)の設計案が第3版として確定。実データ小規模検証
-(Source粒度・親子Source間のsourceFaithful重複)は完了。次は小規模実装へ
-進む前に残る検証事項(StructureNode認識の下調べ・ラベル検出の試作等)。**
+(Source粒度・親子Source間のsourceFaithful重複・StructureNode認識・ラベル
+検出試作・Block Detectionパターン検出系の全数調査・子Source化候補の必要性
+判定基準の小規模検証)は完了。子Source化候補の必要性判定基準は、8ケースの
+小規模検証を経ても正式なルールとしては未確定であり、次に何を検証するかを
+改めて評価する段階にある(`planning/parser_design_proposal.md`9節参照)。**
 
 これまでに完了したこと(古い順):
 
@@ -30,7 +33,23 @@
    親子Source間の`sourceFaithful`重複2ケース検証。
    - `planning/parser_source_granularity_validation.md`
    - `planning/parser_sourcefaithful_duplication_validation.md`
-6. **次フェーズ = 小規模実装前の残り検証**(まだ着手していない)。
+6. **StructureNode認識の下調べ・ラベル検出の試作完了** — 全209ページの
+   機械的走査により、テーマ/論点/サブ項目見出しの検出精度、本編6ラベルの
+   検出精度を確認した。この過程で`book1_material_survey_report.md`の
+   「研究」ラベル・出現回数の誤りを発見し訂正した。
+   - `planning/structurenode_recognition_survey.md`
+   - `planning/label_detection_prototype_validation.md`
+7. **Block Detectionパターン検出系の全数調査完了** — 仕訳型・計算式・方程式
+   パターンが全209ページでどう出現するかを機械的に調査した。この過程で
+   `book1_material_survey_report.md`の4件の記述(`○○○`出現数・分布、差額
+   補充法の式表記、スラッシュ略記の文脈範囲、方程式の適用範囲)の再確認・
+   訂正を行った。
+   - `planning/pattern_detection_survey.md`
+8. **子Source化候補の必要性判定基準の小規模検証完了** — 8ケースの比較により
+   「独立参照必要性」が最も判別力の高い判定軸であることの示唆を得たが、
+   正式なルールとしては未確定。
+   - `planning/child_source_necessity_validation.md`
+9. **次フェーズ = 小規模実装前の残り検証**(継続中)。
    `planning/parser_design_proposal.md`9節を参照。
 
 ## 直近タスク(完了分)
@@ -55,9 +74,17 @@
       方針(Stage1〜3)として確定
 - [x] 親子Source間の`sourceFaithful`重複の扱い — 同5-1節で確定
       (重複許容+`diag.provenance`+`relation`のopen vocabulary)
-- [ ] 小規模実装へ進む前の残り検証(StructureNode認識の下調べ・ラベル検出の
-      試作・`diag`蓄積型設計の実装可能性確認・gateChecks不変条件の具体化) —
-      `planning/parser_design_proposal.md`9節
+- [x] StructureNode認識の下調べ — `planning/structurenode_recognition_survey.md`
+- [x] ラベル検出の試作 — `planning/label_detection_prototype_validation.md`
+- [x] Block Detectionパターン検出系(仕訳型・計算式・方程式)の全数調査 —
+      `planning/pattern_detection_survey.md`
+- [x] 子Source化候補の必要性判定基準の小規模検証(8ケース。正式なルールとしては
+      未確定) — `planning/child_source_necessity_validation.md`
+- [ ] 子Source化候補の必要性判定基準の追加検証(ケース数を増やして判定基準の
+      確からしさを高める)
+- [ ] `diag`蓄積型設計の実装可能性確認
+- [ ] [7] Validation/DiagnosticsのgateChecks不変条件の具体化
+      — `planning/parser_design_proposal.md`9節
 - [ ] 教材構造分析からSourceを機械的に組み立てる部分の実装
 - [ ] `structure.tokens`(term/operator/fraction/group/power)を
       自動生成するか人手で作るかの判断(Source→Derived Knowledgeフェーズ)

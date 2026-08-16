@@ -35,6 +35,14 @@ Stage1〜3のSource Segmentation・条件付き親子Sourceの方針へ具体化
 示す最小限の整合修正を、当該ファイル側にも行った。検証記録自体は転載せず、
 必要な箇所のみ参照する。
 
+**追記(2026-08-16)**: 9節に残っていた検証事項のうち、Block Detectionパターン
+検出系(仕訳型・計算式・方程式)の全数調査(`planning/pattern_detection_survey.md`)
+と、子Source化候補の必要性判定基準の小規模検証(`planning/child_source_
+necessity_validation.md`)を実施した。実データで確認できた事実(検出可否と
+子Source化必要性は別問題であること、8ケースの範囲で「独立参照必要性」が
+最も判別力の高い軸だったこと等)のみを9節・10節へ最小限反映した。**Stage3の
+判定基準そのものは、この版でも正式確定していない**(9節参照)。
+
 参照した既存資料(Git管理下のSSOT):
 
 - `CLAUDE.md` / `SPEC.md` / `TASK.md`
@@ -469,8 +477,11 @@ Diagnostics段階のgateChecksで異なる検証を行う構造を前提とす�
 `sourceFaithful`重複問題の優先比較検証**
 (`planning/parser_sourcefaithful_duplication_validation.md`)**、
 StructureNode認識の下調べ**(`planning/structurenode_recognition_survey.md`)
-**、およびラベル検出の試作**
-(`planning/label_detection_prototype_validation.md`)**は完了した**。
+**、ラベル検出の試作**(`planning/label_detection_prototype_validation.md`)
+**、Block Detectionパターン検出系(仕訳型・計算式・方程式)の全数調査**
+(`planning/pattern_detection_survey.md`)**、および子Source化候補の必要性
+判定基準の小規模検証**(`planning/child_source_necessity_validation.md`)
+**は完了した**。
 
 StructureNode認識の下調べでは、全209ページの機械的走査により次を確認した
 (詳細・根拠は同ファイルを参照し、本節には転載しない)。テーマ・論点・
@@ -496,11 +507,38 @@ StructureNode認識の下調べでは、全209ページの機械的走査によ�
 固定enum化・他冊での再現性確認は、いずれも本改訂では行わず、確認できた
 事実としてのみ扱う(未決事項として10節に残す)。
 
+Block Detectionパターン検出系の全数調査(`planning/pattern_detection_survey.md`)
+では、1-2節で想定していた「パターン検出系」(仕訳型・計算式・方程式)が
+全209ページでどう出現するかを機械的に確認した(詳細・根拠は同ファイルを
+参照し、本節には転載しない)。**pattern detectorが候補を検出できることと、
+その候補が教材上の意味的に完結した単位であること、その候補を独立Sourceとして
+参照する必要があることは、それぞれ別問題である**ことが実データで明確に
+なった。プレースホルダ(`×××`/`○○○`/`〇〇〇`)の有無に関わらない仕訳の
+表記系統が複数確認できたこと、分数・べき乗を含む式が複数行にまたがって
+抽出されること(分数は分母が次行、べき乗は指数が前行に分断される、分断の
+方向が逆であること)、`／`記号が5通り以上の意味を持つことなどが確認できた。
+
+子Source化候補の必要性判定基準の小規模検証
+(`planning/child_source_necessity_validation.md`)では、既存の粒度検証
+(`parser_source_granularity_validation.md`)で確定済みの4ケースと、パターン
+検出系調査から選んだ4ケースの計8ケースを比較した。**教材明示境界の有無・
+意味的完結性・反復回数・blockKindのいずれも、単独では子Source化の要否を
+説明できなかった**。8ケースの範囲では、**「Derived Knowledge等から独立して
+参照する必要がありそうか」という軸(独立参照必要性)が、最も判別力の高い
+判定材料だった**。また、自動判断できず要レビューとしたケースにも、
+(a)教材の意図の理解を要する意味判断待ちのケースと、(b)Faithful Restoration
+による式の復元が完了していないために判断の前提が整っていない検出安定性待ちの
+ケース、という**性質の異なる2種類の原因**が観察された。**この8ケースだけで
+Stage3の判定基準を正式なルールとして確定するには至っていない**。基準の具体化
+には追加のケース検証が必要であり、詳細・根拠は同ファイルを参照し本節には
+転載しない。
+
 残る検証事項は次のとおり。
 
-- **子Source化候補の必要性判定基準の具体化**: 3-5節で保留した「独立して
-  参照する必要があるかどうか」を、どこまでParserが自動判定でき、どこから
-  人間レビューが必要かを、表・複数ステップ式変形以外のケースでも確認する。
+- **子Source化候補の必要性判定基準の追加検証**: 8ケースの小規模検証で得られた
+  「独立参照必要性が最も判別力が高い」という示唆を、他のケース(教材上の
+  他の反復パターン、`①②③`のような未検証の列挙記号等)でも確認し、判定基準を
+  より確からしいものにする。
 - **`diag`蓄積型設計の実装可能性**: 複数ステージが1つの`diag`オブジェクトへ
   段階的に書き込む構成が、責務の混線なく実装できるかを小さいプロトタイプで
   確認する。
@@ -525,7 +563,10 @@ StructureNode認識の下調べでは、全209ページの機械的走査によ�
 - 親子関連付けの具体的なフィールド名・型のコード化。
 - StructureNode/ContentBlockのその他のフィールド名・型のコード化。
 - 3節Stage2/3の「子Source化候補」を、Parserがどこまで自動判定でき、どこから
-  人間レビューが必要かの具体的な境界。
+  人間レビューが必要かの具体的な境界。小規模検証(`child_source_necessity_
+  validation.md`)により「独立参照必要性」が最も判別力の高い軸であることの
+  示唆は得られたが、8ケースの範囲での帰納にとどまり、正式な判定ルールとしては
+  未確定。
 - ラベル検出のアルゴリズム: `label_detection_prototype_validation.md`により
   「PUAアイコン+文字列パターン(空白許容)」が本書6ラベルの範囲では有効
   であることは確認できたが、次の点は未確定のまま残る。
@@ -550,8 +591,12 @@ StructureNode認識の下調べでは、全209ページの機械的走査によ�
 Source粒度(3節)・親子Source間の`sourceFaithful`重複(5-1節・6-3節)は、
 実データ検証を経て方針を確定した。StructureNode認識の下調べ
 (`planning/structurenode_recognition_survey.md`)・ラベル検出の試作
-(`planning/label_detection_prototype_validation.md`)も完了し、9節に残る
-3項目(子Source化候補の必要性判定基準・`diag`蓄積型設計・[7] Validation/
-Diagnosticsの不変条件の具体化)のうちどれを次に検証するかは、改めて優先度を
-確認してから着手する。Parser本体の実装・スキーマの正式コード化は、これらの
-検証を経てから改めて着手を判断する。
+(`planning/label_detection_prototype_validation.md`)・Block Detection
+パターン検出系の全数調査(`planning/pattern_detection_survey.md`)・子Source化
+候補の必要性判定基準の小規模検証(`planning/child_source_necessity_
+validation.md`)も完了した。**子Source化候補の必要性判定基準は、8ケースの
+小規模検証を経ても正式なルールとしては未確定であり**、9節に残る3項目
+(判定基準の追加検証・`diag`蓄積型設計・[7] Validation/Diagnosticsの不変条件
+の具体化)のうちどれを次に検証するかは、改めて優先度を確認してから着手する。
+Parser本体の実装・スキーマの正式コード化は、これらの検証を経てから改めて
+着手を判断する。
