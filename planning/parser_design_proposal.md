@@ -43,6 +43,17 @@ necessity_validation.md`)を実施した。実データで確認できた事実(
 最も判別力の高い軸だったこと等)のみを9節・10節へ最小限反映した。**Stage3の
 判定基準そのものは、この版でも正式確定していない**(9節参照)。
 
+**追記(2026-08-16・続き)**: 9節に残っていた残り2項目、「[7] Validation/
+DiagnosticsのgateChecks不変条件の具体化」(`planning/gatechecks_invariant_
+validation.md`)と「`diag`蓄積型設計の実装可能性」(`planning/diag_
+accumulation_validation.md`)を検証した。この結果を踏まえ、5・5-1・6-3・9・
+10節を最小限改訂した。**特に、`provenance`の配置を`diag.provenance`から
+`diag`外のContentBlock側フィールドへ改める方針とした**(経緯は5-1節に記録)。
+**gateChecksの結果は`diag`へ書き戻さず、別管理のValidation実行レポートとする
+方針**も確定した(6-3節)。いずれも実データ検証で十分に裏付けられた範囲の
+反映であり、`diag`の正式スキーマ・gateChecks本実装・**Stage3判定基準の正式
+確定は、この改訂でも行っていない**(9・10節)。
+
 参照した既存資料(Git管理下のSSOT):
 
 - `CLAUDE.md` / `SPEC.md` / `TASK.md`
@@ -161,7 +172,7 @@ Zaihyo Parserの「単一のオーケストレータ関数が、責務ごとに�
 | [2] Structure Recognition | ページ単位テキスト | StructureNodeの骨格(階層・`label.titleRaw`・`importance`・`priorKnowledgeMark`)。中身(ContentBlock)はまだ空 | テーマ/論点の境界を確定させる段階。ここで確定した境界が後段のContentBlock所属先になる |
 | [3] Block Detection | ページ単位テキスト + StructureNode境界 | ContentBlock候補のリスト(範囲・暫定`blockKind`・検出根拠)。ネストした候補(大きな視覚単位の内部で検出された計算式等)も候補として含む | 「候補」であり、まだSourceとして確定していない(3節・[4]へ) |
 | [4] Source Segmentation | ContentBlock候補 | 確定したContentBlockの集合(通常は単一。3節の条件に該当する場合のみ親子構造) | 3節の中心論点。ここで生成される単位が最終的な`sourceRefs`の参照粒度になる |
-| [5] Faithful Restoration | 確定ContentBlockの`extractionRaw` | `sourceFaithful` + `diag.extraction`/`diag.faithfulReconstruction` | 自動補正/人間確認の切り分けは6-1節。親子構造の場合の重複は許容し`diag.provenance`で記録する(5-1節) |
+| [5] Faithful Restoration | 確定ContentBlockの`extractionRaw` | `sourceFaithful` + `diag.extraction`/`diag.faithfulReconstruction` | 自動補正/人間確認の切り分けは6-1節。親子構造の場合の重複は許容し`provenance`(`diag`外、5-1節)で記録する |
 | [6] Parsing | `sourceFaithful` | `parsed`(blockKindごとの構造) + `diag.parseInterpretation` | `structure.tokens`はスコープ外 |
 | [7] Validation / Diagnostics | 全ContentBlock + StructureNode | 不変条件チェック結果(gateChecks相当)、検出不能・要レビュー要素の一覧(コーパスレベルmeta含む) | Zaihyo Parserの`anomalyDetector.mjs`+`build-drill-csv.mjs`のgateChecksパターンを参考に、簿記論固有の不変条件を新規設計する |
 
@@ -243,8 +254,8 @@ Source Segmentationの目的は、細かく分割すること自体ではない�
   設例全体を親、計算行を子とする条件付き分割を試みたところ、`application`
   roleを一意に参照できるようになった一方、**子の`sourceFaithful`(計算行)が
   親の`sourceFaithful`(設例全文)と文字面上部分的に重複する**ことが判明した。
-  この重複自体は許容し、`diag.provenance`で由来を記録する方針として確定
-  している(5-1節)。
+  この重複自体は許容し、`provenance`(`diag`外、5-1節)で由来を記録する方針
+  として確定している。
 - **Stage1のみで完結する例**: 通常の設例→解説の対提示(教材中で最も高頻度、
   61/57件)、比較表全体、複数ステップの方程式解法。いずれも子Source化の
   必要性がなく、単一Sourceのまま4軸評価(教材上の文脈保持・根拠参照・検出
@@ -252,7 +263,7 @@ Source Segmentationの目的は、細かく分割すること自体ではない�
 
 ### 3-5. まだ確定していないこと
 
-- 親子関連付けの具体的なフィールド名・型(`diag.provenance`のフィールド構成は
+- 親子関連付けの具体的なフィールド名・型(`provenance`のフィールド構成は
   5-1節で方向性を示したが、正式なフィールド名・型のコード化はまだ行っていない)
 - Stage2/3で検出された候補を「実際に子Source化するかどうか」の必要性判定
   基準そのもの(現時点では「Derived Knowledgeから一意に参照する必要がある
@@ -315,12 +326,17 @@ ContentBlockとして扱う)。
 | `extractionRaw` | [1] Extraction | ツール出力そのまま。意味解釈なし |
 | `sourceFaithful` | [5] Faithful Restoration | `extractionRaw`と一致する場合は書き戻し不要(`diag.extraction.status = captured_matches_sourceFaithful`を設定するのみ) |
 | `parsed` | [6] Parsing | `sourceFaithful`確定後にのみ生成できる(依存関係が明確) |
-| `diag` | 複数段階(蓄積型) | `diag.extraction`は[1]、`diag.faithfulReconstruction`は[5]、`diag.parseInterpretation`は[6]がそれぞれ担当分を追記する。1段階が一括生成するのではなく、パイプラインを通過するにつれて蓄積される構造とする(Zaihyo ParserのBSM層で`parsed`配下に`DiagMeta`を名前空間分離して持たせる設計と同じ思想) |
+| `diag` | 複数段階(蓄積型) | 基本はステージ別namespace(`diag.extraction`は[1]、`diag.faithfulReconstruction`は[5]、`diag.parseInterpretation`は[6]がそれぞれ担当分を追記する)。ただしplain抽出失敗→layout抽出成功のように**複数回の試行が本質的に起こりうる情報**だけは、名前空間内に履歴(attempt配列)を持たせる(通常ケースまで一律イベントログ化はしない)。`provenance`はこの`diag`には含めない(5-1節) |
 
-`diag`を複数段階が書き込む共有オブジェクトとして扱う設計は、ステージ間の
-責務境界を曖昧にするリスクがある(どの段階がどのフィールドに責任を持つかが
-実装上あいまいになりやすい)。9節の検証事項として、実装しやすさを確認する
-必要がある。
+**`diag`蓄積型設計の実装可能性を小規模検証した結果(確定方針、`planning/diag_
+accumulation_validation.md`)**: 基本はステージ別namespace、複数回試行が
+本質的な情報のみ履歴化、という組み合わせ方式が実データ8ケースに最も無理が
+少なかった。`diag`は**処理の事実・監査情報のみを保持し**、`reviewRequired`の
+ような要レビューかどうかの最終判断は持たせない(判断は[7] Validation側の
+責務とする、6-3節)。また、artifact(`diag.extraction.artifacts`)は単なる
+文字列配列ではなく、少なくとも`kind`/`stage`/`resolved`/`note`程度の構造を
+持たせる方向とする。いずれも方向性の確定であり、正式なフィールド名・型の
+コード化はまだ行っていない(10節)。
 
 ### 5-1. 親子Source間の`sourceFaithful`重複(確定方針)
 
@@ -334,12 +350,12 @@ ContentBlockとして扱う)。
   fragment共有レイヤー(親子が共通の断片IDを参照する新レイヤー)のような、
   重複排除を目的とした新機構は**現時点では導入しない**。実データで必要性が
   確認されていない複雑さを持ち込まないことを優先する。
-- **子の`diag`に`provenance`(由来・監査情報)を持たせる。** 例:
-  `diag.provenance = { parentBlockId: "...", relation: "extracted_from_parent",
+- **子に`provenance`(由来情報)を持たせる。** 例:
+  `provenance = { parentBlockId: "...", relation: "extracted_from_parent",
   note: "..." }`(フィールド名・型は方向性の例示であり、正式なコード化は
-  行っていない)。**`diag.provenance`は同期機構ではない。** 親が修正された
+  行っていない)。**`provenance`は同期機構ではない。** 親が修正された
   際に子を自動的に追従させる仕組みではなく、あくまで「この子がどの親と
-  どういう関係にあるか」を記録する監査情報であり、親子間の整合性確認は
+  どういう関係にあるか」を記録する情報であり、親子間の整合性確認は
   [7] Validation / Diagnostics(gateChecks)側の責務とする。
 - **`relation`はopen vocabularyとする。** 検証で確認できたのは次の2種類の
   初期語彙であり、固定enumとしては確定しない。No.1巻で確認された初期語彙
@@ -349,6 +365,22 @@ ContentBlockとして扱う)。
     伴う。例: 設例内の計算行)
   - `footnote_of_parent`: 子が親と同じ視覚単位に属するが、教材上もともと
     別の場所にある独立した内容(内容的重複を伴わない。例: `※1`等の脚注)
+
+**`provenance`の配置についての改訂(2026-08-16)**: 第3版では`provenance`を
+`diag.provenance`として`diag`の内側に置いていた。`diag`蓄積型設計の小規模検証
+(`planning/diag_accumulation_validation.md`5-4節)の結果、`provenance`は
+「うまくいった/いかなかった」という評価軸を持たない**構造的な由来情報**であり、
+抽出・復元の成否を記録する`diag`本来の診断情報とは性質が異なること、また抽出・
+復元に何の問題もないContentBlock(`diag`の他の部分がほぼ空になるもの)でも
+`provenance`は必ず存在するケースが多数見つかったことから、**`provenance`を
+`diag`から分離し、ContentBlockの独立したフィールド(`location`等と同格)として
+扱う方針へ改訂する**。`relation`(`extracted_from_parent`/`footnote_of_parent`)は
+`provenance`に属する情報として、この`provenance`フィールド側で引き続き管理する。
+**この改訂は方向性の確定であり、正式なフィールド名・型のコード化はまだ行って
+いない**(10節)。以降、本ファイルでは`diag.provenance`という表記は使わず、
+`provenance`(`diag`外)として統一する。旧`diag.provenance`という表記が使われて
+いた検証記録(`parser_sourcefaithful_duplication_validation.md`等)は履歴資料
+のため書き換えていない。
 
 **gateChecksは`relation`ごとに検証規則を変えられる構造を前提とする**
 (6-3節)。`relation`を区別せず一律の検証をかけると、`footnote_of_parent`の
@@ -390,24 +422,62 @@ ContentBlockとして扱う)。
 
 ### 6-3. 親子Source間の整合性検証(gateChecks、確定方針)
 
-5-1節で確定したとおり、`diag.provenance.relation`ごとに、[7] Validation /
+5-1節で確定したとおり、`provenance.relation`ごとに、[7] Validation /
 Diagnostics段階のgateChecksで異なる検証を行う構造を前提とする。実データ検証
-(`planning/parser_sourcefaithful_duplication_validation.md`)で確認できた
-2種類の検証は次のとおり。
+(`planning/parser_sourcefaithful_duplication_validation.md`、および後続の
+`planning/gatechecks_invariant_validation.md`)で確認できた2種類の検証は
+次のとおり。
 
-| `relation` | 必要な検証 |
-|---|---|
-| `extracted_from_parent` | 子の`sourceFaithful`が、`parentBlockId`が指す親の現在の`sourceFaithful`に部分文字列として実際に含まれているか(**包含チェック**) |
-| `footnote_of_parent` | 親の`sourceFaithful`側に、子を指す参照記号(`※1`等)が実際に存在するか(**参照存在チェック**。包含チェックとは逆方向) |
+| `relation` | 必要な検証 | 分類 |
+|---|---|---|
+| `footnote_of_parent` | 親の`sourceFaithful`側に、子を指す参照記号(`※1`等)が実際に存在するか(**参照存在チェック**) | hard invariant候補(実データで安定した検出・誤検知の少なさを確認済み) |
+| `extracted_from_parent` | 子の`sourceFaithful`が、`parentBlockId`が指す親の現在の`sourceFaithful`に部分文字列として実際に含まれているか(**包含チェック**) | 現時点ではhard invariantにしない(下記) |
 
 `relation`を区別せず一律に包含チェックをかけると、`footnote_of_parent`の
 ような元々重複しない関係に対して誤検知を生むため、relationに応じた検証の
 出し分けが必須である。
 
+**`extracted_from_parent`の包含チェックを無条件でfail-closedにしない理由
+(`gatechecks_invariant_validation.md`4-1節)**: 分数を含む式のように、
+Faithful Restorationで`／`のような記号が新たに挿入されて復元されるケースでは、
+親と子が同じ復元処理を経ていない限り、内容的には正しいデータでも包含チェックが
+不一致(false positive)と誤判定することを実データで確認した。したがって、
+**`extracted_from_parent`の包含チェックは、親子の復元処理の一貫性が保証できる
+条件が整うまでは review invariant(要レビュー)として扱い、無条件のfail-closed
+にはしない**。将来hard invariantへ昇格できる条件は未決事項として10節に残す。
+
+**gateChecksの位置づけについての確認(`gatechecks_invariant_validation.md`)**:
+gateChecksは、Sourceの**意味解釈が正しいか**を判定する仕組みではなく、
+**生成済みデータが設計上要求される構造・整合性の契約を満たしているか**を
+検証する仕組みと位置づける。候補は次の3種類に分類する。
+
+- **hard invariant(fail-closed候補)**: データ構造として矛盾しているもの
+  (参照先が存在しない、IDが重複している等)。意味解釈を伴わない。
+- **review invariant(review routing候補)**: 検出はできるが、教材の意図の
+  理解を要し人間確認が必要なもの(上記`extracted_from_parent`包含チェック等)。
+- **diagnostic/warning**: `unresolved`・`merge_candidate`のように意図的に
+  保持される不確実な状態の記録。異常ではない。
+
+「検出できなかった」「意味判断できない」「データ構造として矛盾している」を
+同じ失敗として扱わない。
+
+**文字列比較の正規化について**: 空白の揺れ(ラベル検出で確認済みの文字間
+スペース挿入等)は安全に許容できるが、`○`(U+25CB)と`〇`(U+3007)のような
+**文字そのものの違い**は安易に同一視しない(原則2の原文保持に抵触するリスク)。
+また、フラクション復元による`／`の挿入は**正規化の対象ではなく、Faithful
+Restorationの一貫性の問題**であり、文字列比較の正規化ルールでは解決しない
+(上記`extracted_from_parent`の議論を参照)。
+
+**gateChecksの結果は`diag`へ書き戻さない。** gateChecksは`sourceFaithful`・
+`diag`等の生成済みデータを**読んで**検証する処理であり、その結果は各
+ContentBlockの`diag`ではなく、Source/Derived Knowledgeデータとは別の
+「Validation実行レポート」として管理する(生成処理と検証処理が同じデータへ
+書き込む循環を避けるため)。正式な構造は未確定(10節)。
+
 **次の詳細は今回確定せず、Parser実装前またはvalidator設計時に決める**:
 文字列比較時の正規化範囲(全角/半角・空白の揺れをどこまで許容するか)、
-不一致を検出した場合にfail-closed(正式出力をブロック)とするか、要レビューへ
-送るに留めるか。
+`extracted_from_parent`を将来hard invariantへ昇格できる条件、Validation
+実行レポートの正式構造。
 
 ---
 
@@ -533,18 +603,33 @@ Stage3の判定基準を正式なルールとして確定するには至って�
 には追加のケース検証が必要であり、詳細・根拠は同ファイルを参照し本節には
 転載しない。
 
+gateChecks不変条件の具体化(`planning/gatechecks_invariant_validation.md`)
+では、既存資料からgateChecks候補18件を洗い出し、実データ8ケース(親子重複2種・
+`diag.extraction.status`3値・Faithful Restoration未解決ケース・StructureNode/
+ラベル衝突ケース等)で検証した。**gateChecksは意味判断器ではなく、生成済み
+データが設計上の構造・整合性契約を満たしているかを検証するものと位置づける**
+(6-3節に反映)。`footnote_of_parent`の参照存在チェックはhard invariant候補、
+`extracted_from_parent`の単純包含チェックはFaithful Restorationの復元表現差で
+false positiveが生じうるため現時点では無条件fail-closedにしない、という結論を
+得た(詳細・根拠は同ファイルを参照し本節には転載しない)。
+
+`diag`蓄積型設計の実装可能性確認(`planning/diag_accumulation_validation.md`)
+では、単一オブジェクト追記・ステージ別namespace・イベント/issue蓄積・組み合わせ
+の4方式を比較し、実データ8ケースで検証した。**基本はステージ別namespaceとし、
+plain抽出失敗→layout抽出成功のような複数回試行が本質的な情報だけを履歴
+(attempt配列)として持たせる組み合わせ方式**が最も無理が少なかった。artifactは
+最低限`kind`/`stage`/`resolved`/`note`程度の構造を持たせる方向、`diag`は処理の
+事実・監査情報のみを保持し`reviewRequired`のような最終判断は持たせない方向、
+`provenance`は`diag`から分離しContentBlock側の由来情報として扱う方向(5-1節に
+反映済み)、という結論を得た(詳細・根拠は同ファイルを参照し本節には転載しない)。
+
 残る検証事項は次のとおり。
 
 - **子Source化候補の必要性判定基準の追加検証**: 8ケースの小規模検証で得られた
   「独立参照必要性が最も判別力が高い」という示唆を、他のケース(教材上の
   他の反復パターン、`①②③`のような未検証の列挙記号等)でも確認し、判定基準を
-  より確からしいものにする。
-- **`diag`蓄積型設計の実装可能性**: 複数ステージが1つの`diag`オブジェクトへ
-  段階的に書き込む構成が、責務の混線なく実装できるかを小さいプロトタイプで
-  確認する。
-- **[7] Validation / Diagnosticsの不変条件の具体化**: 「全ContentBlockが
-  StructureNodeの配下にあるか」「ID重複がないか」等、簿記論版gateChecksとして
-  何を対象にすべきかを具体化する。
+  より確からしいものにする。**9節に残る検証事項のうち、これが唯一の未着手
+  項目である。**
 
 これらの検証は、いずれもParserのコード実装そのものではなく、**モデル・
 アーキテクチャの妥当性を確認する小規模な試行**として位置づける(前フェーズの
@@ -556,10 +641,22 @@ Stage3の判定基準を正式なルールとして確定するには至って�
 
 この設計案の時点で、まだ決定していない事項を明示する。
 
-- `diag.provenance`の正式なフィールド名・型のコード化(5-1節で方向性を確定
-  したが、具体的なスキーマは未確定)。
-- 親子Source間の整合性検証(gateChecks)における文字列正規化の範囲、
-  不一致検出時にfail-closedとするか要レビューとするか(6-3節)。
+- `provenance`(旧`diag.provenance`。5-1節で`diag`外への分離方針を確定)の
+  正式なフィールド名・型のコード化。
+- 親子Source間の整合性検証(gateChecks)における文字列正規化の範囲(6-3節)。
+- `extracted_from_parent`の包含チェックを将来hard invariantへ昇格できる条件
+  (親子の復元処理の一貫性をどう保証するか、6-3節)。
+- Validation実行レポート(gateChecksの結果を保持する、Source/Derived
+  Knowledgeデータとは別のレポート)の正式構造(6-3節)。
+- `diag`の正式なフィールド名・型のコード化。artifact(`diag.extraction.
+  artifacts`)を`{kind, stage, resolved, note}`程度の構造にする方向性は
+  確定したが(5節)、正式なスキーマは未確定。
+- 縦積み`○○○`/`〇〇〇`の崩れに対応する`artifact.kind`の正式語彙の命名
+  (`gatechecks_invariant_validation.md`8節、`diag_accumulation_validation.md`
+  9節から持ち越し)。
+- [3] Block Detection段階(まだContentBlockが確定していない候補の段階)に
+  関する診断情報を、どの主体の`diag`に帰属させるか(`diag_accumulation_
+  validation.md`4-4・4-8・9節)。
 - 親子関連付けの具体的なフィールド名・型のコード化。
 - StructureNode/ContentBlockのその他のフィールド名・型のコード化。
 - 3節Stage2/3の「子Source化候補」を、Parserがどこまで自動判定でき、どこから
@@ -579,24 +676,26 @@ Stage3の判定基準を正式なルールとして確定するには至って�
   - No.2巻以降でも同じアイコン・空白挿入規則が成立するか。
 - Q&A等の検出不能要素に対する運用方針(完全に人手に委ねるか、部分的な機械的
   絞り込み補助を用意するか)。
-- `diag`が複数ステージにまたがって蓄積される設計を実際に採用するか(5節)。
-- [7] Validation / Diagnosticsの具体的な不変条件リスト(方向性のみ提示、
-  未確定)。
+- [7] Validation / Diagnosticsの具体的な不変条件リスト。`gatechecks_
+  invariant_validation.md`でA/B/C分類の候補18件を洗い出したが、正式な
+  コード化・リストの確定はまだ行っていない。
 - `structure.tokens`の自動生成可否は、本設計案の対象外として次フェーズ
   (Source→Derived Knowledgeフェーズ)へ明示的に持ち越す。
 
 ---
 
 以上がPDF→Source層に関するParser設計案(第3版・現時点の正式設計)である。
-Source粒度(3節)・親子Source間の`sourceFaithful`重複(5-1節・6-3節)は、
-実データ検証を経て方針を確定した。StructureNode認識の下調べ
-(`planning/structurenode_recognition_survey.md`)・ラベル検出の試作
-(`planning/label_detection_prototype_validation.md`)・Block Detection
-パターン検出系の全数調査(`planning/pattern_detection_survey.md`)・子Source化
-候補の必要性判定基準の小規模検証(`planning/child_source_necessity_
-validation.md`)も完了した。**子Source化候補の必要性判定基準は、8ケースの
-小規模検証を経ても正式なルールとしては未確定であり**、9節に残る3項目
-(判定基準の追加検証・`diag`蓄積型設計・[7] Validation/Diagnosticsの不変条件
-の具体化)のうちどれを次に検証するかは、改めて優先度を確認してから着手する。
-Parser本体の実装・スキーマの正式コード化は、これらの検証を経てから改めて
-着手を判断する。
+Source粒度(3節)・親子Source間の`sourceFaithful`重複(5-1節・6-3節)・
+`provenance`の`diag`外への分離(5-1節)・gateChecksの位置づけと候補分類
+(6-3節)・`diag`蓄積型の組み合わせ方式(5節)は、いずれも実データ検証を経て
+方針を確定した。StructureNode認識の下調べ(`planning/structurenode_
+recognition_survey.md`)・ラベル検出の試作(`planning/label_detection_
+prototype_validation.md`)・Block Detectionパターン検出系の全数調査
+(`planning/pattern_detection_survey.md`)・子Source化候補の必要性判定基準の
+小規模検証(`planning/child_source_necessity_validation.md`)・gateChecks
+不変条件の具体化(`planning/gatechecks_invariant_validation.md`)・`diag`
+蓄積型設計の実装可能性確認(`planning/diag_accumulation_validation.md`)も
+完了した。**子Source化候補の必要性判定基準は、8ケースの小規模検証を経ても
+正式なルールとしては未確定であり**(Stage3)、9節に残る検証事項はこの追加
+検証のみである。Parser本体の実装・スキーマの正式コード化は、この検証を経て
+から改めて着手を判断する。

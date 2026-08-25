@@ -68,6 +68,41 @@ kind別content)はユーザー承認済みのため変更していない。
 「1ブロック+`anchor`」から「親子Source+固有ID」へ具体化されただけであり、
 旧イメージ例が誤っていたわけではない。該当箇所に補足注記を追加した。
 
+**Parser設計フェーズによる補足(2026-08-16)**: 本ファイルのデータモデル自体は
+変更していない。gateChecks不変条件の検証(`planning/gatechecks_invariant_
+validation.md`)・`diag`蓄積型設計の検証(`planning/diag_accumulation_
+validation.md`)を経て、次の2点が判明・確定したため申し送る。
+
+- **`provenance`は`diag`の外側に置く方針へ改訂された**(`planning/
+  parser_design_proposal.md`5-1節)。7節・3-2節例の`diag`はいずれも
+  `provenance`を含まない前提で書き直す必要があるが、**本ファイル自体の
+  3-2節例は`provenance`を含んでいないため、今回の変更による直接の修正
+  箇所はない**。将来、親子Sourceを持つ例を本ファイルへ追記する場合は、
+  `provenance`を`diag`の外側(ContentBlockの兄弟フィールド)に置く前提で
+  記述すること。
+- **`diag.extraction.artifacts`(現状: 文字列配列、7-4節例)は、将来
+  `{kind, stage, resolved, note}`程度の構造を持たせる方向で検証された**
+  (`diag_accumulation_validation.md`5-2節)。これは7-4節の例をより具体化
+  する方向性であり、7節が定義する4概念モデル自体(`extractionRaw`/
+  `sourceFaithful`/`parsed`/`diag`の分離)とは矛盾しない。**正式なスキーマ
+  としての採否・型のコード化はまだ行っていない。**
+
+あわせて、`diag`蓄積型設計の検証(`diag_accumulation_validation.md`2-1節)で、
+本ファイル自身の記述に次の食い違いが見つかったため、**統一せず事実として
+申し送る**。
+
+- 3-2節のQ&Aブロック例では`detectionStatus`が`diag`と同じ階層の兄弟
+  フィールドとして書かれている一方、7-3節の文章は`detectionStatus`と
+  `diag.extraction.status`をあたかも同じ話のように並べて説明しており、
+  両者の関係(別名なのか、独立した概念なのか)が本文からは断定できない。
+- 3-2節のformula例は`diag: { extraction: { status: "..." } }`という
+  名前空間構造だが、table例は`diag: { note: "..." }`という名前空間を
+  経由しない自由記述である。どちらが正式な形か、本ファイルの記述だけでは
+  判断できない。
+
+これらは今回のParser設計フェーズの検証でも解決しておらず、`diag`の正式
+スキーマ確定時にあらためて判断が必要な未決事項として残る。
+
 ---
 
 ## 1. 設計目的
