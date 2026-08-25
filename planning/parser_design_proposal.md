@@ -54,6 +54,48 @@ accumulation_validation.md`)を検証した。この結果を踏まえ、5・5-1
 反映であり、`diag`の正式スキーマ・gateChecks本実装・**Stage3判定基準の正式
 確定は、この改訂でも行っていない**(9・10節)。
 
+**改訂について(第4版・本版・現時点の正式設計)**: 第3版の時点で唯一の未着手
+検証事項として残っていたStage3(子Source化候補の必要性判定基準)について、
+追加実データ検証(`planning/stage3_additional_validation.md`、D1〜D5・5ケース)
+を実施した結果、既存8ケースを単純に増やす形では判定基準を正式化できないこと
+が判明した。この結果を受け、Stage3という工程自体の責務設定を再検討し
+(`planning/stage3_responsibility_reconsideration.md`)、Parserが「候補を検出し
+構造的事実を提示するところまで」を担当し、「独立参照が必要かどうか(子Source化
+すべきか)」という意味判断はParserの外側(人間レビュー/Derived Knowledge層)へ
+渡す、という責務分離方針(以下「候補提示方針」と呼ぶ)を採用した。
+
+この方針をParserパイプライン全体に適用した場合の再定義
+(`planning/stage3_parser_pipeline_redesign.md`)、および候補一覧レポートの
+概念設計・C3型(検出・復元不安定ケース)の再評価ループ・人間レビューに必要な
+情報量の最終確認(`planning/stage3_c_plan_final_validation.md`)を経て、以下の
+方針を**正式採用**する。
+
+- **Parserは「子Source化が必要か」という意味判断を行わない。** 独立参照必要性・
+  `sourceRefs.role`・Derived Knowledgeとの同一性判定は、引き続きParserの
+  責務範囲外とする(第3版までの4節の原則を維持・徹底する)。
+- **Parserは「確定Source」と「Source候補」を区別する。** 構造的事実だけで
+  機械的に確定できるもの(既にトップレベルの独立Source、内容が実質的に空
+  であるため候補にすらならないもの)は確定Sourceとして扱うが、それ以外の
+  ネスト候補は、独立参照が必要かどうかを判定せず、構造的・機械的事実のみを
+  付与した**Source候補**として後段へ引き渡す。
+- **Source候補はContentBlockとして先行生成しない。** 候補は、Source/Derived
+  Knowledgeデータ本体とは別管理の**候補一覧レポート**(6-3節が既に確立した
+  「Validation実行レポートはSource/Derived Knowledgeデータとは別管理」という
+  設計思想を踏襲)として出力する。候補が実際にContentBlock(確定子Source)と
+  して生成されるのは、後段の**候補確定フェーズ**が必要性を判断した後である。
+- **候補確定はParser外の後段責務とする。** 候補確定フェーズは人間レビュー、
+  または将来的にDerived Knowledge層の統合判断ロジックが担いうるが、いずれに
+  せよParserパイプラインの外側に位置づける。
+
+この改訂は、旧来「Stage3が子Source化の要否を判断する」としていた記述を、
+「Stage2/3は候補を検出・提示するところまでを担当する」という記述へ置き換える
+ものである。1・2・3・4・5・6-3・9・10節を本方針に沿って改訂した。検証の詳細
+経緯・実データによる根拠は、上記4ファイル(`stage3_additional_validation.md`
+〜`stage3_c_plan_final_validation.md`)を参照し、本ファイルには最小限の反映
+のみを行う(既存の改訂スタイルを踏襲)。**Parser本体の実装・正式スキーマの
+コード化・`relation`モデルの拡張(D2の本文個別仕訳↔要約表関係、10節参照)には、
+この改訂でも進んでいない。**
+
 参照した既存資料(Git管理下のSSOT):
 
 - `CLAUDE.md` / `SPEC.md` / `TASK.md`
@@ -63,9 +105,19 @@ accumulation_validation.md`)を検証した。この結果を踏まえ、5・5-1
 - `planning/parser_source_granularity_validation.md`(Source粒度に関する
   実データ7ケースの検証記録。「なぜ3節の方針になったか」の根拠はこちらに
   記録されている)
-- `planning/parser_sourcefaithful_duplication_validation.md`(**本版で新規
-  参照**。親子Source間の`sourceFaithful`重複に関する実データ2ケースの検証
-  記録。「なぜ5-1節の方針になったか」の根拠はこちらに記録されている)
+- `planning/parser_sourcefaithful_duplication_validation.md`(親子Source間の
+  `sourceFaithful`重複に関する実データ2ケースの検証記録。「なぜ5-1節の方針に
+  なったか」の根拠はこちらに記録されている)
+- `planning/pattern_detection_survey.md`・`planning/child_source_necessity_
+  validation.md`・`planning/gatechecks_invariant_validation.md`・
+  `planning/diag_accumulation_validation.md`(Stage3・gateChecks・`diag`
+  蓄積型に関する実データ検証。既存8ケースの検証記録)
+- `planning/stage3_additional_validation.md`・`planning/stage3_
+  responsibility_reconsideration.md`・`planning/stage3_parser_pipeline_
+  redesign.md`・`planning/stage3_c_plan_final_validation.md`(**本版で新規
+  参照**。Stage3判定基準の追加実データ検証(D1〜D5)、責務再検討、C案
+  パイプライン再定義、C案最終確認。「なぜ候補提示方針〈1節の第4版改訂〉に
+  至ったか」の根拠はこれら4ファイルに記録されている)
 - Zaihyo Parser(`../Zaihyo Parser`)の`src/parser/`・`src/bookStructureMaster/`・
   `src/cli/build-drill-csv.mjs`・関連docs(アーキテクチャパターンの参考として。
   財表固有の正規表現・具体的ラベル値は移植しない)
@@ -91,6 +143,12 @@ Zaihyo Parserの「単一のオーケストレータ関数が、責務ごとに�
 呼ぶ形)を参考に、次のようなステージ分割を提案する。**名称・段階数は例示であり
 そのまま採用する必要はない**(ユーザー指示どおり)。
 
+**(第4版改訂)** 候補提示方針の採用に伴い、[4] Source Segmentationの責務を
+「候補の機械的確定まで」に縮小し、[7]の出力に「Source候補一覧レポート」を
+追加した。あわせて、Parserパイプラインの**外側**に位置づく[8]候補確定フェーズ
+を明示した(3節・4節で詳述)。[4]と[5]は、復元が不安定な候補についてのみ
+局所的な再評価サイクルを持つ(3-7節)。
+
 ```
 [1] Extraction
      PDF → ページ単位の生テキスト(+可能なら座標等のレイアウト情報)
@@ -100,23 +158,35 @@ Zaihyo Parserの「単一のオーケストレータ関数が、責務ごとに�
         ↓
 [3] Block Detection
      ラベル(設例/解説/留意点/参考/コラム 等)・仕訳型ボックス・計算式パターンを
-     検出し、ContentBlock候補(範囲+暫定blockKind)を洗い出す
+     検出し、ContentBlock候補(範囲+暫定blockKind)を洗い出す。より大きな
+     視覚単位の内部にネストした候補も、この段階で同じ検出器により検出する
         ↓
-[4] Source Segmentation
-     ContentBlock候補を、実際にSourceのContentBlockとして確定する粒度で分割・
-     統合する(3節が本設計の中心論点。段階的Source Segmentation方針として確定)
-        ↓
+[4] Source Segmentation(候補提示方針により責務を縮小、3節)
+     候補のうち、構造的事実だけで機械的に確定できるもの(既にトップレベルの
+     独立Source/内容が実質的に空で候補にすらならないもの)のみを確定する。
+     それ以外の候補は、独立参照の要否を判定せず、構造的・機械的事実のみを
+     付与した「Source候補」として保持する
+        ⇅ (復元が不安定な候補についてのみ、局所的な再評価サイクルが働く。3-7節)
 [5] Faithful Restoration
      extractionRawからsourceFaithfulへの書き戻し(既知の抽出崩れパターンの補正、
-     または人間確認)
+     または人間確認)。確定Source・Source候補の両方に対して行う
         ↓
 [6] Parsing
      blockKindごとのparsed構造を生成(placeholders/table grid 等。
-     structure.tokensの自動生成はスコープ外)
+     structure.tokensの自動生成はスコープ外)。確定Source・Source候補の
+     両方に対して行いうる
         ↓
 [7] Validation / Diagnostics
      コーパス全体の不変条件チェック(gateChecks相当)+ 検出不能・要レビュー
-     要素の一覧化(anomaly/review queue相当)
+     要素の一覧化(anomaly/review queue相当)に加え、**Source候補一覧レポート
+     (3-8節)を正式なParser出力として確定させる**
+──────────────── Parserの責務範囲、ここまで ────────────────
+        ↓
+[8] 候補確定フェーズ(Parser外、新設。4節)
+     人間レビュー、またはDerived Knowledge層の統合判断プロセスが、Source候補
+     一覧レポートを読み、独立参照が必要かどうか(子Source化すべきか)を判断
+     する。確定した候補のみが、この段階で初めて正式なContentBlock(親子構造
+     を持つ確定Source)として生成される
 ```
 
 ### 1-1. StructureNode認識(ステージ2の設計方針)
@@ -160,29 +230,48 @@ Zaihyo Parserの「単一のオーケストレータ関数が、責務ごとに�
 - パターン検出系は、[3] Block Detectionの段階では**独立した視覚単位に対して
   だけでなく、より大きな視覚単位(設例等)の内部に対しても同じ検出器を適用
   する**(3節Stage3参照)。「検出できる」ことと「それを独立したSourceとして
-  確定するか」は別の判断であり、後者は[4] Source Segmentationの責務とする。
+  確定するか」は別の判断である。**(第4版改訂)** 後者は、旧版では
+  [4] Source Segmentationの責務としていたが、候補提示方針の採用により、
+  [4]は構造的事実だけで機械的に確定できる範囲に限定され、実際の確定判断は
+  [8]候補確定フェーズ(Parser外、4節)の責務となる。
 
 ---
 
 ## 2. 各段階の入力・出力
+
+**(第4版改訂)** 候補提示方針の採用に伴い、[4]の出力を「確定ContentBlock」と
+「Source候補」に分離し、[5]・[6]の入力対象を両方に拡張し、[7]の出力に
+「Source候補一覧レポート」を追加した。あわせて、Parser外の[8]候補確定フェーズ
+を新規の行として追加した。
 
 | ステージ | 入力 | 出力 | 備考 |
 |---|---|---|---|
 | [1] Extraction | PDFファイル、対象ページ範囲 | ページ単位の生テキスト(`extractionRaw`の元)。可能ならツール名/バージョン/実行オプションのメタ情報 | 意味解釈は一切行わない。Zaihyo Parserの`extractText.mjs`相当 |
 | [2] Structure Recognition | ページ単位テキスト | StructureNodeの骨格(階層・`label.titleRaw`・`importance`・`priorKnowledgeMark`)。中身(ContentBlock)はまだ空 | テーマ/論点の境界を確定させる段階。ここで確定した境界が後段のContentBlock所属先になる |
 | [3] Block Detection | ページ単位テキスト + StructureNode境界 | ContentBlock候補のリスト(範囲・暫定`blockKind`・検出根拠)。ネストした候補(大きな視覚単位の内部で検出された計算式等)も候補として含む | 「候補」であり、まだSourceとして確定していない(3節・[4]へ) |
-| [4] Source Segmentation | ContentBlock候補 | 確定したContentBlockの集合(通常は単一。3節の条件に該当する場合のみ親子構造) | 3節の中心論点。ここで生成される単位が最終的な`sourceRefs`の参照粒度になる |
-| [5] Faithful Restoration | 確定ContentBlockの`extractionRaw` | `sourceFaithful` + `diag.extraction`/`diag.faithfulReconstruction` | 自動補正/人間確認の切り分けは6-1節。親子構造の場合の重複は許容し`provenance`(`diag`外、5-1節)で記録する |
-| [6] Parsing | `sourceFaithful` | `parsed`(blockKindごとの構造) + `diag.parseInterpretation` | `structure.tokens`はスコープ外 |
-| [7] Validation / Diagnostics | 全ContentBlock + StructureNode | 不変条件チェック結果(gateChecks相当)、検出不能・要レビュー要素の一覧(コーパスレベルmeta含む) | Zaihyo Parserの`anomalyDetector.mjs`+`build-drill-csv.mjs`のgateChecksパターンを参考に、簿記論固有の不変条件を新規設計する |
+| [4] Source Segmentation | ContentBlock候補 | **(a)** 確定ContentBlock(構造的事実だけで機械的に確定できる範囲のみ。3-6節)。**(b)** Source候補(それ以外。3-8節の情報を付与) | 旧版はここで子Source化の要否まで判定していたが、候補提示方針(第4版)により責務を縮小した。復元が不安定な候補は[5]との間で局所的な再評価サイクルを持つ(3-7節) |
+| [5] Faithful Restoration | 確定ContentBlock・Source候補双方の`extractionRaw` | `sourceFaithful` + `diag.extraction`/`diag.faithfulReconstruction` | 自動補正/人間確認の切り分けは6-1節。親子構造の場合の重複は許容し`provenance`(`diag`外、5-1節)で記録する。候補の復元結果は[4]の候補パッケージングへフィードバックされる(3-7節) |
+| [6] Parsing | `sourceFaithful` | `parsed`(blockKindごとの構造) + `diag.parseInterpretation` | `structure.tokens`はスコープ外。候補に対しても暫定的に生成しうる |
+| [7] Validation / Diagnostics | 全ContentBlock + StructureNode + Source候補群 | 不変条件チェック結果(gateChecks相当)、検出不能・要レビュー要素の一覧(コーパスレベルmeta含む)、**Source候補一覧レポート(3-8節、Source/Derived Knowledgeデータとは別管理)** | Zaihyo Parserの`anomalyDetector.mjs`+`build-drill-csv.mjs`のgateChecksパターンを参考に、簿記論固有の不変条件を新規設計する |
+| [8] 候補確定フェーズ(Parser外、新設) | Source候補一覧レポート | 確定Source(独立参照が必要と判断された候補のみ、親子構造を持つContentBlockとして正式生成) | 人間レビューまたはDerived Knowledge層の統合判断プロセスが担う。Parserパイプラインの一部ではない(4節) |
 
 ---
 
-## 3. Source粒度の設計案(確定: 段階的Source Segmentation方針)
+## 3. Source粒度とSource候補管理(確定: 段階的Source Segmentation方針・第4版で候補提示方針を反映)
 
 実データ7ケースによる小規模検証(`planning/parser_source_granularity_validation.md`)
 を経て、Source粒度の方針を次のとおり確定する。**なぜこの方針に至ったかの
 根拠・全7ケースの評価は同ファイルを参照し、本節には転載しない。**
+
+**(第4版改訂)** Stage2/3で検出された候補を実際に子Source化するかどうかの
+判定基準は、追加実データ検証(D1〜D5)を経ても正式なルールとして確定できな
+かった(`planning/stage3_additional_validation.md`)。この結果を受け、
+Stage2/3の責務を「候補の検出・構造的事実の提示まで」に縮小し、確定判断は
+Parser外の[8]候補確定フェーズへ渡す**候補提示方針**を採用した
+(`planning/stage3_responsibility_reconsideration.md`〜`stage3_c_plan_
+final_validation.md`)。3-1節の記述自体(Stage1〜3という段階区分)は変更
+しないが、Stage2/3が「子Source化の候補とする」以上の確定判断を行わない
+ことを、3-6節以降で明確化する。
 
 ### 3-1. 段階的Source Segmentation方針
 
@@ -193,21 +282,24 @@ Stage 1: 基本Source
   教材上の視覚的・内容的に完結した単位(仕訳ボックス1つ、式1行、設例1つ、
   解説1つ、参考/留意点/コラム1つ、表全体1つ 等)を、既定のSourceとして保持する。
 
-Stage 2: 教材明示境界による子Source化(候補)
+Stage 2: 教材明示境界による子Source化候補
   教材自身が明示的に区切っている境界(※1・※2、個別に番号付けされた仕訳
-  (1)/(2) 等)があり、かつそれを独立して参照する必要がある場合は、
-  子Sourceへの分割候補とする。
+  (1)/(2) 等)がある場合、その境界に沿った候補を生成する。**(第4版)**
+  境界の存在だけでは独立参照の要否を確定しない(3-6節)。
 
-Stage 3: パターン検出によるネスト単位の子Source化(候補)
+Stage 3: パターン検出によるネスト単位の子Source化候補
   教材上の明示境界がなくても、Parserのパターン検出器が独立して検出できる
   意味単位(例: 設例内部に現れる、定義済み公式と同型の独立した計算式)が、
-  より大きなSourceの内部にネストしており、それを独立して参照する必要が
-  ある場合は、条件付きで子Sourceを生成する。
+  より大きなSourceの内部にネストしている場合、その候補を生成する。
+  **(第4版)** 候補の生成までがStage3の責務であり、それを実際に子Source
+  として確定するかどうかの判断は行わない(3-6節)。
 ```
 
 **Stage2/3はいずれも「検出できたものを必ず子Source化する」ことを意味しない。**
 独立Sourceとして扱う必要性がない場合は、Stage1のSourceだけを保持する
-(次段落・3-2節)。
+(次段落・3-2節)。**(第4版)** さらに、Stage2/3が生成する「候補」は、
+そもそもStage3自身がその要否を判断するものではなく、独立参照が必要かどうか
+の判断は一貫してParser外の[8]候補確定フェーズへ委ねる(3-6節)。
 
 ### 3-2. 親子Sourceは条件付き機構(常設構造ではない)
 
@@ -220,10 +312,21 @@ Stage 3: パターン検出によるネスト単位の子Source化(候補)
 ケースだけが、任意で親Source+0件以上の子Sourceという可変構造を持てる、
 という設計を推奨方針とする。
 
+**(第4版改訂)** 親子構造が実際に生成されるタイミングは、Stage2/3が候補を
+検出した時点ではなく、**[8]候補確定フェーズが独立参照の必要性を認めた時点**
+である(3-6節)。Stage2/3が候補を検出しただけの段階では、親子構造を持つ
+ContentBlockはまだ生成されない。
+
 具体的なフィールド表現(親子関連付けの持たせ方)は、10節の未決事項に含める
 (この設計案では確定しない)。
 
 ### 3-3. Source分割の目的(満たすべき条件)
+
+**(第4版補足)** 以下の4条件は、Stage2/3が候補を検出する際の設計目的
+としては維持するが、これらの条件を実際に評価して独立参照の可否を確定
+させるのは、候補提示方針のもとでは**[8]候補確定フェーズの責務**である
+(3-6節)。Stage2/3自身がこれらの条件を判定してSource化を確定するわけ
+ではない。
 
 Source Segmentationの目的は、細かく分割すること自体ではない。少なくとも
 次の4条件を**同時に**満たすことを目的とする。
@@ -245,6 +348,12 @@ Source Segmentationの目的は、細かく分割すること自体ではない�
 
 ### 3-4. 代表例(検証記録より2件のみ引用)
 
+**(第4版補足)** 以下の記述は、当時(第3版まで)の検証記録をそのまま引用した
+ものであり、「Parserが分割を確定した」という表現を含むが、候補提示方針の
+採用後は、これらは**候補確定フェーズが独立参照ありと判断した場合に、実際に
+生成される構造の例**として読み替える。Stage2/3自身が確定するわけではない
+(3-6節)。
+
 - **Stage2の例**: 固定資産買換の仕訳ボックス(`※1`〜`※5`)。ボックス本体を
   親、各脚注を子とする。教材が脚注記号で明示的に区切っており、脚注記号
   (ポインタ)と脚注本体(実体)が教材上もともと分離しているため、親子間の
@@ -261,14 +370,145 @@ Source Segmentationの目的は、細かく分割すること自体ではない�
   必要性がなく、単一Sourceのまま4軸評価(教材上の文脈保持・根拠参照・検出
   容易性・重複の少なさ)を満たせた。
 
-### 3-5. まだ確定していないこと
+### 3-6. 確定Sourceと候補の境界(第4版で新設)
+
+`planning/stage3_responsibility_reconsideration.md`が既存13ケース
+(`child_source_necessity_validation.md`の8ケース+D1〜D5)を再分析した結果、
+Parserが観測できる事実は次の2種類に分かれることが分かった。
+
+- **F群(Parserが事実として確定できるもの)**: 候補内部に別のパターン検出
+  候補が検出されたか(存在の有無)、教材上の境界記号・番号・ラベルが既知の
+  検出器語彙に一致して存在するか、候補が既存の確定済みStructureNode/
+  ContentBlockと同じ階層構造上どこに位置するか(トップレベルか内部か)、
+  Faithful Restorationの完了状態、候補範囲が実質的に空かどうか、テキスト
+  構造上の類似候補が他箇所にも存在するか、ラベルなし・topic直下の位置に
+  同種のパターン候補が別途存在するか(反復先定義候補の位置的な有無)。
+  いずれも意味解釈を伴わず、既知の検出器・既存の確定済み構造との突き合わせ
+  だけで機械的に判定できる。
+- **G群(候補としてしか出せないもの)**: 検出された境界が独立参照の必要な
+  意味的境界か単なる列挙・言い換えか、反復先定義候補の存在が本当に今回の
+  候補の定義であるという対応付け、未知の境界形式の発見・検出器語彙への
+  追加自体、独立参照必要性そのもの。これらはDerived Knowledge層の統合
+  判断(既存4節)と実質的に重なる。
+
+**この整理により、旧来のA(必要)/B(不要)/C(レビュー)という3分類は、正式
+モデルへそのまま持ち込まない。** F群の事実だけで説明が完結するケース
+(旧B1・B2・C1・C4・D4)は**確定Source**として扱い、G群の判断を要する
+ケース(旧A1・A2・C2・D1・D2・D3)は全て**Source候補**として[8]候補確定
+フェーズへ引き渡す。旧C2(意味判断待ち)と旧C3(復元待ち)という「性質の異なる
+2種類のレビュー候補」も、この整理では自然に区別できる。**C3型はF4(Faithful
+Restoration状態)が未解決である限り、そもそも候補の境界自体が確定できず、
+候補確定フェーズへ渡す以前の問題として扱う**(3-7節)。C2型はF4=解決済みだが
+G群の判断(反復先定義候補の不在をどう解釈するか)が必要な状態であり、
+候補確定フェーズへ渡す。
+
+Parser(Stage2/3)が機械的に確定してよいのは、F群のうち次の2種類のみである。
+
+- **F3による確定**: 候補が既に確定済みのStructureNode/ContentBlockと同じ
+  階層構造上にある(トップレベルの独立Source)場合、そのまま確定Sourceとする。
+- **F5による除外**: 候補範囲が実質的に空(内容が存在しない)場合、候補にすら
+  しない。
+
+上記2種類以外は、F群の事実(境界の形式・内部ネストの有無・同型候補の存在・
+反復先定義候補の存在・復元状態)を付与した**Source候補**として、独立参照の
+要否を判定せずに[8]候補確定フェーズへ引き渡す。
+
+### 3-7. Source候補の安定化サイクル(Faithful Restorationとの再評価、第4版で新設)
+
+`planning/stage3_c_plan_final_validation.md`2節での実データトレース
+(155ページ・171〜174ページの分数崩れ)により、次の処理順序を確認した。
+
+```
+[4] Source Segmentation(初回、暫定)
+    F4(Faithful Restoration状態)= 未解決の場合、候補の境界・個数自体が
+    まだ確定できない可能性がある。この場合、**断片を安全側に倒して広く
+    (粗く)1つの暫定候補としてグルーピングする**(細分化しない)。
+        ↓
+[5] Faithful Restoration
+    既知の抽出崩れパターンへの復元を試みる(6-1節の運用方針どおり、
+    fail-closedな個別確認済みノイズ補正)。
+        ↓
+[4] Source Segmentation(再評価)
+    復元が完了した場合: 断片が実際には単一の候補だったことが確定する。
+    初回に広くグルーピングしておいたため、**候補IDを維持したまま内容の
+    更新のみで済む**。
+    復元が部分的にしか完了しない場合: `resolved:false`のまま、その事実
+    (`candidateStabilityNote`相当)を保持し、候補は「まだ確定していない」
+    状態のまま[7]・[8]へ引き渡す。無理に確定させない(原則4)。
+```
+
+**この再評価サイクルは、復元が不安定な候補についてのみ局所的に発生する。**
+確定Source・復元が安定している候補は、[4]→[5]→[6]→[7]という直列処理で
+問題なく進む。**無制限の循環にはしない**——Faithful Restorationの試行回数
+には上限があり(6-1節の既存運用方針どおり、想定外の出現数は例外停止する)、
+人間確認が必須になった時点でサイクルは終了し、その時点の状態
+(`resolved:true`または`false`のまま)で[7]・[8]へ進む。
+
+`diag.extraction.attempts`(複数回試行の履歴、5節)と、この再評価サイクルの
+責務は重ならない。`attempts`は候補・確定Sourceの**内部情報**として、どの
+ツールで何回試行したかを保持する。Source候補一覧レポート(3-8節)側は、
+`restorationStatus.resolved`という**要約された最終状態**だけを持てば足り、
+`attempts`の詳細を複製する必要はない。
+
+### 3-8. Source候補一覧レポート(Parser出力概念、第4版で新設)
+
+候補提示方針のもとで、Source候補はContentBlockとして先行生成せず、
+Source/Derived Knowledgeデータとは別管理の**候補一覧レポート**として
+出力する(既存の「Validation実行レポートはSource/Derived Knowledgeデータ
+とは別管理」という設計思想〈6-3節〉を踏襲する構造)。**正式なフィールド名・
+型のコード化はまだ行っていない**。概念レベルで、候補ごとに次の情報を
+最低限保持する。
+
+| 情報の種類 | 内容 | 対応するF群 |
+|---|---|---|
+| 元Sourceへの追跡情報 | 候補の範囲(`location`相当)、親候補/親Sourceへの参照 | - |
+| ancestryChain | 多段ネストの場合、単一の親参照だけでなく祖先チェーン全体(`stage3_c_plan_final_validation.md`1節でD1の4階層ネストにより必要性を確認) | F3・F6 |
+| boundary type | 境界の有無・種類(なし/番号/脚注記号/丸数字列挙/役割ラベル等。open vocabulary) | F2 |
+| ネスト候補の構造 | この候補のさらに内部に、別のパターン候補が検出されているか | F6 |
+| 同型パターンの存在・分布 | 構造的に類似した候補が他箇所にも検出されているか、その分布範囲 | F7 |
+| 抽象定義ブロック候補の存在 | ラベルなし・topic直下等の位置に、同種のパターン候補が別途存在するか(存在の有無のみ。対応付けの確証は含まない) | F8 |
+| Faithful Restoration状態 | 復元が完了しているか、既知artifactが未解決のまま残っているか(3-6節) | F4 |
+| 検出器の既知/新規フラグ | 既知の安定した検出器語彙で見つかったか、今回新たに追加された検出器で見つかったか | - |
+| 除外ログ | パターン検出を試みたが候補化されなかった領域の記録(理由付き。`stage3_c_plan_final_validation.md`1-10節・3-1節で必要性を確認) | F1・F5の否定形 |
+| diag / artifactへの参照 | 該当候補・親Sourceの`diag.extraction.artifacts`への参照 | F4 |
+
+**次の情報は意図的に含めない**(候補提示方針の核心)。
+
+- 独立参照必要性そのもの
+- 子Source化すべきかどうかという結論
+- `sourceRefs.role`(definition/application等)
+- Derived Knowledgeとの同一性判定(consolidation)
+
+これらはいずれも[8]候補確定フェーズ・Derived Knowledge層の責務であり
+(4節)、候補一覧レポートには一切含まれない。境界の存在と抽象定義候補の
+不在が同時に成立するようなケース(9節、旧D3・206ページ)も、**矛盾を解消
+しようとせず、両方の事実をそのまま並記する**。
+
+### 3-9. まだ確定していないこと
 
 - 親子関連付けの具体的なフィールド名・型(`provenance`のフィールド構成は
   5-1節で方向性を示したが、正式なフィールド名・型のコード化はまだ行っていない)
-- Stage2/3で検出された候補を「実際に子Source化するかどうか」の必要性判定
-  基準そのもの(現時点では「Derived Knowledgeから一意に参照する必要がある
-  場合」という記述的な基準に留まり、これをParserがどこまで自動判定できるか、
-  どこから人間レビューが必要かは未確定)
+- **(第4版で解決)** 旧版が挙げていた「Stage2/3で検出された候補を実際に
+  子Source化するかどうかの必要性判定基準そのもの」は、追加検証の結果、
+  単一の判定基準として確定させることを断念し、**判断そのものを[8]候補確定
+  フェーズへ渡す**という責務分離によって解決した(3-6節)。これに伴い、
+  代わりに次の新しい未決事項が生じている。
+- **候補一覧レポートの正式構造**(3-8節の情報項目は概念レベルの整理に
+  とどまり、フィールド名・型のコード化はまだ行っていない)
+- **[8]候補確定フェーズの詳細設計**(人間レビューへの提示形式、Derived
+  Knowledge層の統合判断プロセスがどこまで自動的に引き受けられるか。
+  今回のParser設計フェーズでは対象外とし、次フェーズへ持ち越す)
+- **候補ID安定化の具体的な実装方式**(3-7節で「復元前は広くグルーピング
+  する」という運用方針は確認できたが、実際のID発行・フィンガープリント
+  方式のコード化は行っていない)
+- **D2(振出人/名宛人/指図人、`stage3_additional_validation.md`)で見つかった
+  本文個別表現と要約表現の関係**は、既存の`relation`語彙(`extracted_from_
+  parent`/`footnote_of_parent`、いずれも1対1の親子関係が前提)では表現し
+  きれない可能性がある(多対1、かつ親子ではなく並列した表現同士の関係
+  である可能性)。**候補提示方針の採用によってもこの論点は解決しておらず、
+  独立したデータモデル論点として未決のまま残す**(`relation`モデルの拡張・
+  新語彙の追加・多対多関係モデルの導入のいずれにも、この改訂では進んで
+  いない)。
 
 親子Source間の`sourceFaithful`重複の扱いは5-1節で方針を確定した。残る
 詳細(文字列正規化の範囲、不一致時にfail-closedとするか要レビューとするか等)
@@ -293,8 +533,14 @@ Source Segmentationの目的は、細かく分割すること自体ではない�
   生成する。
 - 3節Stage2/3の条件に該当する候補を、子Source化の**候補**として提示する。
 
-### 4-2. Parserの責務ではないもの(Source → Derived Knowledgeフェーズへ)
+### 4-2. Parserの責務ではないもの(Source → Derived Knowledgeフェーズ、
+および[8]候補確定フェーズへ)
 
+- **(第4版で追加・明記)** 3節Stage2/3が検出した**候補を、実際に独立した
+  子Sourceとして確定するかどうかの判断そのもの**。候補提示方針の採用に
+  より、Parser(Stage2/3)はF群の構造的事実(3-6節)を候補に付与して提示
+  するところまでに責務を限定する。この判断は[8]候補確定フェーズ(人間
+  レビュー、またはDerived Knowledge層の統合判断プロセス)が担う。
 - 検出された計算式・仕訳型が、**既存のどのDerived Knowledgeと同一か**の
   同一性判定(consolidation)。
 - `sourceRefs.role`(definition/restatement/application/example)の割り当て。
@@ -307,19 +553,26 @@ Source Segmentationの目的は、細かく分割すること自体ではない�
 
 Parserの出力(Source層)は、「ここに独立した意味単位らしきものがある」という
 **候補の提示**までを行う。その候補を「本当に独立したSourceとして確定させるか」
-「どのDerived Knowledgeの`role`として扱うか」の判断は、次フェーズ
-(Source → Derived Knowledge)の責務とする。Parserは3節Stage2/3の候補を
-`diag`または別の候補一覧として出力するに留め、確定的な意味分類(definition/
-application等)を行わない。
+「どのDerived Knowledgeの`role`として扱うか」の判断は、[8]候補確定フェーズ
+および次フェーズ(Source → Derived Knowledge)の責務とする。**(第4版で明確化)**
+Parserは3節Stage2/3の候補を、ContentBlockとして先行生成せず、**Source候補
+一覧レポート(3-8節)**として出力するに留め、確定的な意味分類(definition/
+application等)は一切行わない。独立参照必要性・`role`・Knowledge同一性の
+いずれも、候補一覧レポートへ混入させない(3-8節)。
 
 ---
 
 ## 5. 4概念モデルとの対応
 
 `extractionRaw`/`sourceFaithful`/`parsed`/`diag`のどの段階がどれを生成するかを
-整理する(1節のステージ番号に対応)。親子Sourceを条件付きで生成する場合でも、
-4概念モデル自体は維持する(子ContentBlockも親と同じ4概念を持つ、通常の
-ContentBlockとして扱う)。
+整理する(1節のステージ番号に対応)。親子Sourceが[8]候補確定フェーズで確定
+生成される場合でも、4概念モデル自体は維持する(子ContentBlockも親と同じ
+4概念を持つ、通常のContentBlockとして扱う)。**(第4版補足)** [5] Faithful
+Restoration・[6] Parsingは、確定ContentBlockだけでなくSource候補に対しても
+適用しうる(1節)。候補段階の`diag`(特に`diag.extraction.attempts`)と、
+Source候補一覧レポート(3-8節)の責務は重複しない——`diag`は候補・確定
+Source自身が持つ**内部の処理事実**、候補一覧レポートは**Parserが何を検出し、
+後段へ何を渡したかの要約**という分離を維持する(3-7節・6-3節)。
 
 | 概念 | 生成段階 | 備考 |
 |---|---|---|
@@ -340,9 +593,9 @@ accumulation_validation.md`)**: 基本はステージ別namespace、複数回試
 
 ### 5-1. 親子Source間の`sourceFaithful`重複(確定方針)
 
-3節Stage2/3の条件で親子Sourceを生成した場合、子の`sourceFaithful`が親の
-`sourceFaithful`の一部と文字面上重複するケースが実データで確認されている
-(3-4節)。実データ2ケース(重複が発生したケース・発生しなかったケースの両方)
+3節Stage2/3の候補が[8]候補確定フェーズで確定し親子Sourceが生成された場合、
+子の`sourceFaithful`が親の`sourceFaithful`の一部と文字面上重複するケースが
+実データで確認されている(3-4節)。実データ2ケース(重複が発生したケース・発生しなかったケースの両方)
 による優先比較検証(`planning/parser_sourcefaithful_duplication_validation.md`)
 を経て、次の方針を確定する。
 
@@ -417,8 +670,11 @@ accumulation_validation.md`)**: 基本はステージ別namespace、複数回試
   配列、および`anomalyDetector.mjs`が生成する`severity`(info/review/error/
   warning)付きの一覧というパターンは、簿記論版でも再利用候補として提案する
   (7節)。ただし、カテゴリ語彙(`missing_answer`等)は財表固有のため、簿記論の
-  ブロック種別・粒度の実態に合わせて作り直す。3節Stage2/3の「子Source化候補」
-  も、このカテゴリの一種として要レビュー一覧に含めることを想定する。
+  ブロック種別・粒度の実態に合わせて作り直す。**(第4版改訂)** 3節Stage2/3の
+  「子Source化候補」は、この要レビュー一覧の一種としてではなく、**Source候補
+  一覧レポート(3-8節)という正式なParser出力**として扱う。復元待ち(C3型相当)
+  と意味判断待ち(C2型相当)という性質の異なる保留は、`restorationStatus.
+  resolved`の値によって区別できる(3-6節)。
 
 ### 6-3. 親子Source間の整合性検証(gateChecks、確定方針)
 
@@ -473,6 +729,20 @@ Restorationの一貫性の問題**であり、文字列比較の正規化ルー�
 ContentBlockの`diag`ではなく、Source/Derived Knowledgeデータとは別の
 「Validation実行レポート」として管理する(生成処理と検証処理が同じデータへ
 書き込む循環を避けるため)。正式な構造は未確定(10節)。
+
+**(第4版補足)** 候補提示方針の採用により、gateChecksの対象に**Source候補
+一覧レポート(3-8節)の構造的完全性**(候補ごとにF群の事実が漏れなく付与
+されているか、除外ログが網羅されているか等)が加わりうる。ただし、これは
+既存のhard invariant(構造チェック)の枠組みでそのまま扱える範囲であり、
+**「この候補は子Source化すべきか」という意味判断・独立参照必要性の判定は、
+引き続きgateChecksの対象にしない**(既存の位置づけを維持)。候補一覧
+レポート・`diag`・Validation実行レポートの3者の責務は次のように分離する。
+
+| 出力物 | 責務 |
+|---|---|
+| Source候補一覧レポート(3-8節) | Parserが何を検出し、後段(候補確定フェーズ)へ何を渡したか |
+| `diag` | 候補・確定Sourceそれぞれの生成・復元過程で何が起きたか(処理事実・監査情報) |
+| Validation実行レポート | 生成結果(確定Source・候補一覧を含む)が設計上の構造・整合性契約を満たしているか |
 
 **次の詳細は今回確定せず、Parser実装前またはvalidator設計時に決める**:
 文字列比較時の正規化範囲(全角/半角・空白の揺れをどこまで許容するか)、
@@ -535,6 +805,10 @@ ContentBlockの`diag`ではなく、Source/Derived Knowledgeデータとは別�
 - **段階的Source Segmentation(3節)・親子Sourceの条件付き生成**: 財表側の
   BookStructureMasterには相当する仕組みがなく(階層は固定的なStructureNode/
   QuestionUnitの再帰構造のみ)、簿記論固有の新規設計事項である。
+- **(第4版で追加)Source候補一覧レポート(3-8節)・[8]候補確定フェーズ**:
+  財表Parserには相当する仕組みがない(財表側は候補を経由せず確定的に
+  QuestionUnitを組み立てる構成のため)。候補提示方針の採用に伴う、簿記論
+  固有の新規設計事項である。
 
 ---
 
@@ -623,13 +897,43 @@ plain抽出失敗→layout抽出成功のような複数回試行が本質的な
 `provenance`は`diag`から分離しContentBlock側の由来情報として扱う方向(5-1節に
 反映済み)、という結論を得た(詳細・根拠は同ファイルを参照し本節には転載しない)。
 
-残る検証事項は次のとおり。
+**(第4版で追記)** 子Source化候補の必要性判定基準の追加検証
+(`planning/stage3_additional_validation.md`、①②③・振出人/名宛人/指図人・
+仕入諸掛按分計算・外貨建取引・記帳方法比較表・地の文スラッシュ仕訳の
+5ケースD1〜D5)を実施した。**既存8ケースを単純に増やしても、単一の判定
+基準としては正式化できないことが確認された**(同一の教材境界レベル内でも
+判定が割れる、番号・記号以外の役割ラベル境界が存在する、教材境界の有無と
+反復先定義ブロックの有無という2つの判定材料が矛盾するケースがある、事前の
+分類想定が実データで覆るケースがある等)。
 
-- **子Source化候補の必要性判定基準の追加検証**: 8ケースの小規模検証で得られた
-  「独立参照必要性が最も判別力が高い」という示唆を、他のケース(教材上の
-  他の反復パターン、`①②③`のような未検証の列挙記号等)でも確認し、判定基準を
-  より確からしいものにする。**9節に残る検証事項のうち、これが唯一の未着手
-  項目である。**
+この結果を受け、Stage3という工程自体の責務設定を再検討し
+(`planning/stage3_responsibility_reconsideration.md`)、**Parserが観測できる
+事実(F群)と、独立参照必要性という意味判断(G群)を分離する**という整理を
+行った。既存13ケースをF群/G群の枠組みで再分析したところ、「不要」と判定
+されたケースは全てF群のみで説明がつき、「必要」「レビュー」と判定された
+ケースは全てG群の判断を要していたという一貫性が確認できた。この結果に
+基づき、Parserは候補の検出・F群の事実提示までを担当し、G群の判断
+(独立参照必要性の確定)はParser外の[8]候補確定フェーズへ委ねる、という
+**候補提示方針**を評価・採用した(`planning/stage3_parser_pipeline_
+redesign.md`〜`stage3_c_plan_final_validation.md`)。この過程で、
+Parserパイプラインの再定義(3節)、Source候補一覧レポートの概念設計
+(3-8節)、C3型(検出・復元不安定ケース)の局所的な再評価サイクル(3-7節)
+を確認・確定した。**9節に残っていた「子Source化候補の必要性判定基準」は、
+単一の判定基準としてではなく、この責務分離によって解決した。**
+
+残る検証事項は次のとおり(次フェーズ以降の課題)。
+
+- **[8]候補確定フェーズの詳細設計**: 人間レビューへの提示形式、Derived
+  Knowledge層の統合判断プロセスがどこまで自動的に候補確定を引き受けられる
+  かは、今回のParser設計フェーズでは検討していない。
+- **Source候補一覧レポートの正式スキーマ化**: 3-8節は概念レベルの整理に
+  とどまり、フィールド名・型のコード化はまだ行っていない。
+- **候補ID安定化の実装方式**: 3-7節で「復元前は広くグルーピングする」という
+  運用方針は確認できたが、実際のID発行・フィンガープリント方式は未設計。
+- **D2のrelation問題**(`stage3_additional_validation.md`、本文個別仕訳と
+  要約表の関係)は、既存の`relation`語彙(1対1の親子関係前提)では表現し
+  きれない可能性があり、候補提示方針の採用によっても解決していない独立した
+  データモデル論点として残る(3-9節・10節)。
 
 これらの検証は、いずれもParserのコード実装そのものではなく、**モデル・
 アーキテクチャの妥当性を確認する小規模な試行**として位置づける(前フェーズの
@@ -659,11 +963,23 @@ plain抽出失敗→layout抽出成功のような複数回試行が本質的な
   validation.md`4-4・4-8・9節)。
 - 親子関連付けの具体的なフィールド名・型のコード化。
 - StructureNode/ContentBlockのその他のフィールド名・型のコード化。
-- 3節Stage2/3の「子Source化候補」を、Parserがどこまで自動判定でき、どこから
-  人間レビューが必要かの具体的な境界。小規模検証(`child_source_necessity_
-  validation.md`)により「独立参照必要性」が最も判別力の高い軸であることの
-  示唆は得られたが、8ケースの範囲での帰納にとどまり、正式な判定ルールとしては
-  未確定。
+- **(第4版で解決)** 3節Stage2/3の「子Source化候補」をParserがどこまで自動
+  判定できるかという論点は、単一の判定ルールとしてではなく、「Parserは
+  F群の構造的事実の提示までとし、独立参照必要性(G群)の判断は[8]候補確定
+  フェーズへ委ねる」という責務分離によって解決した(3-6節・9節)。
+- **(第4版で新設)** [8]候補確定フェーズの詳細設計(人間レビューへの提示
+  形式、Derived Knowledge層の統合判断プロセスがどこまで自動的に引き受け
+  られるか)。
+- **(第4版で新設)** Source候補一覧レポート(3-8節)の正式なフィールド名・
+  型のコード化。
+- **(第4版で新設)** 候補ID安定化の具体的な実装方式(3-7節で「復元前は
+  広くグルーピングする」という運用方針は確認したが、ID発行・フィンガー
+  プリント方式は未設計)。
+- **(第4版で新設)** D2の本文個別仕訳↔要約表の関係(`stage3_additional_
+  validation.md`)。既存の`relation`語彙(1対1の親子関係前提)では表現し
+  きれない可能性があり、`relation`モデルの拡張・新語彙の追加・多対多関係
+  モデルの導入のいずれにも、この改訂では進んでいない独立した論点として
+  残す(3-9節)。
 - ラベル検出のアルゴリズム: `label_detection_prototype_validation.md`により
   「PUAアイコン+文字列パターン(空白許容)」が本書6ラベルの範囲では有効
   であることは確認できたが、次の点は未確定のまま残る。
@@ -684,18 +1000,31 @@ plain抽出失敗→layout抽出成功のような複数回試行が本質的な
 
 ---
 
-以上がPDF→Source層に関するParser設計案(第3版・現時点の正式設計)である。
+以上がPDF→Source層に関するParser設計案(**第4版・現時点の正式設計**)である。
 Source粒度(3節)・親子Source間の`sourceFaithful`重複(5-1節・6-3節)・
 `provenance`の`diag`外への分離(5-1節)・gateChecksの位置づけと候補分類
-(6-3節)・`diag`蓄積型の組み合わせ方式(5節)は、いずれも実データ検証を経て
-方針を確定した。StructureNode認識の下調べ(`planning/structurenode_
+(6-3節)・`diag`蓄積型の組み合わせ方式(5節)は、第3版までに実データ検証を
+経て方針を確定した。StructureNode認識の下調べ(`planning/structurenode_
 recognition_survey.md`)・ラベル検出の試作(`planning/label_detection_
 prototype_validation.md`)・Block Detectionパターン検出系の全数調査
-(`planning/pattern_detection_survey.md`)・子Source化候補の必要性判定基準の
-小規模検証(`planning/child_source_necessity_validation.md`)・gateChecks
-不変条件の具体化(`planning/gatechecks_invariant_validation.md`)・`diag`
-蓄積型設計の実装可能性確認(`planning/diag_accumulation_validation.md`)も
-完了した。**子Source化候補の必要性判定基準は、8ケースの小規模検証を経ても
-正式なルールとしては未確定であり**(Stage3)、9節に残る検証事項はこの追加
-検証のみである。Parser本体の実装・スキーマの正式コード化は、この検証を経て
-から改めて着手を判断する。
+(`planning/pattern_detection_survey.md`)・gateChecks不変条件の具体化
+(`planning/gatechecks_invariant_validation.md`)・`diag`蓄積型設計の実装
+可能性確認(`planning/diag_accumulation_validation.md`)も完了している。
+
+**第4版では、唯一の未確定事項として残っていたStage3(子Source化候補の必要性
+判定基準)を扱った。** 既存8ケース(`child_source_necessity_validation.md`)
+に加え追加5ケース(`stage3_additional_validation.md`、D1〜D5)を検証した
+結果、単一の判定ルールとしての確定は断念し、代わりに**Parserが観測できる
+構造的事実(F群)の提示までを担当し、独立参照必要性という意味判断(G群)は
+Parser外の[8]候補確定フェーズへ渡す「候補提示方針」**を採用した
+(`stage3_responsibility_reconsideration.md`〜`stage3_c_plan_final_
+validation.md`)。この方針に沿って、1・2・3・4・5・6-3・9・10節を改訂し、
+Parserパイプラインの再定義(候補の局所的な再評価サイクルを含む、3-7節)・
+Source候補一覧レポートの概念設計(3-8節)・確定Source/候補の境界の明文化
+(3-6節)を行った。
+
+これにより、**Parser設計フェーズ(PDF→Source層)の基礎アーキテクチャ検証は
+一通り完了したと判断する。** ただし、[8]候補確定フェーズの詳細設計・
+候補一覧レポート/`provenance`/`diag`等の正式スキーマのコード化・D2の
+`relation`拡張問題は、いずれも次フェーズ以降の課題として残る(9節・10節)。
+Parser本体の実装は、これらの詳細設計を経てから改めて着手を判断する。
