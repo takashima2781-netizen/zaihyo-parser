@@ -54,10 +54,30 @@ test("GET /lib/formulaTokenizer.mjs はimport可能なJSとして配信される
   });
 });
 
+test("GET /lib/gradingRegistry.mjs はimport可能なJSとして配信される(M6が判定ロジックを再実装しないため)", async () => {
+  await withServer(async (base) => {
+    const res = await fetch(`${base}/lib/gradingRegistry.mjs`);
+    assert.equal(res.status, 200);
+    assert.match(res.headers.get("content-type") ?? "", /javascript/);
+    const body = await res.text();
+    assert.match(body, /export function grade/);
+  });
+});
+
 test("GET /lib/<許可リスト外> は404を返す", async () => {
   await withServer(async (base) => {
     const res = await fetch(`${base}/lib/not-allowed.mjs`);
     assert.equal(res.status, 404);
+  });
+});
+
+test("GET /learn は学習UIのHTMLを返す", async () => {
+  await withServer(async (base) => {
+    const res = await fetch(`${base}/learn`);
+    assert.equal(res.status, 200);
+    const body = await res.text();
+    assert.match(body, /問題を解く/);
+    assert.match(body, /gradingRegistry\.mjs/);
   });
 });
 
