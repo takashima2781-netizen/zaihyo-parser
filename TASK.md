@@ -5,6 +5,21 @@
 
 ## 現在のフェーズ
 
+**Parser設計フェーズ完了後、「教材の1論点をPDFから実際に解けるところまで
+一本通す」縦切りMVP(`planning/vertical_slice_mvp_roadmap.md`)に着手した。
+M1(Parserから実データが出る)・M3(開発用確認UI)が完了し、M2(Derived
+Knowledge候補生成)の詳細設計に着手している。**
+
+対象は定額法の定義式ブロック(テーマ8-2)1ケースのみ(`planning/vertical_
+slice_mvp_roadmap.md`3節で選定)。M1で実PDFから確定Sourceを1件生成し
+(`planning/m1_implementation_report.md`)、M3の開発用確認UI(閲覧のみ)で
+「PDFから何を読み取り、どこを補正し、なぜSourceとして確定したのか」を
+ブラウザ上で追跡できる状態にした。汎用的なParser・レビュー管理画面は
+意図的に作らず、この1ケースを最短距離で通すことを優先している
+(CLAUDE.md原則6・8)。
+
+以下はParser設計フェーズ完了までの経緯(旧「現在のフェーズ」、変更なし)。
+
 **Parser設計(PDF→Source層)は第4版として確定し、Parser設計フェーズを完了した
 と判断する。**
 
@@ -106,6 +121,24 @@ plan_final_validation.md`)を経て、`planning/parser_design_proposal.md`を
     Source候補一覧レポートの概念設計、確定Source/候補の境界の明文化、
     gateChecks/`diag`/候補一覧レポートの責務分離を行った。
     `planning/parser_design_proposal.md`(第4版・現時点の正式設計)
+16. **縦切りMVPロードマップ策定完了** — 「教材の1論点を実際に解ける」までの
+    依存関係・最小Parserプロトタイプのスコープ・最初の教材ケース(定額法の
+    定義式ブロック、テーマ8-2)・マイルストーン(M1〜M6)・後回しにするものを
+    整理した。開発の途中でユーザーが早期に実データをブラウザ確認できるよう、
+    M3(開発用確認UI)をM2より前に前倒しする構成へ改訂した。
+    `planning/vertical_slice_mvp_roadmap.md`
+17. **M1(最小Parserプロトタイプ)・M3(開発用確認UI)実装完了** — 定額法の
+    定義式ブロック(テーマ8-2)1ケースについて、PDF→Extraction→Structure
+    Recognition→Block Detection→Source Segmentation(F3)→Faithful
+    Restoration(`fraction_split`補正)→確定Sourceまでを実装し、実PDFで
+    動作確認した(抽出ツールはこの実行環境の`pdftotext`がCJK CMapを欠くため
+    `pdftotext`から`PyMuPDF`へ変更。フィールド設計〈`extractionRaw.tool`等〉
+    はツールの変化を前提とした設計のため、Parser設計第4版とは矛盾しない)。
+    続けて、`output/cases/teigakuho-definition.json`をブラウザ上で閲覧専用
+    表示する開発用確認UI(M3)を実装し、「PDFから何を読み取り、どこを補正し、
+    なぜSourceとして確定したのか」を人間が追跡できる状態を確認した。
+    `planning/m1_minimal_parser_prototype_design.md`(設計)、
+    `planning/m1_implementation_report.md`(実装報告)
 
 ## 直近タスク(完了分)
 
@@ -152,25 +185,35 @@ plan_final_validation.md`)を経て、`planning/parser_design_proposal.md`を
       `planning/stage3_c_plan_final_validation.md`
 - [x] 候補提示方針を正式方針として`parser_design_proposal.md`(第4版)へ反映
 
-## 次フェーズ(最小Parserプロトタイプ。設計はほぼ確定、実装はこれから)
+## 縦切りMVP: M1・M3(完了)
 
-Parser設計フェーズは完了したと判断するが、次のフェーズはあくまで
-**最小プロトタイプ**とする(CLAUDE.md原則6・8に従い、段階的に検証しながら
-進める)。
+- [x] 縦切りMVPロードマップ策定 — `planning/vertical_slice_mvp_roadmap.md`
+- [x] M1: 定額法1ケースの最小Parserプロトタイプ実装(PDF→確定Source) —
+      `planning/m1_minimal_parser_prototype_design.md`(設計)、
+      `planning/m1_implementation_report.md`(実装報告)
+- [x] M3: 開発用確認UI(閲覧のみ)実装・実データでのブラウザ確認完了
 
-- [ ] 最小プロトタイプの範囲を確定する(ユーザー確認事項)。現時点の想定:
-      [1]〜[3](抽出・StructureNode認識・Block Detection)は既存の実データ
-      検証で機械的に動作することを確認済みのため、これらを土台に、
-      [4] Source Segmentationの確定/候補振り分け(F3/F5判定)と、
-      Source候補一覧レポート(概念設計は`parser_design_proposal.md`3-8節)
-      の試作出力までを最小スコープとする。
+## 次フェーズ: M2(Derived Knowledge候補生成)
+
+対象は引き続き定額法1ケースのみ。汎用的なKnowledge生成器は作らない
+(ユーザー指示、`vertical_slice_mvp_roadmap.md`4節の方針を踏襲)。
+
+- [ ] M2詳細設計(進行中): 今回のSourceから何をDerived Knowledge候補として
+      抽出するか、knowledgeKind・sourceRefs.role・3軸状態モデル(confidence/
+      evidence/consolidation)の扱い、自動生成/人間確認の境界、M3への追加
+      表示方法、Exercise生成への接続方法を整理する
+- [ ] M2実装: Derived Knowledge候補1件の生成・M3画面への追加表示
+
+## 後回し(縦切りMVP完了後、`vertical_slice_mvp_roadmap.md`9節で判断済み)
+
 - [ ] Source候補一覧レポートの正式フィールド名・型のコード化
 - [ ] `provenance`・`diag`の正式フィールド名・型のコード化
 - [ ] [8]候補確定フェーズの詳細設計(人間レビューへの提示形式)
 - [ ] D2の`relation`拡張問題(本文個別仕訳↔要約表)への対応方針検討
       (候補提示方針とは独立した論点、`stage3_additional_validation.md`)
-- [ ] `structure.tokens`(term/operator/fraction/group/power)を
-      自動生成するか人手で作るかの判断(Source→Derived Knowledgeフェーズ)
-- [ ] Derived Knowledge抽出方法の実装(型・公式の抽出ロジック)
-- [ ] Exercise層(仕訳穴埋め・公式並び替え)の設計・実装(まだ先)
-- [ ] 残り7冊へのスケール方針の検討(まだ先)
+- [ ] Exercise層(仕訳穴埋め・公式並び替え)の設計・実装
+- [ ] 残り7冊へのスケール方針の検討
+- [ ] M1実装で判明した未決事項(`m1_implementation_report.md`10節): 抽出
+      ツール〈pdftotext→PyMuPDF〉の恒久判断、python実行環境差、級数法の
+      `precedingHeading`検出の既知の制限、複数計算式の汎用的な選別方法、
+      `location.printedPageLabel`/`outOfScopeDetections`の正式スキーマ化
