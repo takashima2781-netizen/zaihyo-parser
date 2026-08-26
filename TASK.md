@@ -7,15 +7,18 @@
 
 **Parser設計フェーズ完了後、「教材の1論点をPDFから実際に解けるところまで
 一本通す」縦切りMVP(`planning/vertical_slice_mvp_roadmap.md`)に着手した。
-M1(Parserから実データが出る)・M3(開発用確認UI)が完了し、M2(Derived
-Knowledge候補生成)の詳細設計に着手している。**
+M1(Parserから実データが出る)・M3(開発用確認UI)・M2(Derived Knowledge
+候補生成)が完了し、M4(候補の承認・修正・除外)の詳細設計に着手している。**
 
 対象は定額法の定義式ブロック(テーマ8-2)1ケースのみ(`planning/vertical_
 slice_mvp_roadmap.md`3節で選定)。M1で実PDFから確定Sourceを1件生成し
-(`planning/m1_implementation_report.md`)、M3の開発用確認UI(閲覧のみ)で
-「PDFから何を読み取り、どこを補正し、なぜSourceとして確定したのか」を
-ブラウザ上で追跡できる状態にした。汎用的なParser・レビュー管理画面は
-意図的に作らず、この1ケースを最短距離で通すことを優先している
+(`planning/m1_implementation_report.md`)、M2でその確定Sourceから
+Derived Knowledge候補1件(`calculation_formula`、`reviewStatus: candidate`)を
+生成し(`planning/m2_derived_knowledge_candidate_design.md`)、M3の開発用
+確認UI(閲覧のみ)で「PDFから何を読み取り、どこを補正し、なぜSourceとして
+確定し、そこからどんなKnowledge候補が生成されたか」を一気通貫でブラウザ上
+から追跡できる状態にした。汎用的なParser・Knowledge生成器・レビュー管理
+画面は意図的に作らず、この1ケースを最短距離で通すことを優先している
 (CLAUDE.md原則6・8)。
 
 以下はParser設計フェーズ完了までの経緯(旧「現在のフェーズ」、変更なし)。
@@ -139,6 +142,20 @@ plan_final_validation.md`)を経て、`planning/parser_design_proposal.md`を
     なぜSourceとして確定したのか」を人間が追跡できる状態を確認した。
     `planning/m1_minimal_parser_prototype_design.md`(設計)、
     `planning/m1_implementation_report.md`(実装報告)
+18. **M2(Derived Knowledge候補生成)詳細設計・実装完了** — M1の確定Source
+    (`block-teigakuho-def`)1件から、`calculation_formula`のDerived Knowledge
+    候補を1件生成した。`content.rawFormula`が`sourceFaithful`と完全一致する
+    こと、5トークン語彙(term/operator/fraction/group)への構造化と往復整合性
+    (structureから復元した文字列がrawFormulaと一致すること)、
+    `sourceRefs.role = definition`によるSourceとの紐づけ、3軸状態
+    (contentConfidence/evidence/consolidation、いずれも既存設計の「1 Source
+    → 1 Knowledge」パターンにそのまま一致)を実データで確認した。
+    `reviewStatus`(候補/承認等のレビュー工程上の状態)は、Derived Knowledge
+    本体の外側で管理する構成とし、3軸モデルの独立性を壊さないようにした
+    (ユーザー承認済みの方針)。M3画面へ「7. Derived Knowledge候補」セクション
+    を追加し、往復整合性チェックをブラウザ側でも生成処理と同じロジック
+    (`/lib/formulaTokenizer.mjs`のimport)で独立に再検証できるようにした。
+    `planning/m2_derived_knowledge_candidate_design.md`
 
 ## 直近タスク(完了分)
 
@@ -185,24 +202,30 @@ plan_final_validation.md`)を経て、`planning/parser_design_proposal.md`を
       `planning/stage3_c_plan_final_validation.md`
 - [x] 候補提示方針を正式方針として`parser_design_proposal.md`(第4版)へ反映
 
-## 縦切りMVP: M1・M3(完了)
+## 縦切りMVP: M1・M2・M3(完了)
 
 - [x] 縦切りMVPロードマップ策定 — `planning/vertical_slice_mvp_roadmap.md`
 - [x] M1: 定額法1ケースの最小Parserプロトタイプ実装(PDF→確定Source) —
       `planning/m1_minimal_parser_prototype_design.md`(設計)、
       `planning/m1_implementation_report.md`(実装報告)
 - [x] M3: 開発用確認UI(閲覧のみ)実装・実データでのブラウザ確認完了
+- [x] M2: Derived Knowledge候補生成(定額法1ケース、`calculation_formula`)実装。
+      `content.rawFormula`が`sourceFaithful`と一致すること、5トークン語彙への
+      構造化と往復整合性、`sourceRefs.role = definition`、3軸状態
+      (contentConfidence/evidence/consolidation)、`reviewStatus`をKnowledge
+      本体の外側で管理する構成を実データで確認した。M3画面へ「7. Derived
+      Knowledge候補」セクションを追加(閲覧のみ)。
+      `planning/m2_derived_knowledge_candidate_design.md`
 
-## 次フェーズ: M2(Derived Knowledge候補生成)
+## 次フェーズ: M4(候補の承認・修正・除外)
 
-対象は引き続き定額法1ケースのみ。汎用的なKnowledge生成器は作らない
-(ユーザー指示、`vertical_slice_mvp_roadmap.md`4節の方針を踏襲)。
+対象は引き続き定額法1ケースのみ。高機能な管理画面ではなく、現在のM3
+開発用確認UIを最小限発展させる形を優先する(ユーザー指示)。
 
-- [ ] M2詳細設計(進行中): 今回のSourceから何をDerived Knowledge候補として
-      抽出するか、knowledgeKind・sourceRefs.role・3軸状態モデル(confidence/
-      evidence/consolidation)の扱い、自動生成/人間確認の境界、M3への追加
-      表示方法、Exercise生成への接続方法を整理する
-- [ ] M2実装: Derived Knowledge候補1件の生成・M3画面への追加表示
+- [ ] M4詳細設計(進行中): reviewStatusの状態遷移(candidate→approved等)、
+      承認/修正/除外の最小操作、公式Knowledgeの永続化方法、M5(Exercise生成)
+      が「承認済みKnowledgeのみ」を入力として受け取れる受け渡し方法を整理する
+- [ ] M4実装: M3画面への承認/修正/除外操作の追加
 
 ## 後回し(縦切りMVP完了後、`vertical_slice_mvp_roadmap.md`9節で判断済み)
 
@@ -217,3 +240,8 @@ plan_final_validation.md`)を経て、`planning/parser_design_proposal.md`を
       ツール〈pdftotext→PyMuPDF〉の恒久判断、python実行環境差、級数法の
       `precedingHeading`検出の既知の制限、複数計算式の汎用的な選別方法、
       `location.printedPageLabel`/`outOfScopeDetections`の正式スキーマ化
+- [ ] M2実装で判明した未決事項(`m2_derived_knowledge_candidate_design.md`
+      12節): `distinctBooks`の正式なbook ID体系、往復整合性チェックを
+      正式な`gateChecks`の枠組みへ統合するかどうか、`content.structure`の
+      トークン化ロジックをどこまでケース固有のまま保つか、Derived Knowledge
+      候補・確定Knowledgeの正式なファイル配置

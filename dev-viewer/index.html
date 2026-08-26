@@ -82,7 +82,13 @@
   <div id="error"></div>
   <div id="app"></div>
 
-  <script>
+  <script type="module">
+    // 往復整合性の検証には、生成処理(src/knowledge/deriveKnowledgeCandidate.mjs)
+    // と全く同じrenderTokensをサーバ経由でそのままimportする(重複実装による
+    // 意図しないロジックの食い違いを避けるため。/lib/配下は許可リスト制、
+    // src/devViewer/server.mjs参照)。
+    import { renderTokens } from "/lib/formulaTokenizer.mjs";
+
     const CASE_NAME = "teigakuho-definition";
 
     function el(tag, attrs = {}, children = []) {
@@ -112,6 +118,29 @@
 
     function badge(text, kind) {
       return el("span", { class: `badge ${kind}` }, text);
+    }
+
+    // structure.tokensを人間が読める入れ子リストとして表示する(折りたたみの
+    // 生JSONとは別に、パッと見て分解結果が分かるようにするための補助表示)。
+    function renderStructureTree(node) {
+      if (node.kind === "sequence" || node.kind === "group") {
+        return el("ul", {}, [
+          el("li", {}, `${node.kind}`),
+          el(
+            "ul",
+            {},
+            node.tokens.map((child) => el("li", {}, renderStructureTree(child))),
+          ),
+        ]);
+      }
+      if (node.kind === "fraction") {
+        return el("ul", {}, [
+          el("li", {}, "fraction"),
+          el("li", {}, ["分子: ", ...node.numerator.map((t) => el("span", {}, `${t.value} `))]),
+          el("li", {}, ["分母: ", ...node.denominator.map((t) => el("span", {}, `${t.value} `))]),
+        ]);
+      }
+      return `${node.kind}: "${node.value}"`;
     }
 
     function render(data) {
@@ -241,6 +270,80 @@
           })()),
         ]),
       );
+
+      app.append(el("div", { class: "arrow" }, "↓ M2: Derived Knowledge候補生成"));
+
+      // 7. Derived Knowledge候補
+      const dkc = data.derivedKnowledgeCandidate;
+      if (!dkc) {
+        app.append(
+          el("section", {}, [
+            el("h2", {}, [el("span", { class: "step" }, "7"), "Derived Knowledge候補"]),
+            el("div", { class: "scope-out" }, "まだ生成されていません(M2未実行。node scripts/run-teigakuho-knowledge-candidate.mjs を実行してください)。"),
+          ]),
+        );
+      } else {
+        const k = dkc.knowledge;
+        const rendered = renderTokens(k.content.structure);
+        const roundTripOk = rendered === k.content.rawFormula;
+
+        app.append(
+          el("section", {}, [
+            el("h2", {}, [el("span", { class: "step" }, "7"), "Derived Knowledge候補 — Sourceから何が生成されたか"]),
+
+            field("reviewStatus(本体の外側で管理)", badge(dkc.reviewStatus, "warn")),
+
+            field(
+              "1. どのSourceから生成されたか(sourceRefs)",
+              k.sourceRefs
+                .map((r) => `${r.sourceBlockId}(role: ${r.role})`)
+                .join(", "),
+            ),
+
+            field("2. knowledgeKind", k.knowledgeKind),
+
+            field("3. rawFormula(sourceFaithfulと同一であることを確認)", [
+              el("div", { class: "formula" }, k.content.rawFormula),
+              el("div", { class: "field" }, [
+                el("span", { class: "label" }, "sourceFaithful(6の再掲)との一致: "),
+                badge(k.content.rawFormula === block.sourceFaithful ? "一致" : "不一致", k.content.rawFormula === block.sourceFaithful ? "ok" : "warn"),
+              ]),
+            ]),
+
+            field("4. structureへの分解", [
+              renderStructureTree(k.content.structure),
+              el("div", { class: "field" }, [
+                el("span", { class: "label" }, "往復整合性(tokensから復元した文字列とrawFormulaの一致、この場でブラウザが再計算): "),
+                badge(roundTripOk ? "一致(OK)" : "不一致(要確認)", roundTripOk ? "ok" : "warn"),
+              ]),
+              (() => {
+                const details = el("details", {}, []);
+                details.append(el("summary", {}, "structure JSON全体を表示"));
+                details.append(pre(JSON.stringify(k.content.structure, null, 2)));
+                return details;
+              })(),
+            ]),
+
+            field("5. 3軸状態", (() => {
+              const details = el("details", { open: "" }, []);
+              details.append(el("summary", {}, "contentConfidence / evidence / consolidation"));
+              details.append(pre(JSON.stringify(
+                {
+                  contentConfidence: k.contentConfidence,
+                  evidence: k.evidence,
+                  consolidation: k.consolidation,
+                  scopeNote: k.scopeNote,
+                },
+                null,
+                2,
+              )));
+              return details;
+            })()),
+
+            field("6. reviewStatus", `${dkc.reviewStatus}(承認/修正/除外の操作はまだこの画面には無い。M4で追加予定)`),
+          ]),
+        );
+      }
 
       // 参考: 候補一覧・スコープ外検出
       app.append(

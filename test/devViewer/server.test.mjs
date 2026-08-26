@@ -43,6 +43,23 @@ test("GET /api/case/../../secret はパストラバーサルできない", async
   });
 });
 
+test("GET /lib/formulaTokenizer.mjs はimport可能なJSとして配信される(往復整合性チェックの重複実装を避けるため)", async () => {
+  await withServer(async (base) => {
+    const res = await fetch(`${base}/lib/formulaTokenizer.mjs`);
+    assert.equal(res.status, 200);
+    assert.match(res.headers.get("content-type") ?? "", /javascript/);
+    const body = await res.text();
+    assert.match(body, /export function renderTokens/);
+  });
+});
+
+test("GET /lib/<許可リスト外> は404を返す", async () => {
+  await withServer(async (base) => {
+    const res = await fetch(`${base}/lib/not-allowed.mjs`);
+    assert.equal(res.status, 404);
+  });
+});
+
 // 実際のケースJSON(output/cases/teigakuho-definition.json)が存在する場合のみ、
 // 構造的性質を確認する。教材原文はアサーションに埋め込まない
 // (`m1_minimal_parser_prototype_design.md`8-3節と同じ方針)。
