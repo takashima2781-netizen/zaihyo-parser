@@ -1,7 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { detectTermBasedFormulas } from "../../src/parser/blockDetection.mjs";
+import {
+  detectTermBasedFormulas,
+  findNestedParentLabel,
+} from "../../src/parser/blockDetection.mjs";
 
 // 架空の計算式を使う(教材原文は使わない)。
 
@@ -46,4 +49,35 @@ test("detectTermBasedFormulas: 複数件を検出できる", () => {
 test("detectTermBasedFormulas: パターンに一致しない行は検出しない", () => {
   const page = "架空の地の文。式は含まれない。";
   assert.equal(detectTermBasedFormulas(page).length, 0);
+});
+
+// 第2ケースの実データ検証で判明した、残存価額ゼロのため減算部分が
+// 教材上省略される適用例の形状(`case2_readiness_and_generalization_
+// analysis.md`5節1項)。
+test("detectTermBasedFormulas: 括弧・減算を伴わない「数値×...＝...」も検出する(適用例の形状)", () => {
+  const page = "見出し\n93,000×      ＝12,000\n次の行";
+  const result = detectTermBasedFormulas(page);
+  assert.equal(result.length, 1);
+  assert.equal(result[0].matchedLine, "93,000×      ＝12,000");
+});
+
+// 実データ確認: sort=Trueの読み順ヒューリスティックがアイコン隣接文字を
+// 並べ替え、「例 ◯◯設」という語順になることを確認済み
+// (`case2_readiness_and_generalization_analysis.md`7-1節と同種)。
+test("findNestedParentLabel: 候補より前にある「設 例」ラベルを見つける(実データの語順)", () => {
+  const page = [
+    "架空の見出し",
+    "    例 架空の設例タイトル設",
+    "架空の問題文…",
+    "93,000×      ＝12,000",
+  ].join("\n");
+  const result = findNestedParentLabel(page, 3);
+  assert.ok(result);
+  assert.match(result.label, /例.*設/);
+  assert.equal(result.lineIndex, 1);
+});
+
+test("findNestedParentLabel: ラベルが見つからなければnullを返す(推測しない)", () => {
+  const page = ["架空の見出し", "架空の問題文…", "93,000×      ＝12,000"].join("\n");
+  assert.equal(findNestedParentLabel(page, 2), null);
 });

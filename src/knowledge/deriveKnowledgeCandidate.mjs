@@ -23,19 +23,19 @@ const CONFIDENCE_PROPAGATION = {
 
 // evidence/consolidationは、sourceRefsから機械的に導出する
 // (M4設計3-1節でB分類〈システムが再計算〉としたフィールド)。
-// M2(初回生成)・M4(修正保存時の再計算)の両方から同じロジックを使う。
-// このケースは常にsourceRefsが1件のみのため、複数Source統合(merged_
-// confirmed等)のロジックはまだ実装しない(fail-closed、次のケースの課題)。
+// M2(初回生成)・M4(修正保存時の再計算)・第2ケースの複数Source統合の
+// いずれからも同じロジックを使う。第2ケースの実データ検証で、
+// `byRole`のrole別集計ロジック自体は複数件にそのまま一般化できることを
+// 確認した(`case2_readiness_and_generalization_analysis.md`5節5項)。
+// 一方、`distinctThemes`はSourceごとに異なりうるため呼び出し側から明示的に
+// 渡す(この関数はSourceからテーマを逆引きする責務を持たない)。
 /**
- * @param {{ sourceRefs: Array<{ role: string }>, themeId: string }} params
+ * @param {{ sourceRefs: Array<{ role: string }>, distinctThemes: string[] }} params
  * @returns {{ evidence: object, consolidation: object }}
  */
-export function computeEvidenceAndConsolidation({ sourceRefs, themeId }) {
-  if (sourceRefs.length !== 1) {
-    throw new Error(
-      `このケースは単一Source前提のロジックのみ実装済み(fail-closed)。` +
-        `sourceRefsが${sourceRefs.length}件のケースには未対応`,
-    );
+export function computeEvidenceAndConsolidation({ sourceRefs, distinctThemes }) {
+  if (sourceRefs.length < 1) {
+    throw new Error("sourceRefsが空です(fail-closed)");
   }
   const byRole = {};
   for (const ref of sourceRefs) {
@@ -44,12 +44,18 @@ export function computeEvidenceAndConsolidation({ sourceRefs, themeId }) {
   return {
     evidence: {
       byRole,
-      distinctThemes: [themeId],
+      distinctThemes,
       distinctBooks: ["book-1"],
       crossesBaseAdvanced: false,
     },
     consolidation: {
-      state: "single_source",
+      // 2件以上のSourceを同一知識として統合してよいと判断された結果として
+      // merged_confirmedになる(出現回数による機械的な閾値判定ではない、
+      // CLAUDE.md原則4)。この統合判断自体は、[8]候補確定フェーズ側で
+      // 「この候補は既存Knowledgeの適用例である」と人間が確認した時点で
+      // 行われる(Parser側へは逆流させない、
+      // `case2_readiness_and_generalization_analysis.md`4-2節)。
+      state: sourceRefs.length === 1 ? "single_source" : "merged_confirmed",
       possibleDuplicateOf: [],
     },
   };
@@ -99,11 +105,10 @@ export function deriveTeigakuhoKnowledgeCandidate({ block, structureContext }) {
     );
   }
 
-  const themeId = structureContext.theme.id;
   const sourceRefs = [{ sourceBlockId: block.id, role: "definition" }];
   const { evidence, consolidation } = computeEvidenceAndConsolidation({
     sourceRefs,
-    themeId,
+    distinctThemes: [structureContext.theme.id],
   });
 
   const knowledge = {

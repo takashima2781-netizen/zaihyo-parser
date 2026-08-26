@@ -265,11 +265,87 @@ Exercise生成→学習UIでの回答・正誤判定・出典開示、という�
 一次ゴールを実教材データで達成した。** 到達点の総括・次フェーズの方針は
 `planning/vertical_slice_mvp_retrospective.md`を参照。
 
+## 第2ケース: Source追加の自動化・専門家レビューUI(完了)
+
+M1〜M6を「1ケース専用の縦切りMVP」から「教材を増やしていける仕組み」へ
+一段汎化するため、定額法の適用例2件(テーマ8-2内・テーマ9-1〈テーマ横断〉)
+を第2ケースとして実データで検証した。
+
+- **Source候補→Knowledge統合の経路を実データで検証完了** —
+  Parser候補検出([8]候補確定フェーズ相当)・座標ベースのFaithful
+  Restoration・複数Source→1 Knowledge統合(`evidence`/`consolidation`の
+  更新)を、実PDFで最後まで通した。
+  `planning/case2_readiness_and_generalization_analysis.md`
+- **Source確定フェーズの責務再検討・縮小完了** — 「Sourceとして確定
+  するか」を毎回人間に問う設計を見直し、F群の構造的事実(同一topic内の
+  適用・定義候補が一意・Faithful Restoration解決済み)だけで安全に
+  判定できる場合はParser外の評価ロジック
+  (`src/parser/evaluateCandidateConfirmation.mjs`)が自動確定・自動統合
+  し、テーマ横断等の意味判断が必要な場合だけ人間へ個別の統合候補として
+  提示する設計へ変更した。Parser本体(`runApplicationCandidates.mjs`)の
+  出力契約(F群のみ)は変更していない。
+  `planning/source_confirmation_responsibility_reconsideration.md`
+- **Knowledge統合時のレビュー範囲の詳細設計完了** — `reviewStatus`が
+  承認しているのはCategory A/C(`content`/`contentConfidence`/
+  `scopeNote`)であり、Source統合が変化させるCategory B
+  (`evidence`/`consolidation`)は対象外、という整理により、Source追加の
+  たびにKnowledge全体を再承認待ちに戻す設計を撤回した。承認の単位は
+  「Knowledge全体」ではなく「追加候補ごと」とした。
+  `planning/knowledge_integration_review_scope_design.md`
+- **本プロジェクト初のgateChecks実装完了** —
+  `src/gateChecks/applicationIntegrationChecks.mjs`。自動確定の正当性・
+  sourceRefsとの整合性・content不変性を事後検証する(一次判断器ではない)。
+  CLIスクリプト(`scripts/run-application-candidates.mjs`)・対話的な
+  人間承認経路(`server.mjs`の`approve-as-evidence`ルート)の両方に
+  fail-closedで組み込んだ。
+- **P193(テーマ9-1)の複数Knowledge候補分析完了** — 1つのSource範囲に、
+  既存Knowledgeの適用例であることと、対象固有の別知識(自社利用の
+  ソフトウェア等、資産固有の償却条件)が同時に存在しうることを実データで
+  確認した。今回は前者(適用例としてのsourceRefs追加)のみを実装し、
+  後者(対象固有ルールの独立Knowledge化)は明示的に保留した(下記
+  「後回し」参照)。
+  `planning/p193_multi_knowledge_analysis.md`
+- **専門家レビューUIの責務分離完了** — 開発用確認UIの判断ポイント
+  (Knowledge採用/Source追加の承認)を、「専門家レビュー領域」(内部用語を
+  使わず、教材の記述同士を比較させる形で判断させる)と「開発者向け詳細」
+  (折りたたみ、内部設計の用語をそのまま表示)の2層に分離した。
+  `knowledge_integration_review_scope_design.md`・
+  `p193_multi_knowledge_analysis.md`の設計提案をUI表示層へ適用したもの。
+- **実データでの最終確認完了** — page158(同一topic内の適用)は自動確定・
+  自動統合、page193(テーマ横断の適用)は専門家レビューUIでユーザー自身が
+  「記録する」を選択したことによる人間確認統合、という異なる経路を
+  経て、両方とも`sourceRefs`へ反映された(`evidence.byRole`:
+  definition 1/application 2、`distinctThemes`: theme-8/theme-9、
+  `consolidation.state`: merged_confirmed)。`content`/`reviewStatus`は
+  この間一切変化しなかった。gateChecks・既存テストとも実データに対して
+  正常に通ることを確認済み。
+
 ## 後回し(縦切りMVP完了後、`vertical_slice_mvp_roadmap.md`9節で判断済み)
 
 - [ ] Source候補一覧レポートの正式フィールド名・型のコード化
 - [ ] `provenance`・`diag`の正式フィールド名・型のコード化
-- [ ] [8]候補確定フェーズの詳細設計(人間レビューへの提示形式)
+- [x] [8]候補確定フェーズの詳細設計(人間レビューへの提示形式) — 上記
+      「第2ケース」で完了。自動確定+専門家レビューUIとして実装済み
+- [ ] **トピック固有の会計方針をDerived Knowledgeとして捕捉する設計**
+      (`planning/p193_multi_knowledge_analysis.md`4節(b)で保留と結論)。
+      例: 自社利用のソフトウェアは定額法・残存価額ゼロ・償却期間の
+      原則的上限で処理する、といったテーマ説明部分に一箇所だけ明示される
+      規則。現行の`detectTermBasedFormulas`(数式行専用)とは異なる説明文
+      検出器・新しいknowledgeKind・独自のSource確定フローが必要になる
+      見込みで、複数の教材・複数のテーマで同種パターンが繰り返し
+      確認された時点で着手する
+- [ ] **1つのSource範囲から複数のKnowledge候補(既存Knowledgeの適用例＋
+      独立した新規Knowledge候補)が同時に成立しうるケースへの一般的な
+      対応方針**(`planning/p193_multi_knowledge_analysis.md`で初めて
+      具体的に確認された論点)。今回の実装(`evaluateAutoConfirmation`・
+      `confirmAndIntegrateCandidate`・専門家レビューUI)は、いずれも
+      「1つの適用例Source→1つの既存KnowledgeへのsourceRefs追加」という
+      今回のケースの範囲に限定してあり、複数Knowledge候補への分岐を
+      構造的に妨げるものではないことを確認済み(`sourceRefs`はKnowledge
+      側が持つ参照であり、同一Sourceが将来複数のKnowledgeから参照される
+      こと自体は現行スキーマ上禁止されていない)。ただし、それを実際に
+      検出・提示する仕組みは未設計であり、上記の会計方針Knowledge化と
+      合わせて次フェーズ以降の課題とする
 - [ ] D2の`relation`拡張問題(本文個別仕訳↔要約表)への対応方針検討
       (候補提示方針とは独立した論点、`stage3_additional_validation.md`)
 - [ ] Exercise層(仕訳穴埋め・公式並び替え)の設計・実装

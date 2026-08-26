@@ -52,6 +52,49 @@ export function tokenizeSubtractFractionFormula(rawFormula) {
   };
 }
 
+const BARE_NUMBER_FRACTION_FORMULA = /^([０-９0-9,，]+)×（([^（）／]+)／([^（）／]+)）＝(.+)$/;
+
+/**
+ * 「N×（C／D）＝E」という形(残存価額がゼロのため減算部分が教材上省略される
+ * 適用例。第2ケースの実データ検証で判明、
+ * `planning/case2_readiness_and_generalization_analysis.md`5節1項)を、
+ * 5トークン語彙で構造化する。定義式(`tokenizeSubtractFractionFormula`)とは
+ * 別関数のままにする(2つの形状を1つの正規表現・分岐で無理に統一しない、
+ * 実データ2件の範囲だけ汎化する方針)。
+ * @param {string} rawFormula
+ * @returns {{ kind: "sequence", tokens: object[] }}
+ */
+export function tokenizeBareNumberFractionFormula(rawFormula) {
+  const match = rawFormula.match(BARE_NUMBER_FRACTION_FORMULA);
+  if (!match) {
+    throw new Error(
+      `想定している"N×（C／D）＝E"という形状に一致しないため、構造化しない` +
+        `(fail-closed、汎用パーサーへのフォールバックはしない): ${rawFormula}`,
+    );
+  }
+  const [, amount, numerator, denominator, result] = match;
+
+  return {
+    kind: "sequence",
+    tokens: [
+      { kind: "term", value: amount },
+      { kind: "operator", value: "×" },
+      {
+        kind: "group",
+        tokens: [
+          {
+            kind: "fraction",
+            numerator: [{ kind: "term", value: numerator }],
+            denominator: [{ kind: "term", value: denominator }],
+          },
+        ],
+      },
+      { kind: "operator", value: "＝" },
+      { kind: "term", value: result },
+    ],
+  };
+}
+
 /**
  * トークン構造を文字列へ復元する(往復整合性の検証用)。
  * `power`種別はこのケースで使用されないため実装しない

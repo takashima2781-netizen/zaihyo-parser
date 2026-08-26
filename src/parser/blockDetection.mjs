@@ -4,12 +4,16 @@
 // 用語ベース計算式のパターンを検出する。ラベル検出系(設例/解説/留意点等)・
 // 仕訳型・方程式検出器は対象外(`m1_minimal_parser_prototype_design.md`3節)。
 //
-// 1行に「（...－...）×...＝...」という形が現れる行を候補として検出する。
-// 分数(分子/分母)がFaithful Restoration前の抽出結果で別行に分離している
-// 場合があるため(`parser_source_granularity_validation.md`ケース5)、
-// マッチした行の前後1行を`contextLines`として一緒に保持し、[5]の判定材料にする。
+// 1行に「（...－...）×...＝...」という形、または「数値×...＝...」という
+// 形(残存価額がゼロで減算部分が教材上省略される適用例。第2ケースの実データ
+// 検証で判明、`planning/case2_readiness_and_generalization_analysis.md`
+// 5節1項)が現れる行を候補として検出する。分数(分子/分母)がFaithful
+// Restoration前の抽出結果で別行に分離している場合があるため
+// (`parser_source_granularity_validation.md`ケース5)、マッチした行の前後
+// 1行を`contextLines`として一緒に保持し、[5]の判定材料にする。
 
-const FORMULA_LINE_PATTERN = /[（(][^（）()]*[－\-][^（）()]*[）)]\s*×.*[＝=].+/;
+const FORMULA_LINE_PATTERN =
+  /(?:[（(][^（）()]*[－\-][^（）()]*[）)]|[０-９0-9][０-９0-9,，]*)\s*×.*[＝=].+/;
 
 /**
  * @param {string} pageText
@@ -58,4 +62,39 @@ export function detectTermBasedFormulas(pageText) {
   }
 
   return candidates;
+}
+
+// 「設 例」ラベル(教材の設例見出し)を、候補行より前の範囲で探す。
+// 第1ケース(トップレベル、ネストなし)では使われない、第2ケース専用の
+// 最小限の追加(`case2_readiness_and_generalization_analysis.md`2-4節・
+// 3-1節)。ラベル検出系全体(6ラベルすべて・PUAアイコン判定等)は引き続き
+// スコープ外であり、「設例」1ラベルの見出し文字列だけを探す。
+//
+// 実データ確認(第2ケース、2箇所とも同一パターン): `sort=True`の読み順
+// ヒューリスティックは、アイコン文字に隣接する「設」の文字を行末へ
+// 追いやり、「例 ◯◯設」のような語順に入れ替えてしまう
+// (`case2_readiness_and_generalization_analysis.md`7-1節と同種の、
+// アイコン隣接テキストの並び替わり)。この実データで確認済みの語順に
+// 合わせてパターンを定義する(「設 例」の通常語順ではなく「例...設」)。
+const NESTED_LABEL_PATTERN = /例.{0,20}設\s*$/;
+
+/**
+ * @param {string} pageText
+ * @param {number} candidateLineIndex
+ * @param {number} [searchWindow] 何行前まで遡って探すか
+ * @returns {{ label: string, lineIndex: number } | null}
+ */
+export function findNestedParentLabel(pageText, candidateLineIndex, searchWindow = 60) {
+  const rawLines = pageText.split("\n");
+  for (
+    let j = candidateLineIndex - 1;
+    j >= Math.max(0, candidateLineIndex - searchWindow);
+    j--
+  ) {
+    const trimmed = rawLines[j].trim();
+    if (NESTED_LABEL_PATTERN.test(trimmed)) {
+      return { label: trimmed, lineIndex: j };
+    }
+  }
+  return null;
 }

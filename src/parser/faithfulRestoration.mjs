@@ -54,3 +54,127 @@ export function applyKnownCorrection(rawText, correction) {
 // このM1ケース(定額法の定義式、fraction_splitが必ず発生する)では
 // 一度も使われないため実装しない(未使用のコードを持ち込まない、
 // self-review時に削除。次のケースで実際に必要になった時点で追加する)。
+
+// --- 第2ケース専用: 座標ベースの分数対応付け ---
+//
+// `get_text(sort=True)`の読み順ヒューリスティックは、1ページに複数の
+// 分数付き計算行がある場合、分子/分母の断片を誤った計算行の近くに
+// 並べてしまうことがある(第2ケースの実データ検証で判明、
+// `planning/case2_readiness_and_generalization_analysis.md`7-1節)。
+// この問題は「±1行」という単純なテキスト隣接ヒューリスティックでは
+// 解決できないため、座標付きブロック(`extractBlocks`)を使った位置ベースの
+// 対応付けへ切り替える。汎用的な座標復元エンジンではなく、今回確認できた
+// 2つの適用例を正しく扱うために必要な最小限のロジックにとどめる。
+
+const FRACTION_FRAGMENT_LINE = /^[０-９0-9]+[年月]$/;
+const Y_THRESHOLD = 40;
+
+/**
+ * 同じページに同一の計算式が複数回出現する場合があるため(第2ケースの実データ、
+ * ページ193で確認済み。決算時・廃棄時で同じ式が繰り返される)、`beforeGap`/
+ * `afterGap`の出現箇所をY座標が近いもの同士でペアリングし、ページ上の出現
+ * 順(Y座標が小さい順)で`occurrenceIndex`番目のものを対象とする。
+ *
+ * @param {Array<{x0:number,y0:number,x1:number,y1:number,text:string}>} blocks
+ * @param {string} beforeGap 数式の×側の文字列(例: "93,000×")
+ * @param {string} afterGap 数式の＝側の文字列(例: "＝12,000")
+ * @param {number} [occurrenceIndex] 複数出現する場合の対象インデックス(0始まり)
+ * @returns {{ numerator: string, denominator: string }}
+ */
+export function restoreFractionByPosition(blocks, beforeGap, afterGap, occurrenceIndex = 0) {
+  const beforeIndices = blocks
+    .map((b, i) => (b.text.includes(beforeGap) ? i : -1))
+    .filter((i) => i !== -1);
+  const afterIndices = blocks
+    .map((b, i) => (b.text.includes(afterGap) ? i : -1))
+    .filter((i) => i !== -1);
+
+  if (beforeIndices.length === 0 || afterIndices.length === 0) {
+    throw new Error(
+      `数式に対応するブロックが座標データから見つからない(fail-closed): ` +
+        `"${beforeGap}" / "${afterGap}"`,
+    );
+  }
+
+  // beforeGapの各出現箇所を、Y座標が最も近いafterGapの出現箇所とペアリングする
+  const pairs = beforeIndices
+    .map((bi) => {
+      let bestAi = null;
+      let bestDist = Infinity;
+      for (const ai of afterIndices) {
+        const dist = Math.abs(blocks[ai].y0 - blocks[bi].y0);
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestAi = ai;
+        }
+      }
+      return { beforeIndex: bi, afterIndex: bestAi, y0: Math.min(blocks[bi].y0, blocks[bestAi].y0) };
+    })
+    .sort((a, b) => a.y0 - b.y0);
+
+  if (occurrenceIndex >= pairs.length) {
+    throw new Error(
+      `occurrenceIndex(${occurrenceIndex})がページ上の出現数(${pairs.length})を` +
+        `超えている(fail-closed): "${beforeGap}" / "${afterGap}"`,
+    );
+  }
+
+  const { beforeIndex, afterIndex } = pairs[occurrenceIndex];
+  const anchorIndices = [...new Set([beforeIndex, afterIndex])];
+
+  let numerator = null;
+  let denominator = null;
+
+  // 同一ブロック内(数式の直後に分母が同居しているケース、例: 第2ケースの
+  // 適用例B)を優先的に探す。×を含む行より前を分子候補、＝を含む行より
+  // 後を分母候補とする。
+  for (const i of anchorIndices) {
+    const lines = blocks[i].text.split("\n").map((l) => l.trim());
+    const formulaLineIdx = lines.findIndex((l) => l.includes("×") || l.includes("＝"));
+    lines.forEach((line, idx) => {
+      if (!FRACTION_FRAGMENT_LINE.test(line)) return;
+      if (idx < formulaLineIdx && numerator === null) numerator = line;
+      if (idx > formulaLineIdx && denominator === null) denominator = line;
+    });
+  }
+
+  const anchorY0 = Math.min(...anchorIndices.map((i) => blocks[i].y0));
+  const anchorY1 = Math.max(...anchorIndices.map((i) => blocks[i].y1));
+
+  if (numerator === null) {
+    numerator = findNearestFragment(blocks, anchorIndices, anchorY0, "above");
+  }
+  if (denominator === null) {
+    denominator = findNearestFragment(blocks, anchorIndices, anchorY1, "below");
+  }
+
+  if (numerator === null || denominator === null) {
+    throw new Error(
+      `分子・分母の座標的な対応付けに失敗した(fail-closed、無理に推測しない): ` +
+        `numerator=${numerator}, denominator=${denominator}`,
+    );
+  }
+
+  return { numerator, denominator };
+}
+
+function findNearestFragment(blocks, excludeIndices, anchorY, direction) {
+  let best = null;
+  let bestDistance = Infinity;
+
+  blocks.forEach((b, i) => {
+    if (excludeIndices.includes(i)) return;
+    const distance = direction === "above" ? anchorY - b.y1 : b.y0 - anchorY;
+    if (distance < -2 || distance > Y_THRESHOLD) return;
+
+    for (const line of b.text.split("\n")) {
+      const trimmed = line.trim();
+      if (FRACTION_FRAGMENT_LINE.test(trimmed) && distance < bestDistance) {
+        best = trimmed;
+        bestDistance = distance;
+      }
+    }
+  });
+
+  return best;
+}

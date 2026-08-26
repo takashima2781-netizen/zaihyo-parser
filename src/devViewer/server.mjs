@@ -10,10 +10,13 @@ import path from "node:path";
 
 import { approveCandidate, rejectCandidate, editCandidate } from "../knowledge/reviewActions.mjs";
 import { rebuildApprovedKnowledge } from "../knowledge/approvedKnowledgeStore.mjs";
+import { rejectCandidate as rejectSourceCandidate } from "../parser/candidateActions.mjs";
+import { confirmAndIntegrateCandidate } from "../parser/confirmAndIntegrateCandidate.mjs";
+import { runApplicationIntegrationGateChecks } from "../gateChecks/applicationIntegrationChecks.mjs";
 
-// 現時点でこのUIが表示できるのは定額法1ケースのみ。
+// 現時点でこのUIが表示できるのは定額法1ケース(+第2ケースの適用例2件)のみ。
 // 新しいケースを追加する際は、ここに明示的に追加する(汎用化しない)。
-export const ALLOWED_CASES = new Set(["teigakuho-definition"]);
+export const ALLOWED_CASES = new Set(["teigakuho-definition", "teigakuho-application"]);
 
 // M3(往復整合性チェック)・M6(正誤判定)が、生成処理と独立した再実装では
 // なく、実際に使われているのと同じロジックをブラウザ側でもimportできる
@@ -91,6 +94,82 @@ export function createServer({ rootDir }) {
         const html = await readFile(learningUiHtmlPath, "utf8");
         res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
         res.end(html);
+        return;
+      }
+
+      // 追加候補(要判断): テーマ横断等、F群の事実だけでは自動確定できな
+      // かった適用例Sourceについて、人間が「このKnowledgeの根拠として
+      // 追加してよいか」を判断する。M4の「Knowledge承認」(直下の
+      // reviewMatchルート)とは別のルートだが、「Sourceとして確定する
+      // か」ではなく「Knowledgeへ追加してよいか」を1回の操作で行う点が、
+      // 旧UIとの違いである
+      // (`knowledge_integration_review_scope_design.md`6-2節)。
+      const approveEvidenceMatch = req.method === "POST" &&
+        url.pathname.match(
+          /^\/api\/case\/(teigakuho-application)\/candidates\/([a-zA-Z0-9_-]+)\/approve-as-evidence$/,
+        );
+      if (approveEvidenceMatch) {
+        const [, caseName, candidateId] = approveEvidenceMatch;
+        const body = await readJsonBody(req);
+        try {
+          const applicationCase = await readCase(caseName);
+          const definitionCase = await readCase("teigakuho-definition");
+
+          const result = confirmAndIntegrateCandidate({
+            applicationCase,
+            definitionCase,
+            candidateId,
+            method: "human_reviewed",
+            note: body.note,
+          });
+
+          // fail-closed: 書き込み前にgateChecksで整合性を事後検証する
+          // (CLIスクリプトと同じ不変条件を、対話的な承認経路にも適用する)。
+          const gateResult = runApplicationIntegrationGateChecks({
+            applicationCase: result.applicationCase,
+            definitionCase: result.definitionCase,
+          });
+          if (!gateResult.ok) {
+            throw new Error(`gateChecks failed: ${gateResult.violations.join("; ")}`);
+          }
+
+          await writeCase(caseName, result.applicationCase);
+          await writeCase("teigakuho-definition", result.definitionCase);
+          await rebuildApprovedKnowledge(rootDir);
+
+          res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+          res.end(
+            JSON.stringify({
+              applicationCase: result.applicationCase,
+              definitionCase: result.definitionCase,
+            }),
+          );
+        } catch (err) {
+          res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+          res.end(JSON.stringify({ error: err.message }));
+        }
+        return;
+      }
+
+      // 追加候補(要判断)の却下: Knowledgeへは一切統合せず、候補を
+      // rejectedにするのみ(監査証跡として残す、削除しない)。
+      const rejectCandidateMatch = req.method === "POST" &&
+        url.pathname.match(
+          /^\/api\/case\/(teigakuho-application)\/candidates\/([a-zA-Z0-9_-]+)\/reject$/,
+        );
+      if (rejectCandidateMatch) {
+        const [, caseName, candidateId] = rejectCandidateMatch;
+        const body = await readJsonBody(req);
+        try {
+          const current = await readCase(caseName);
+          const updated = rejectSourceCandidate(current, candidateId, { note: body.note });
+          await writeCase(caseName, updated);
+          res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+          res.end(JSON.stringify(updated));
+        } catch (err) {
+          res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+          res.end(JSON.stringify({ error: err.message }));
+        }
         return;
       }
 

@@ -25,8 +25,24 @@ const HELPER_SCRIPT = path.join(
  * @returns {Promise<Array<{page: number, text: string, tool: string, toolVersion: string, invocation: string}>>}
  */
 export async function extractPages(pdfPath, pageNumbers) {
+  return runExtractHelper([HELPER_SCRIPT, pdfPath, pageNumbers.join(",")]);
+}
+
+// [5] Faithful Restoration専用。座標付きテキストブロックを取得する
+// (第2ケースの実データ検証で、`sort=True`の読み順ヒューリスティックが
+// 1ページに複数の分数付き計算行がある場合に対応を誤ることが判明したため。
+// `planning/case2_readiness_and_generalization_analysis.md`7-1節)。
+/**
+ * @param {string} pdfPath
+ * @param {number[]} pageNumbers
+ * @returns {Promise<Array<{page: number, blocks: Array<{x0:number,y0:number,x1:number,y1:number,text:string}>, tool: string, toolVersion: string, invocation: string}>>}
+ */
+export async function extractBlocks(pdfPath, pageNumbers) {
+  return runExtractHelper([HELPER_SCRIPT, pdfPath, pageNumbers.join(","), "--blocks"]);
+}
+
+async function runExtractHelper(args) {
   const pythonBin = process.env.BOKI_PYTHON_BIN || "python";
-  const args = [HELPER_SCRIPT, pdfPath, pageNumbers.join(",")];
 
   return new Promise((resolve, reject) => {
     const child = spawn(pythonBin, args);

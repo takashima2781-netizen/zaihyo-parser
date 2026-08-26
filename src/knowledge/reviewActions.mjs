@@ -102,10 +102,13 @@ export function editCandidate(caseData, edits = {}) {
   assertState(dkc, "candidate", "edit");
 
   const { knowledge } = dkc;
-  const themeId = caseData.structureContext.theme.id;
+  // editCandidateはsourceRefsそのものを変更しないため、distinctThemesも
+  // 既存のevidenceの値をそのまま使う(sourceRefsからテーマを再導出する
+  // 責務はこの関数には無い、`case2_readiness_and_generalization_
+  // analysis.md`5節5項)。
   const { evidence, consolidation } = computeEvidenceAndConsolidation({
     sourceRefs: knowledge.sourceRefs,
-    themeId,
+    distinctThemes: knowledge.evidence.distinctThemes,
   });
 
   const updatedKnowledge = {
