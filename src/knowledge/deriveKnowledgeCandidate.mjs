@@ -21,6 +21,40 @@ const CONFIDENCE_PROPAGATION = {
   high: "verified_from_source",
 };
 
+// evidence/consolidationは、sourceRefsから機械的に導出する
+// (M4設計3-1節でB分類〈システムが再計算〉としたフィールド)。
+// M2(初回生成)・M4(修正保存時の再計算)の両方から同じロジックを使う。
+// このケースは常にsourceRefsが1件のみのため、複数Source統合(merged_
+// confirmed等)のロジックはまだ実装しない(fail-closed、次のケースの課題)。
+/**
+ * @param {{ sourceRefs: Array<{ role: string }>, themeId: string }} params
+ * @returns {{ evidence: object, consolidation: object }}
+ */
+export function computeEvidenceAndConsolidation({ sourceRefs, themeId }) {
+  if (sourceRefs.length !== 1) {
+    throw new Error(
+      `このケースは単一Source前提のロジックのみ実装済み(fail-closed)。` +
+        `sourceRefsが${sourceRefs.length}件のケースには未対応`,
+    );
+  }
+  const byRole = {};
+  for (const ref of sourceRefs) {
+    byRole[ref.role] = (byRole[ref.role] ?? 0) + 1;
+  }
+  return {
+    evidence: {
+      byRole,
+      distinctThemes: [themeId],
+      distinctBooks: ["book-1"],
+      crossesBaseAdvanced: false,
+    },
+    consolidation: {
+      state: "single_source",
+      possibleDuplicateOf: [],
+    },
+  };
+}
+
 /**
  * @param {{ block: object, structureContext: { theme: { id: string } } }} confirmedCase
  * @returns {{ reviewStatus: "candidate", knowledge: object }}
@@ -66,6 +100,11 @@ export function deriveTeigakuhoKnowledgeCandidate({ block, structureContext }) {
   }
 
   const themeId = structureContext.theme.id;
+  const sourceRefs = [{ sourceBlockId: block.id, role: "definition" }];
+  const { evidence, consolidation } = computeEvidenceAndConsolidation({
+    sourceRefs,
+    themeId,
+  });
 
   const knowledge = {
     type: "DerivedKnowledge",
@@ -75,21 +114,13 @@ export function deriveTeigakuhoKnowledgeCandidate({ block, structureContext }) {
       rawFormula,
       structure,
     },
-    sourceRefs: [{ sourceBlockId: block.id, role: "definition" }],
+    sourceRefs,
     contentConfidence: {
       level,
       note: "Source原文の用語ベース式(sourceFaithful)をそのまま転記。復元・意訳なし",
     },
-    evidence: {
-      byRole: { definition: 1 },
-      distinctThemes: [themeId],
-      distinctBooks: ["book-1"],
-      crossesBaseAdvanced: false,
-    },
-    consolidation: {
-      state: "single_source",
-      possibleDuplicateOf: [],
-    },
+    evidence,
+    consolidation,
     scopeNote:
       "本書テーマ8-2でのみ確認。テーマ8/9への数値適用は本ケースでは未収録(第2ケースで扱う予定)",
   };

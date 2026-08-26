@@ -70,13 +70,42 @@
   #error { color: #b00020; white-space: pre-wrap; }
   table { border-collapse: collapse; font-size: 13px; }
   td, th { border: 1px solid #ddd; padding: 4px 8px; text-align: left; }
+  .review-panel { border-top: 1px dashed #ccc; margin-top: 12px; padding-top: 12px; }
+  .action-panel {
+    border: 1px solid #ddd;
+    background: #fafafa;
+    border-radius: 3px;
+    padding: 10px;
+    margin: 8px 0;
+  }
+  .action-panel .field { display: flex; flex-direction: column; gap: 2px; }
+  .action-panel input[type="text"], .action-panel textarea {
+    font-family: inherit;
+    font-size: 13px;
+    padding: 4px;
+    width: 100%;
+    max-width: 480px;
+    box-sizing: border-box;
+  }
+  .action-panel textarea { min-height: 3em; }
+  button { cursor: pointer; }
+  .action-error { color: #b00020; font-size: 13px; margin-top: 4px; }
+  .m5-ready {
+    font-size: 13px;
+    padding: 8px 10px;
+    background: #eef7ee;
+    border: 1px solid #bcdcbc;
+    border-radius: 3px;
+    margin-top: 6px;
+  }
 </style>
 </head>
 <body>
   <h1>boki-app 開発用確認UI(閲覧のみ)</h1>
   <div class="meta">
-    このUIは開発用の確認画面であり、承認・編集・除外等の操作は行えません。
-    表示専用です(<code>vertical_slice_mvp_roadmap.md</code> 5-1節)。
+    このUIは開発用の確認画面です。1〜6の各段階は表示専用ですが、
+    「7. Derived Knowledge候補」のみ、承認・修正・除外の操作ができます
+    (<code>m4_review_workflow_design.md</code>)。
   </div>
 
   <div id="error"></div>
@@ -90,6 +119,26 @@
     import { renderTokens } from "/lib/formulaTokenizer.mjs";
 
     const CASE_NAME = "teigakuho-definition";
+
+    // M4: 承認/修正/除外のPOSTを呼ぶ共通関数。
+    async function postReview(action, body) {
+      const res = await fetch(`/api/case/${CASE_NAME}/${action}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body ?? {}),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || `HTTPエラー: ${res.status}`);
+      }
+      return data;
+    }
+
+    function textareaEl(initialValue) {
+      const t = document.createElement("textarea");
+      t.value = initialValue ?? "";
+      return t;
+    }
 
     function el(tag, attrs = {}, children = []) {
       const node = document.createElement(tag);
@@ -141,6 +190,147 @@
         ]);
       }
       return `${node.kind}: "${node.value}"`;
+    }
+
+    const STATUS_LABEL = { candidate: "候補(未レビュー)", approved: "承認済み", rejected: "除外済み" };
+    const STATUS_KIND = { candidate: "warn", approved: "ok", rejected: "warn" };
+
+    // M4: 承認/修正/除外の操作パネル。candidateのときのみ操作でき、
+    // approved/rejectedになった後は結果を表示するだけの読み取り専用になる
+    // (`m4_review_workflow_design.md`1-1節、一方向の状態遷移)。
+    function renderReviewPanel(dkc) {
+      const container = el("div", { class: "review-panel" });
+      container.append(
+        el("div", { class: "field" }, [
+          el("span", { class: "label" }, "現在の状態: "),
+          badge(STATUS_LABEL[dkc.reviewStatus], STATUS_KIND[dkc.reviewStatus]),
+        ]),
+      );
+
+      if (dkc.reviewStatus === "approved") {
+        container.append(field("承認日時", dkc.reviewedAt));
+        if (dkc.reviewNote) container.append(field("メモ", dkc.reviewNote));
+        container.append(
+          el(
+            "div",
+            { class: "m5-ready" },
+            "✓ 公式Knowledgeとして output/knowledge/approved-knowledge.json に反映されました。M5(Exercise生成)から利用可能です。",
+          ),
+        );
+        return container;
+      }
+
+      if (dkc.reviewStatus === "rejected") {
+        container.append(field("除外日時", dkc.reviewedAt));
+        container.append(field("除外理由", dkc.reviewNote || "(未記入)"));
+        container.append(
+          el(
+            "div",
+            { class: "scope-out" },
+            "候補として検出されましたが、人間の判断で不採用となりました。この記録は監査証跡として残り、approved-knowledge.jsonには含まれません。",
+          ),
+        );
+        return container;
+      }
+
+      // --- candidate: 操作可能 ---
+      const errorBox = el("div", { class: "action-error" });
+
+      const approvePanel = el("div", { class: "action-panel" });
+      approvePanel.style.display = "none";
+      approvePanel.append(
+        el(
+          "div",
+          {},
+          "承認すると公式Knowledgeとして確定し、M5(Exercise生成)から利用可能になります。取り消しはできません。よろしいですか?",
+        ),
+      );
+      const approveConfirmBtn = el("button", {}, "はい、承認する");
+      const approveCancelBtn = el("button", {}, "キャンセル");
+      approvePanel.append(el("div", {}, [approveConfirmBtn, " ", approveCancelBtn]));
+
+      const levelInput = el("input", { type: "text", value: dkc.knowledge.contentConfidence.level });
+      const confNoteInput = textareaEl(dkc.knowledge.contentConfidence.note ?? "");
+      const scopeNoteInput = textareaEl(dkc.knowledge.scopeNote ?? "");
+      const editNoteInput = textareaEl("");
+      const editPanel = el("div", { class: "action-panel" });
+      editPanel.style.display = "none";
+      editPanel.append(
+        el("div", { class: "field" }, [el("span", { class: "label" }, "contentConfidence.level"), levelInput]),
+        el("div", { class: "field" }, [el("span", { class: "label" }, "contentConfidence.note"), confNoteInput]),
+        el("div", { class: "field" }, [el("span", { class: "label" }, "scopeNote"), scopeNoteInput]),
+        el("div", { class: "field" }, [el("span", { class: "label" }, "修正メモ(任意、reviewNoteに記録)"), editNoteInput]),
+      );
+      const editSaveBtn = el("button", {}, "保存");
+      const editCancelBtn = el("button", {}, "キャンセル");
+      editPanel.append(el("div", {}, [editSaveBtn, " ", editCancelBtn]));
+
+      const rejectNoteInput = textareaEl("");
+      const rejectPanel = el("div", { class: "action-panel" });
+      rejectPanel.style.display = "none";
+      rejectPanel.append(
+        el("div", { class: "field" }, [el("span", { class: "label" }, "除外理由(任意)"), rejectNoteInput]),
+      );
+      const rejectConfirmBtn = el("button", {}, "除外を確定する");
+      const rejectCancelBtn = el("button", {}, "キャンセル");
+      rejectPanel.append(el("div", {}, [rejectConfirmBtn, " ", rejectCancelBtn]));
+
+      function hideAllPanels() {
+        approvePanel.style.display = "none";
+        editPanel.style.display = "none";
+        rejectPanel.style.display = "none";
+        errorBox.textContent = "";
+      }
+
+      const approveBtn = el("button", {}, "承認");
+      const editBtn = el("button", {}, "修正");
+      const rejectBtn = el("button", {}, "除外");
+      approveBtn.addEventListener("click", () => { hideAllPanels(); approvePanel.style.display = "block"; });
+      editBtn.addEventListener("click", () => { hideAllPanels(); editPanel.style.display = "block"; });
+      rejectBtn.addEventListener("click", () => { hideAllPanels(); rejectPanel.style.display = "block"; });
+      approveCancelBtn.addEventListener("click", hideAllPanels);
+      editCancelBtn.addEventListener("click", hideAllPanels);
+      rejectCancelBtn.addEventListener("click", hideAllPanels);
+
+      approveConfirmBtn.addEventListener("click", async () => {
+        try {
+          const data = await postReview("approve", {});
+          render(data);
+        } catch (err) {
+          errorBox.textContent = `エラー: ${err.message}`;
+        }
+      });
+
+      editSaveBtn.addEventListener("click", async () => {
+        try {
+          const data = await postReview("edit", {
+            contentConfidence: { level: levelInput.value, note: confNoteInput.value },
+            scopeNote: scopeNoteInput.value,
+            note: editNoteInput.value || undefined,
+          });
+          render(data);
+        } catch (err) {
+          errorBox.textContent = `エラー: ${err.message}`;
+        }
+      });
+
+      rejectConfirmBtn.addEventListener("click", async () => {
+        try {
+          const data = await postReview("reject", { note: rejectNoteInput.value || undefined });
+          render(data);
+        } catch (err) {
+          errorBox.textContent = `エラー: ${err.message}`;
+        }
+      });
+
+      container.append(
+        el("div", { class: "field" }, [approveBtn, " ", editBtn, " ", rejectBtn]),
+        approvePanel,
+        editPanel,
+        rejectPanel,
+        errorBox,
+      );
+      return container;
     }
 
     function render(data) {
@@ -291,7 +481,7 @@
           el("section", {}, [
             el("h2", {}, [el("span", { class: "step" }, "7"), "Derived Knowledge候補 — Sourceから何が生成されたか"]),
 
-            field("reviewStatus(本体の外側で管理)", badge(dkc.reviewStatus, "warn")),
+            field("reviewStatus(本体の外側で管理)", badge(STATUS_LABEL[dkc.reviewStatus], STATUS_KIND[dkc.reviewStatus])),
 
             field(
               "1. どのSourceから生成されたか(sourceRefs)",
@@ -340,7 +530,7 @@
               return details;
             })()),
 
-            field("6. reviewStatus", `${dkc.reviewStatus}(承認/修正/除外の操作はまだこの画面には無い。M4で追加予定)`),
+            field("6. reviewStatus(承認/修正/除外)", renderReviewPanel(dkc)),
           ]),
         );
       }

@@ -7,19 +7,22 @@
 
 **Parser設計フェーズ完了後、「教材の1論点をPDFから実際に解けるところまで
 一本通す」縦切りMVP(`planning/vertical_slice_mvp_roadmap.md`)に着手した。
-M1(Parserから実データが出る)・M3(開発用確認UI)・M2(Derived Knowledge
-候補生成)が完了し、M4(候補の承認・修正・除外)の詳細設計に着手している。**
+M1(Parserから実データが出る)・M2(Derived Knowledge候補生成)・M3(開発用
+確認UI)・M4(候補の承認・修正・除外)が完了し、M5(Exercise生成)の詳細設計
+に着手している。**
 
 対象は定額法の定義式ブロック(テーマ8-2)1ケースのみ(`planning/vertical_
 slice_mvp_roadmap.md`3節で選定)。M1で実PDFから確定Sourceを1件生成し
 (`planning/m1_implementation_report.md`)、M2でその確定Sourceから
-Derived Knowledge候補1件(`calculation_formula`、`reviewStatus: candidate`)を
-生成し(`planning/m2_derived_knowledge_candidate_design.md`)、M3の開発用
-確認UI(閲覧のみ)で「PDFから何を読み取り、どこを補正し、なぜSourceとして
-確定し、そこからどんなKnowledge候補が生成されたか」を一気通貫でブラウザ上
-から追跡できる状態にした。汎用的なParser・Knowledge生成器・レビュー管理
-画面は意図的に作らず、この1ケースを最短距離で通すことを優先している
-(CLAUDE.md原則6・8)。
+Derived Knowledge候補1件(`calculation_formula`)を生成し
+(`planning/m2_derived_knowledge_candidate_design.md`)、M3の開発用確認UI
+(閲覧のみ)で一気通貫の流れをブラウザ上から追跡できる状態にした
+(`planning/m1_minimal_parser_prototype_design.md`)。M4でその確認UIへ承認・
+修正・除外の最小操作を追加し、**ユーザー自身が実際に定額法1件を承認**、
+`output/knowledge/approved-knowledge.json`(承認済みKnowledgeの一方向の
+派生ビュー)への反映まで確認した(`planning/m4_review_workflow_design.md`)。
+汎用的なParser・Knowledge生成器・レビュー管理画面は意図的に作らず、この
+1ケースを最短距離で通すことを優先している(CLAUDE.md原則6・8)。
 
 以下はParser設計フェーズ完了までの経緯(旧「現在のフェーズ」、変更なし)。
 
@@ -202,7 +205,7 @@ plan_final_validation.md`)を経て、`planning/parser_design_proposal.md`を
       `planning/stage3_c_plan_final_validation.md`
 - [x] 候補提示方針を正式方針として`parser_design_proposal.md`(第4版)へ反映
 
-## 縦切りMVP: M1・M2・M3(完了)
+## 縦切りMVP: M1・M2・M3・M4(完了)
 
 - [x] 縦切りMVPロードマップ策定 — `planning/vertical_slice_mvp_roadmap.md`
 - [x] M1: 定額法1ケースの最小Parserプロトタイプ実装(PDF→確定Source) —
@@ -216,16 +219,19 @@ plan_final_validation.md`)を経て、`planning/parser_design_proposal.md`を
       本体の外側で管理する構成を実データで確認した。M3画面へ「7. Derived
       Knowledge候補」セクションを追加(閲覧のみ)。
       `planning/m2_derived_knowledge_candidate_design.md`
+- [x] M4: Derived Knowledge候補の承認・修正・除外を実装。修正可能フィールドを
+      `contentConfidence`/`scopeNote`のみに限定し(`sourceRefs`/`evidence`/
+      `consolidation`/`content.structure`/`content.rawFormula`は編集不可)、
+      `evidence`/`consolidation`は保存のたびに`sourceRefs`から再計算する
+      構成とした。`reviewStatus`はDerived Knowledge本体の外側で管理し、
+      `candidate→approved/rejected`の一方向遷移のみをfail-closedで許可する。
+      承認済みKnowledgeは`output/knowledge/approved-knowledge.json`(ケース
+      ファイルからの一方向の派生ビュー、承認のたびに全件再生成)へ反映され、
+      M5はこのファイルのみを入力として使う想定とした。ユーザー自身が
+      ブラウザから実際に定額法1件を承認し、動作を確認済み。
+      `planning/m4_review_workflow_design.md`
 
-## 次フェーズ: M4(候補の承認・修正・除外)
-
-対象は引き続き定額法1ケースのみ。高機能な管理画面ではなく、現在のM3
-開発用確認UIを最小限発展させる形を優先する(ユーザー指示)。
-
-- [ ] M4詳細設計(進行中): reviewStatusの状態遷移(candidate→approved等)、
-      承認/修正/除外の最小操作、公式Knowledgeの永続化方法、M5(Exercise生成)
-      が「承認済みKnowledgeのみ」を入力として受け取れる受け渡し方法を整理する
-- [ ] M4実装: M3画面への承認/修正/除外操作の追加
+## 次フェーズ: M5(Exercise生成)
 
 ## 後回し(縦切りMVP完了後、`vertical_slice_mvp_roadmap.md`9節で判断済み)
 
