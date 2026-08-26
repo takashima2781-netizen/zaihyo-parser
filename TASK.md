@@ -8,8 +8,8 @@
 **Parser設計フェーズ完了後、「教材の1論点をPDFから実際に解けるところまで
 一本通す」縦切りMVP(`planning/vertical_slice_mvp_roadmap.md`)に着手した。
 M1(Parserから実データが出る)・M2(Derived Knowledge候補生成)・M3(開発用
-確認UI)・M4(候補の承認・修正・除外)が完了し、M5(Exercise生成)の詳細設計
-に着手している。**
+確認UI)・M4(候補の承認・修正・除外)・M5(Exercise生成)が完了し、M6(学習UI)
+の実装に着手している。**
 
 対象は定額法の定義式ブロック(テーマ8-2)1ケースのみ(`planning/vertical_
 slice_mvp_roadmap.md`3節で選定)。M1で実PDFから確定Sourceを1件生成し
@@ -21,8 +21,11 @@ Derived Knowledge候補1件(`calculation_formula`)を生成し
 修正・除外の最小操作を追加し、**ユーザー自身が実際に定額法1件を承認**、
 `output/knowledge/approved-knowledge.json`(承認済みKnowledgeの一方向の
 派生ビュー)への反映まで確認した(`planning/m4_review_workflow_design.md`)。
-汎用的なParser・Knowledge生成器・レビュー管理画面は意図的に作らず、この
-1ケースを最短距離で通すことを優先している(CLAUDE.md原則6・8)。
+M5で承認済みKnowledge1件から並び替えExercise1件を生成し
+(`output/exercises/exercises.json`)、M3画面へ「8. Exercise」セクションを
+追加して確認した(`planning/m5_exercise_generation_design.md`)。汎用的な
+Parser・Knowledge生成器・問題生成エンジン・レビュー管理画面は意図的に
+作らず、この1ケースを最短距離で通すことを優先している(CLAUDE.md原則6・8)。
 
 以下はParser設計フェーズ完了までの経緯(旧「現在のフェーズ」、変更なし)。
 
@@ -205,7 +208,7 @@ plan_final_validation.md`)を経て、`planning/parser_design_proposal.md`を
       `planning/stage3_c_plan_final_validation.md`
 - [x] 候補提示方針を正式方針として`parser_design_proposal.md`(第4版)へ反映
 
-## 縦切りMVP: M1・M2・M3・M4(完了)
+## 縦切りMVP: M1・M2・M3・M4・M5(完了)
 
 - [x] 縦切りMVPロードマップ策定 — `planning/vertical_slice_mvp_roadmap.md`
 - [x] M1: 定額法1ケースの最小Parserプロトタイプ実装(PDF→確定Source) —
@@ -230,8 +233,29 @@ plan_final_validation.md`)を経て、`planning/parser_design_proposal.md`を
       M5はこのファイルのみを入力として使う想定とした。ユーザー自身が
       ブラウザから実際に定額法1件を承認し、動作を確認済み。
       `planning/m4_review_workflow_design.md`
+- [x] M5: 承認済みKnowledge1件(`dk-calc-formula-teigakuho`)から並び替え
+      Exercise1件を生成する実装。`content.structure.tokens`(トップレベル
+      5要素)を`renderTokens()`でレンダリングして`answer.correctOrder`とし、
+      提示順序のシャッフルはM6側の責務として持たせない設計とした。正誤判定は
+      `answer.grading.method`(open vocabulary)という契約をExercise側が持ち、
+      実行はM6側に委ねる責務分離とした。`reveal`(旧`explanation`)は
+      `rawFormula`/`sourceRefs`のみに限定し、教材に存在しない自然言語解説は
+      生成しないこととした。`output/knowledge/approved-knowledge.json`のみを
+      入力とし(`output/cases/`には触れない)、`output/exercises/exercises.json`
+      へ出力。M3画面へ「8. Exercise」セクションを追加(閲覧のみ)し、ユーザーが
+      ブラウザで生成結果を確認済み。
+      `planning/m5_exercise_generation_design.md`
 
-## 次フェーズ: M5(Exercise生成)
+## 次フェーズ: M6(学習UI)
+
+対象は引き続き定額法1問のみ。`output/exercises/exercises.json`を入力とし、
+教材内容・正解をM6側にハードコードしない。正誤判定は`answer.grading.method`
+に対応する最小限のレジストリ方式(判定方式キー→判定関数)を維持する
+(ユーザー指示)。
+
+- [ ] M6実装: Exercise読み込み→シャッフル表示→回答操作(クリック方式)→
+      `grading.method`による正誤判定→正解・出典の表示、という最小学習体験を
+      実装する
 
 ## 後回し(縦切りMVP完了後、`vertical_slice_mvp_roadmap.md`9節で判断済み)
 

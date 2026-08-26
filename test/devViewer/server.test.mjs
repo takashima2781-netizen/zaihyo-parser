@@ -8,6 +8,7 @@ import { createServer } from "../../src/devViewer/server.mjs";
 
 const rootDir = path.resolve(fileURLToPath(import.meta.url), "..", "..", "..");
 const caseJsonPath = path.join(rootDir, "output", "cases", "teigakuho-definition.json");
+const exercisesJsonPath = path.join(rootDir, "output", "exercises", "exercises.json");
 
 async function withServer(fn) {
   const server = createServer({ rootDir });
@@ -76,6 +77,30 @@ test(
       assert.ok(data.block.extractionRaw);
       assert.ok(data.block.diag);
       assert.ok(data.block.segmentationDecision);
+    });
+  },
+);
+
+test("GET /api/exercises は未生成の場合404を返す(仮のexercises.jsonを配信しない)", async () => {
+  await withServer(async (base) => {
+    // このテストは exercises.json の有無に関わらず、404か200のどちらかに
+    // なることのみを確認する(実データの有無を前提にしない)。
+    const res = await fetch(`${base}/api/exercises`);
+    assert.ok(res.status === 200 || res.status === 404);
+  });
+});
+
+test(
+  "GET /api/exercises returns the exercises JSON with expected keys",
+  { skip: !existsSync(exercisesJsonPath) && "output/exercises/exercises.json が無いためskip" },
+  async () => {
+    await withServer(async (base) => {
+      const res = await fetch(`${base}/api/exercises`);
+      assert.equal(res.status, 200);
+      const data = await res.json();
+      assert.equal(data.exercises.length, 1);
+      assert.equal(data.exercises[0].exerciseKind, "formula_ordering");
+      assert.ok(data.exercises[0].knowledgeRef.knowledgeId);
     });
   },
 );

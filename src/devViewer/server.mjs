@@ -36,6 +36,7 @@ export function createServer({ rootDir }) {
   const viewerHtmlPath = path.join(rootDir, "dev-viewer", "index.html");
   const casesDir = path.join(rootDir, "output", "cases");
   const knowledgeDir = path.join(rootDir, "src", "knowledge");
+  const exercisesPath = path.join(rootDir, "output", "exercises", "exercises.json");
 
   async function readCase(caseName) {
     const filePath = path.join(casesDir, `${caseName}.json`);
@@ -110,6 +111,18 @@ export function createServer({ rootDir }) {
         const json = JSON.stringify(await readCase(caseName));
         res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
         res.end(json);
+        return;
+      }
+
+      if (url.pathname === "/api/exercises") {
+        try {
+          const json = await readFile(exercisesPath, "utf8");
+          res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+          res.end(json);
+        } catch {
+          res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
+          res.end(JSON.stringify({ error: "exercises.json not generated yet" }));
+        }
         return;
       }
 

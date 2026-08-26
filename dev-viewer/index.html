@@ -120,6 +120,13 @@
 
     const CASE_NAME = "teigakuho-definition";
 
+    // M5: /api/exercisesの取得結果をキャッシュしておく。M4の承認/修正/除外は
+    // ケースデータだけを再取得してrender()を呼び直すため(既存の実装)、
+    // Exercise一覧はページ読み込み時に一度だけ取得し、再描画のたびに
+    // 使い回す(Exercise生成はM4の操作とは独立したCLIステップのため、
+    // 毎回再取得する必要が無い)。
+    let latestExercisesData = null;
+
     // M4: 承認/修正/除外のPOSTを呼ぶ共通関数。
     async function postReview(action, body) {
       const res = await fetch(`/api/case/${CASE_NAME}/${action}`, {
@@ -535,6 +542,81 @@
         );
       }
 
+      app.append(el("div", { class: "arrow" }, "↓ M5: Exercise生成"));
+
+      // 8. Exercise(閲覧のみ。問題を解くUIはM6で作る)
+      const exercise = latestExercisesData?.exercises?.find(
+        (ex) => ex.knowledgeRef.knowledgeId === (dkc?.knowledge?.id ?? null),
+      );
+      if (!dkc || dkc.reviewStatus !== "approved") {
+        app.append(
+          el("section", {}, [
+            el("h2", {}, [el("span", { class: "step" }, "8"), "Exercise"]),
+            el(
+              "div",
+              { class: "scope-out" },
+              "承認済みKnowledgeが無いため、まだExerciseは生成されていません(M4で承認してください)。",
+            ),
+          ]),
+        );
+      } else if (!exercise) {
+        app.append(
+          el("section", {}, [
+            el("h2", {}, [el("span", { class: "step" }, "8"), "Exercise"]),
+            el(
+              "div",
+              { class: "scope-out" },
+              "このKnowledgeに対応するExerciseはまだ生成されていません" +
+                "(node scripts/run-teigakuho-exercise.mjs を実行してください)。",
+            ),
+          ]),
+        );
+      } else {
+        app.append(
+          el("section", {}, [
+            el("h2", {}, [el("span", { class: "step" }, "8"), "Exercise — Knowledgeから何が生成されたか"]),
+
+            field("Exercise ID", exercise.id),
+            field(
+              "元Knowledge ID(7のknowledge.idと一致することを確認)",
+              badge(
+                exercise.knowledgeRef.knowledgeId,
+                exercise.knowledgeRef.knowledgeId === dkc.knowledge.id ? "ok" : "warn",
+              ),
+            ),
+            field("問題形式(exerciseKind)", exercise.exerciseKind),
+            field("instruction", [
+              el("div", {}, exercise.prompt.instruction),
+              el("div", { class: "field" }, [
+                el("span", { class: "label" }, "instructionOrigin: "),
+                badge(exercise.prompt.instructionOrigin, "warn"),
+                " (教材由来のデータではないことを示す)",
+              ]),
+            ]),
+            field(
+              "出題時に提示されるチャンク / 正解順序(このUIでは正解の順序のまま表示。シャッフルはM6の責務)",
+              el(
+                "ol",
+                {},
+                exercise.answer.correctOrder.map((chunk) => el("li", {}, chunk)),
+              ),
+            ),
+            field("判定規則(answer.grading.method)", exercise.answer.grading.method),
+            field("解説として利用する情報(reveal)", (() => {
+              const details = el("details", { open: "" }, []);
+              details.append(el("summary", {}, "reveal.rawFormula / reveal.sourceRefs"));
+              details.append(pre(JSON.stringify(exercise.reveal, null, 2)));
+              return details;
+            })()),
+            field(
+              "Knowledgeからどのように変換されたか",
+              "content.structure.tokens(トップレベル5要素)の各要素をrenderTokens()でレンダリングし、" +
+                "そのままanswer.correctOrderにした(順序は変更していない、シャッフルはM6が表示時に行う)。",
+            ),
+          ]),
+        );
+      }
+
       // 参考: 候補一覧・スコープ外検出
       app.append(
         el("section", {}, [
@@ -563,6 +645,9 @@
 
     async function main() {
       try {
+        const exercisesRes = await fetch("/api/exercises");
+        latestExercisesData = exercisesRes.ok ? await exercisesRes.json() : null;
+
         const res = await fetch(`/api/case/${CASE_NAME}`);
         if (!res.ok) {
           throw new Error(`APIエラー: ${res.status}`);
