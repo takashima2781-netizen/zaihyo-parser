@@ -132,6 +132,80 @@ export function detectJournalPatterns(pageText) {
   return candidates;
 }
 
+// 素朴な用語式パターン検出器(第5ケースで追加): 「項×項＝項」という、
+// 括弧(減算)も分数も伴わない最も単純な計算式の形を検出する。
+// `detectTermBasedFormulas`(括弧内減算 or 先頭数値のいずれかを要求)は、
+// このケース(テーマ11 外貨建取引、「外貨建取引額×為替レート＝円換算額」)の
+// 定義式に一致しない(先頭が漢字項で、括弧も先頭数値も無いため)。既存の
+// 検出器を条件分岐で複雑にするのではなく、独立した検出器として追加する
+// (`detectJournalPatterns`を`detectTermBasedFormulas`と別に追加した際と
+// 同じ方針)。
+//
+// 教材の適用例(※注記の計算)では、この式の直前に「※」や「ＣＲ換算額：」
+// といったラベルが同じ行内に同居する(第4ケースの`inlineLabelRaw`と同種の
+// 事情)。行内のどこにあってもマッチできるようにし、前方の文字列は
+// `inlineLabelRaw`として保持する(意味判断は行わない)。
+//
+// 同一行に「×」または「＝」が複数回現れる行(例: 月割計算のような複合式
+// 「500ドル×６％×(3月／12月)×ＣＲ120円＝900」)は、この検出器が想定する
+// 最も単純な形状(項×項＝項、演算子はそれぞれ1回ずつ)に一致しないため、
+// 意図的に対象外とする(無理に一般化しない、原則6)。
+//
+// 項の文字集合から全角コロン「：」を除外する: 実データ(「ＣＲ換算額：
+// 100ドル×ＣＲ120円＝12,000」)で、ラベルと式本体の間に空白が無く直接
+// 全角コロンで接する形が確認されたため。コロンをラベル側の区切り文字として
+// 扱うことで、非貪欲マッチが式本体側で正しく開始位置を止められるようにする
+// (空白のみに依存すると、空白の無いラベルを式本体へ誤って取り込んでしまう)。
+const PLAIN_TERM_FORMULA_LINE = /([^\s×＝：]+?)×([^\s×＝：]+?)＝([^\s×＝：]+)$/;
+
+/**
+ * @param {string} pageText
+ * @returns {Array<{
+ *   matchedLine: string,
+ *   formulaRaw: string,
+ *   lineIndex: number,
+ *   termA: string,
+ *   operatorSymbol: "×",
+ *   termB: string,
+ *   resultTerm: string,
+ *   inlineLabelRaw: string | null,
+ *   detectorId: "plainTermFormulaDetector",
+ * }>}
+ */
+export function detectPlainTermFormulas(pageText) {
+  const rawLines = pageText.split("\n");
+  const candidates = [];
+
+  for (let i = 0; i < rawLines.length; i++) {
+    const line = rawLines[i].trim();
+    if (!line) continue;
+
+    const timesCount = (line.match(/×/g) ?? []).length;
+    const equalsCount = (line.match(/＝/g) ?? []).length;
+    if (timesCount !== 1 || equalsCount !== 1) continue;
+
+    const match = line.match(PLAIN_TERM_FORMULA_LINE);
+    if (!match) continue;
+
+    const matchStartIndex = line.indexOf(match[0]);
+    const inlineLabelRaw = line.slice(0, matchStartIndex).trim() || null;
+
+    candidates.push({
+      matchedLine: line,
+      formulaRaw: match[0],
+      lineIndex: i,
+      termA: match[1],
+      operatorSymbol: "×",
+      termB: match[2],
+      resultTerm: match[3],
+      inlineLabelRaw,
+      detectorId: "plainTermFormulaDetector",
+    });
+  }
+
+  return candidates;
+}
+
 // 「設 例」ラベル(教材の設例見出し)を、候補行より前の範囲で探す。
 // 第1ケース(トップレベル、ネストなし)では使われない、第2ケース専用の
 // 最小限の追加(`case2_readiness_and_generalization_analysis.md`2-4節・

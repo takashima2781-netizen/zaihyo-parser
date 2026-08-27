@@ -110,16 +110,30 @@ export function createServer({ rootDir }) {
       // か」ではなく「Knowledgeへ追加してよいか」を1回の操作で行う点が、
       // 旧UIとの違いである
       // (`knowledge_integration_review_scope_design.md`6-2節)。
+      //
+      // caseNameは特定の適用例ケース(旧: teigakuho-applicationのみ)に
+      // 固定せず、`/api/case/:caseName`と同じ動的な形にする(第5ケースで
+      // 2件目の適用例ケース〈foreign-currency-application〉が増えたため。
+      // ケース固有のハードコードを除去する、CLAUDE.md方針)。どの定義
+      // ケースへ統合すべきかは、適用例ケースJSON自身が持つ
+      // `definitionCaseName`フィールド(`runApplicationCandidates.mjs`等の
+      // Parser出力に含まれる)から判定する。
       const approveEvidenceMatch = req.method === "POST" &&
         url.pathname.match(
-          /^\/api\/case\/(teigakuho-application)\/candidates\/([a-zA-Z0-9_-]+)\/approve-as-evidence$/,
+          /^\/api\/case\/([a-zA-Z0-9_-]+)\/candidates\/([a-zA-Z0-9_-]+)\/approve-as-evidence$/,
         );
       if (approveEvidenceMatch) {
         const [, caseName, candidateId] = approveEvidenceMatch;
         const body = await readJsonBody(req);
         try {
           const applicationCase = await readCase(caseName);
-          const definitionCase = await readCase("teigakuho-definition");
+          if (!applicationCase.definitionCaseName) {
+            throw new Error(
+              `適用例ケース"${caseName}"にdefinitionCaseNameが無い(fail-closed、` +
+                `どの定義Knowledgeへ統合すべきか判定できない)`,
+            );
+          }
+          const definitionCase = await readCase(applicationCase.definitionCaseName);
 
           const result = confirmAndIntegrateCandidate({
             applicationCase,
@@ -140,7 +154,7 @@ export function createServer({ rootDir }) {
           }
 
           await writeCase(caseName, result.applicationCase);
-          await writeCase("teigakuho-definition", result.definitionCase);
+          await writeCase(applicationCase.definitionCaseName, result.definitionCase);
           await rebuildApprovedKnowledge(rootDir);
 
           res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
@@ -158,10 +172,11 @@ export function createServer({ rootDir }) {
       }
 
       // 追加候補(要判断)の却下: Knowledgeへは一切統合せず、候補を
-      // rejectedにするのみ(監査証跡として残す、削除しない)。
+      // rejectedにするのみ(監査証跡として残す、削除しない)。caseNameを
+      // 動的にする理由はapproveEvidenceMatchと同じ。
       const rejectCandidateMatch = req.method === "POST" &&
         url.pathname.match(
-          /^\/api\/case\/(teigakuho-application)\/candidates\/([a-zA-Z0-9_-]+)\/reject$/,
+          /^\/api\/case\/([a-zA-Z0-9_-]+)\/candidates\/([a-zA-Z0-9_-]+)\/reject$/,
         );
       if (rejectCandidateMatch) {
         const [, caseName, candidateId] = rejectCandidateMatch;

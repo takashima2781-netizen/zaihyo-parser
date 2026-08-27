@@ -215,8 +215,8 @@
       { caseName: "intangible-journal-amortization", applicationCaseName: null },
       { caseName: "promissory-note-drawer-journal", applicationCaseName: null },
       { caseName: "promissory-note-payee-journal", applicationCaseName: null },
+      { caseName: "foreign-currency-definition", applicationCaseName: "foreign-currency-application" },
     ];
-    const CASE_NAME_APPLICATION = "teigakuho-application";
 
     // M5: /api/exercisesの取得結果をキャッシュしておく。M4の承認/修正/除外は
     // ケースデータだけを再取得してrender()を呼び直すため(既存の実装)、
@@ -245,9 +245,13 @@
     // M4のpostReviewとはエンドポイントが別だが、「このSourceをKnowledgeの
     // 根拠として追加してよいか」という1回の操作でSource確定+Knowledge統合
     // まで行う(`server.mjs`のapproveEvidenceMatchルート)。
-    async function postCandidateAction(candidateId, action, body) {
+    // applicationCaseNameは呼び出し側(renderPendingEvidenceCard)が、
+    // 描画中のapplicationData.caseから渡す(複数の適用例ケースを同時に
+    // 表示できるようにするため、モジュール直下の固定定数にはしない。
+    // 第5ケースで2件目の適用例ケースが増えたことに伴う一般化)。
+    async function postCandidateAction(applicationCaseName, candidateId, action, body) {
       const res = await fetch(
-        `/api/case/${CASE_NAME_APPLICATION}/candidates/${candidateId}/${action}`,
+        `/api/case/${applicationCaseName}/candidates/${candidateId}/${action}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -947,7 +951,7 @@
     // 3点を、内部用語を使わずに示すことが目的
     // (今回のユーザー指摘への対応、`p193_multi_knowledge_analysis.md`8節)。
     // 内部設計の用語は「▼ 開発者向け詳細」へ分離する(expertReviewCard)。
-    function renderPendingEvidenceCard(candidate, k) {
+    function renderPendingEvidenceCard(candidate, k, applicationCaseName) {
       const errorBox = el("div", { class: "action-error" });
 
       const reasonExplanation = {
@@ -1002,7 +1006,7 @@
 
       approveConfirmBtn.addEventListener("click", async () => {
         try {
-          await postCandidateAction(candidate.candidateId, "approve-as-evidence", {
+          await postCandidateAction(applicationCaseName, candidate.candidateId, "approve-as-evidence", {
             note: approveNoteInput.value || undefined,
           });
           await refreshAndRenderAll();
@@ -1013,7 +1017,7 @@
 
       rejectConfirmBtn.addEventListener("click", async () => {
         try {
-          await postCandidateAction(candidate.candidateId, "reject", {
+          await postCandidateAction(applicationCaseName, candidate.candidateId, "reject", {
             note: rejectNoteInput.value || undefined,
           });
           await refreshAndRenderAll();
@@ -1109,7 +1113,7 @@
           ]),
         );
         for (const candidate of pending) {
-          container.append(renderPendingEvidenceCard(candidate, k));
+          container.append(renderPendingEvidenceCard(candidate, k, applicationData.case));
         }
       }
 

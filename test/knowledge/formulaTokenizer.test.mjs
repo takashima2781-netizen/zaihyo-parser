@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   tokenizeSubtractFractionFormula,
   tokenizeBareNumberFractionFormula,
+  tokenizePlainTermFormula,
   renderTokens,
 } from "../../src/knowledge/formulaTokenizer.mjs";
 
@@ -97,4 +98,28 @@ test("tokenizeBareNumberFractionFormula: 想定外の形状はfail-closedで例�
     () => tokenizeBareNumberFractionFormula("架空額＝架空項Ａ＋架空項Ｂ"),
     /一致しない/,
   );
+});
+
+// 第5ケース(テーマ11 外貨建取引)用: 括弧・分数を伴わない最も単純な形状。
+test("tokenizePlainTermFormula: 想定形状を5トークン語彙(term/operatorのみ)へ分解する", () => {
+  const formula = "架空項Ａ×架空項Ｂ＝架空額";
+  const structure = tokenizePlainTermFormula(formula);
+
+  assert.equal(structure.kind, "sequence");
+  assert.deepEqual(structure.tokens, [
+    { kind: "term", value: "架空項Ａ" },
+    { kind: "operator", value: "×" },
+    { kind: "term", value: "架空項Ｂ" },
+    { kind: "operator", value: "＝" },
+    { kind: "term", value: "架空額" },
+  ]);
+});
+
+test("tokenizePlainTermFormula: 往復整合性が成り立つ", () => {
+  const formula = "100ドル×架空レート118円＝11,800";
+  assert.equal(renderTokens(tokenizePlainTermFormula(formula)), formula);
+});
+
+test("tokenizePlainTermFormula: 想定外の形状(×またが＝が無い)はfail-closedで例外を投げる", () => {
+  assert.throws(() => tokenizePlainTermFormula("架空額＝架空項Ａ＋架空項Ｂ"), /一致しない/);
 });

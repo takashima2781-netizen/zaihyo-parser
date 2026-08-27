@@ -95,6 +95,39 @@ export function tokenizeBareNumberFractionFormula(rawFormula) {
   };
 }
 
+const PLAIN_TERM_FORMULA = /^([^×＝]+)×([^×＝]+)＝(.+)$/;
+
+/**
+ * 「A×B＝C」という、括弧(減算)も分数も伴わない最も単純な形の忠実な表現を、
+ * 5トークン語彙(のうちterm/operatorのみ)で構造化する(第5ケース、テーマ11
+ * 外貨建取引の定義式・適用例で確認した形状。`tokenizeSubtractFractionFormula`
+ * ・`tokenizeBareNumberFractionFormula`とは別関数のままにする、2形状を
+ * 1つの正規表現・分岐で無理に統一しない既存方針を踏襲する)。
+ * @param {string} rawFormula
+ * @returns {{ kind: "sequence", tokens: object[] }}
+ */
+export function tokenizePlainTermFormula(rawFormula) {
+  const match = rawFormula.match(PLAIN_TERM_FORMULA);
+  if (!match) {
+    throw new Error(
+      `想定している"A×B＝C"という形状に一致しないため、構造化しない` +
+        `(fail-closed、汎用パーサーへのフォールバックはしない): ${rawFormula}`,
+    );
+  }
+  const [, termA, termB, result] = match;
+
+  return {
+    kind: "sequence",
+    tokens: [
+      { kind: "term", value: termA },
+      { kind: "operator", value: "×" },
+      { kind: "term", value: termB },
+      { kind: "operator", value: "＝" },
+      { kind: "term", value: result },
+    ],
+  };
+}
+
 /**
  * トークン構造を文字列へ復元する(往復整合性の検証用)。
  * `power`種別はこのケースで使用されないため実装しない

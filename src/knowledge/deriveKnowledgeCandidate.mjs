@@ -138,3 +138,90 @@ export function deriveTeigakuhoKnowledgeCandidate({ block, structureContext }) {
     knowledge,
   };
 }
+
+// M2汎化(第5ケースで追加): `deriveTeigakuhoKnowledgeCandidate`は定額法
+// 1ケース専用(EXPECTED_BLOCK_ID固定)のまま変更しない(既存テスト・既存
+// 呼び出し元との互換性を壊さないため)。第5ケース(外貨建取引)で2件目の
+// calculation_formula Knowledgeを生成する必要が生じたため、`block.id`
+// 固定チェックを持たない汎用版をここに追加する。`deriveJournalPattern
+// KnowledgeCandidate.mjs`(第3ケースでjournal_pattern用に同種の汎化を
+// 行った際)と同じ形(block/structureContext/knowledgeId/scopeNoteを
+// 呼び出し側から渡す)に揃える。tokenizeが呼び出し側から渡されるのは、
+// calculation_formulaには複数の式形状(減算+分数、素朴なA×B＝C等)が
+// 既に存在し、Knowledgeごとに異なるトークナイザーを使う必要があるため
+// (journal_patternは現状1形状のみのため引数化されていない)。
+/**
+ * @param {{
+ *   block: object,
+ *   structureContext: { theme: { id: string } },
+ *   knowledgeId: string,
+ *   scopeNote: string,
+ *   tokenize: (rawFormula: string) => object,
+ * }} params
+ * @returns {{ reviewStatus: "candidate", knowledge: object }}
+ */
+export function deriveCalculationFormulaKnowledgeCandidate({
+  block,
+  structureContext,
+  knowledgeId,
+  scopeNote,
+  tokenize,
+}) {
+  if (block.blockKind !== EXPECTED_BLOCK_KIND) {
+    throw new Error(`想定外のblockKindです(fail-closed): ${block.blockKind}`);
+  }
+
+  const rawFormula = block.sourceFaithful;
+  if (!rawFormula) {
+    throw new Error("sourceFaithfulが空のため、Derived Knowledge候補を生成できない");
+  }
+
+  const structure = tokenize(rawFormula);
+
+  const rendered = renderTokens(structure);
+  if (rendered !== rawFormula) {
+    throw new Error(
+      `往復整合性チェックに失敗した(fail-closed、無理に構造化しない):\n` +
+        `  復元結果: ${rendered}\n` +
+        `  rawFormula: ${rawFormula}`,
+    );
+  }
+
+  const restorationConfidence = block.diag?.faithfulReconstruction?.confidence;
+  const level = CONFIDENCE_PROPAGATION[restorationConfidence];
+  if (!level) {
+    throw new Error(
+      `diag.faithfulReconstruction.confidence="${restorationConfidence}"に対応する` +
+        `contentConfidence.levelの伝播規則が未定義(fail-closed)`,
+    );
+  }
+
+  const sourceRefs = [{ sourceBlockId: block.id, role: "definition" }];
+  const { evidence, consolidation } = computeEvidenceAndConsolidation({
+    sourceRefs,
+    distinctThemes: [structureContext.theme.id],
+  });
+
+  const knowledge = {
+    type: "DerivedKnowledge",
+    id: knowledgeId,
+    knowledgeKind: "calculation_formula",
+    content: {
+      rawFormula,
+      structure,
+    },
+    sourceRefs,
+    contentConfidence: {
+      level,
+      note: "Source原文の用語ベース式(sourceFaithful)をそのまま転記。復元・意訳なし",
+    },
+    evidence,
+    consolidation,
+    scopeNote,
+  };
+
+  return {
+    reviewStatus: "candidate",
+    knowledge,
+  };
+}

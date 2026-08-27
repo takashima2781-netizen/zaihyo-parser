@@ -5,6 +5,7 @@ import {
   detectTermBasedFormulas,
   findNestedParentLabel,
   detectJournalPatterns,
+  detectPlainTermFormulas,
 } from "../../src/parser/blockDetection.mjs";
 
 // 架空の計算式を使う(教材原文は使わない)。
@@ -138,4 +139,51 @@ test("detectJournalPatterns: (借)/(貸)を含まない行は検出しない", (
 test("detectJournalPatterns: ×××が片側にしか無い行は検出しない(想定外の形状)", () => {
   const page = "(借) 架空勘定Ａ ×××  (貸) 架空勘定Ｂ 架空額";
   assert.equal(detectJournalPatterns(page).length, 0);
+});
+
+// 第5ケース(テーマ11 外貨建取引)の実データ検証で確認した形状
+// (括弧・分数を伴わない最も単純な「項×項＝項」)。
+
+test("detectPlainTermFormulas: ラベルの無い単純な「項×項＝項」を検出する", () => {
+  const page = "見出し\n架空項Ａ×架空項Ｂ＝架空額\n次の行";
+  const result = detectPlainTermFormulas(page);
+  assert.equal(result.length, 1);
+  assert.equal(result[0].matchedLine, "架空項Ａ×架空項Ｂ＝架空額");
+  assert.equal(result[0].formulaRaw, "架空項Ａ×架空項Ｂ＝架空額");
+  assert.equal(result[0].termA, "架空項Ａ");
+  assert.equal(result[0].termB, "架空項Ｂ");
+  assert.equal(result[0].resultTerm, "架空額");
+  assert.equal(result[0].inlineLabelRaw, null);
+  assert.equal(result[0].detectorId, "plainTermFormulaDetector");
+});
+
+test("detectPlainTermFormulas: 空白で区切られたラベルをinlineLabelRawとして保持する(空白ありの実データ形状)", () => {
+  const page = "※ 架空項Ａ×架空項Ｂ＝架空額";
+  const [candidate] = detectPlainTermFormulas(page);
+  assert.equal(candidate.inlineLabelRaw, "※");
+  assert.equal(candidate.formulaRaw, "架空項Ａ×架空項Ｂ＝架空額");
+});
+
+test("detectPlainTermFormulas: 全角コロンで直接接するラベルもinlineLabelRawとして分離する(空白なしの実データ形状)", () => {
+  const page = "架空換算額：架空項Ａ×架空項Ｂ＝架空額";
+  const [candidate] = detectPlainTermFormulas(page);
+  assert.equal(candidate.inlineLabelRaw, "架空換算額：");
+  assert.equal(candidate.formulaRaw, "架空項Ａ×架空項Ｂ＝架空額");
+  assert.equal(candidate.termA, "架空項Ａ");
+});
+
+test("detectPlainTermFormulas: ×または＝が複数回現れる行は対象外とする(月割計算等の複合式)", () => {
+  const page = "架空項Ａ×架空項Ｂ×架空項Ｃ＝架空額";
+  assert.equal(detectPlainTermFormulas(page).length, 0);
+});
+
+test("detectPlainTermFormulas: パターンに一致しない行は検出しない", () => {
+  const page = "架空の地の文。式は含まれない。";
+  assert.equal(detectPlainTermFormulas(page).length, 0);
+});
+
+test("detectPlainTermFormulas: 複数件を検出できる", () => {
+  const page = ["架空項Ａ×架空項Ｂ＝架空額Ａ", "架空項Ｃ×架空項Ｄ＝架空額Ｂ"].join("\n");
+  const result = detectPlainTermFormulas(page);
+  assert.equal(result.length, 2);
 });

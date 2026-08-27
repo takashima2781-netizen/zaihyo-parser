@@ -1,7 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { deriveTeigakuhoKnowledgeCandidate } from "../../src/knowledge/deriveKnowledgeCandidate.mjs";
+import {
+  deriveTeigakuhoKnowledgeCandidate,
+  deriveCalculationFormulaKnowledgeCandidate,
+} from "../../src/knowledge/deriveKnowledgeCandidate.mjs";
+import { tokenizePlainTermFormula } from "../../src/knowledge/formulaTokenizer.mjs";
 
 // 架空のConfirmed Sourceを使う(教材原文は使わない)。
 function fakeConfirmedCase({ block: blockOverrides = {} } = {}) {
@@ -77,4 +81,81 @@ test("deriveTeigakuhoKnowledgeCandidate: 想定外の式形状はfail-closedで�
   const input = fakeConfirmedCase();
   input.block.sourceFaithful = "架空額＝架空項Ａ＋架空項Ｂ";
   assert.throws(() => deriveTeigakuhoKnowledgeCandidate(input));
+});
+
+// 第5ケース(テーマ11 外貨建取引)で追加した汎用版: block.id固定チェックを
+// 持たず、呼び出し側からknowledgeId/scopeNote/tokenizeを渡す
+// (`deriveJournalPatternKnowledgeCandidate`と同じ汎化の形)。
+
+function fakePlainFormulaCase({ block: blockOverrides = {} } = {}) {
+  return {
+    structureContext: {
+      theme: { id: "theme-11", label: { number: "11", titleRaw: "架空テーマ" } },
+      topic: { id: "topic-11-1", label: { number: "11-1", titleRaw: "架空論点" } },
+    },
+    block: {
+      id: "block-架空-plain-def",
+      blockKind: "formula_termbased",
+      sourceFaithful: "架空項Ａ×架空項Ｂ＝架空額",
+      diag: {
+        faithfulReconstruction: { performed: true, method: "human_reviewed", confidence: "high" },
+      },
+      ...blockOverrides,
+    },
+  };
+}
+
+test("deriveCalculationFormulaKnowledgeCandidate: knowledgeId/scopeNoteを呼び出し側から指定できる", () => {
+  const input = fakePlainFormulaCase();
+  const result = deriveCalculationFormulaKnowledgeCandidate({
+    ...input,
+    knowledgeId: "dk-架空-plain",
+    scopeNote: "架空のスコープメモ",
+    tokenize: tokenizePlainTermFormula,
+  });
+  assert.equal(result.reviewStatus, "candidate");
+  assert.equal(result.knowledge.id, "dk-架空-plain");
+  assert.equal(result.knowledge.knowledgeKind, "calculation_formula");
+  assert.equal(result.knowledge.scopeNote, "架空のスコープメモ");
+  assert.equal(result.knowledge.content.rawFormula, "架空項Ａ×架空項Ｂ＝架空額");
+  assert.deepEqual(result.knowledge.sourceRefs, [
+    { sourceBlockId: "block-架空-plain-def", role: "definition" },
+  ]);
+});
+
+test("deriveCalculationFormulaKnowledgeCandidate: block.idの固定チェックが無い(汎用版であること)", () => {
+  const input = fakePlainFormulaCase({ block: { id: "block-別のID" } });
+  const result = deriveCalculationFormulaKnowledgeCandidate({
+    ...input,
+    knowledgeId: "dk-架空-plain2",
+    scopeNote: "架空",
+    tokenize: tokenizePlainTermFormula,
+  });
+  assert.equal(result.knowledge.sourceRefs[0].sourceBlockId, "block-別のID");
+});
+
+test("deriveCalculationFormulaKnowledgeCandidate: 想定外のblockKindはfail-closedで拒否する", () => {
+  const input = fakePlainFormulaCase({ block: { blockKind: "journal_termbased" } });
+  assert.throws(
+    () =>
+      deriveCalculationFormulaKnowledgeCandidate({
+        ...input,
+        knowledgeId: "dk-架空-plain3",
+        scopeNote: "架空",
+        tokenize: tokenizePlainTermFormula,
+      }),
+    /想定外/,
+  );
+});
+
+test("deriveCalculationFormulaKnowledgeCandidate: 往復整合性が崩れる形状はfail-closedで拒否する", () => {
+  const input = fakePlainFormulaCase({ block: { sourceFaithful: "架空額＝架空項Ａ＋架空項Ｂ" } });
+  assert.throws(() =>
+    deriveCalculationFormulaKnowledgeCandidate({
+      ...input,
+      knowledgeId: "dk-架空-plain4",
+      scopeNote: "架空",
+      tokenize: tokenizePlainTermFormula,
+    }),
+  );
 });

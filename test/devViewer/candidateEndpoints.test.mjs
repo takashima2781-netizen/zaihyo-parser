@@ -41,6 +41,7 @@ function fakeDefinitionCase() {
 function fakeApplicationCase() {
   return {
     case: "teigakuho-application",
+    definitionCaseName: "teigakuho-definition",
     structureContext: {
       themeA: { id: "theme-架空A" },
       topicA: { id: "topic-架空A" },

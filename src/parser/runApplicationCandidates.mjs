@@ -164,6 +164,10 @@ export async function runApplicationCandidates({ pdfPath, definitionCasePath, ou
   const output = {
     case: "teigakuho-application",
     generatedAt: new Date().toISOString(),
+    // どの定義ケース(Knowledgeの正本)へ統合すべきかを、適用例ケース自身に
+    // 持たせる(第5ケースでdevViewer/server.mjsのcaseNameハードコードを
+    // 除去した際に追加。既存フィールドへの追記のみで後方互換)。
+    definitionCaseName: "teigakuho-definition",
     structureContext: { themeA, topicA, themeB, topicB },
     candidates: [candidateA, candidateB],
   };

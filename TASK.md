@@ -413,6 +413,104 @@ knowledgeKind)・`journal_termbased`(blockKind)をそのまま再利用できる
   見える可能性があり、粒度の妥当性についてはユーザー確認を仰いでいる
   (第3ケースの確認事項と合わせて検討中)。
 
+## 為替手形(振出人の仕訳)の教材内容確認 — 依頼中
+
+第4ケースで対象外とした為替手形の振出人の仕訳について、教材の記述
+(地の文・仕訳の型・設例)を整理し、ユーザーへの確認材料として
+`planning/exchange_bill_drawer_journal_material_inquiry.md`にまとめた。
+設例(page78)まで確認した結果、地の文と仕訳は矛盾しないと読める(振出人の
+仕訳は手形の勘定科目を一切使わず、手形とは別の既存の債権・債務〈設例では
+売掛金・買掛金〉の消滅を記録しているだけ)ことが分かったが、振出人の型が
+借方・貸方とも決まった科目を持たない(名宛人・指図人とは性質が異なる)点を
+学習対象に含めるべきかは、教材の記述の解釈に関わる判断のためユーザー
+確認を依頼中。この確認を待つ間も開発(第5ケース以降)は継続した。
+
+## 第5ケース: 外貨建取引(テーマ11、換算方法の定義式+適用例)の追加(完了)
+
+第1〜4ケースではまだ検証できていない構造を優先して選定した。候補として
+テーマ7-10(仕入諸掛按分計算、複合分数)・テーマ11(外貨建取引等)・
+テーマ3(記帳方法比較表)を実PDFから比較検討し、テーマ11を選定した
+(`planning/stage3_additional_validation.md`のD3で「境界はあるが反復先
+定義が教材上見当たらない」という未解決の矛盾ケースとして指摘されていた
+実データそのものであり、実装を通じてこの矛盾が実際には解消できることを
+確認できる点、既存インフラ〈calculation_formula・テーマ横断統合〉を
+最大限再利用しつつ新しい形状を1つだけ検証できる点を優先した)。
+
+- **新しい計算式の形状**: テーマ11-1の定義式「外貨建取引額×為替レート＝
+  円換算額」は、既存の`detectTermBasedFormulas`(括弧内減算 or 先頭数値の
+  いずれかを要求)に一致しない、括弧・分数を伴わない最も単純な「項×項＝
+  項」という形状だった。既存検出器を条件分岐で複雑にせず、新しい検出器
+  `detectPlainTermFormulas`(`src/parser/blockDetection.mjs`)・新しい
+  トークナイザー`tokenizePlainTermFormula`(`src/knowledge/
+  formulaTokenizer.mjs`)を追加した(第3・第4ケースと同じ、検出器を
+  1形状1関数のまま増やす方針)。
+- **M2層の汎化(実データ2件目で確認できた範囲)**: `deriveKnowledgeCandidate.
+  mjs`の`deriveTeigakuhoKnowledgeCandidate`(第1ケース専用、blockId固定)は
+  変更せず、`block.id`固定チェックを持たない汎用版
+  `deriveCalculationFormulaKnowledgeCandidate`(block/structureContext/
+  knowledgeId/scopeNote/tokenizeを呼び出し側から渡す)を追加した。第3
+  ケースで`journal_pattern`について行った同種の汎化を、`calculation_
+  formula`について実データ2件目(定額法・外貨建取引)で確認できた範囲に
+  限定して行ったもの。M5(Exercise生成)・gateChecks・M4承認フローは
+  無改修でそのまま機能した(レジストリ設計の裏付けをまた1件積み増した)。
+- **論点横断(テーマ内)の自動確定/要確認振り分けを新しい実データで確認**:
+  適用例2件(論点11-1自身の設例〈直物レート、SR〉/論点11-2の設例
+  〈決算時レート、CR〉)を検出し、[8]候補確定フェーズ(縮小版、第2ケースの
+  ロジックをそのまま再利用)にかけたところ、同一論点内の適用は自動確定、
+  論点横断(11-1→11-2、テーマは同じだが論点が異なる)の適用は
+  `needs_review`(`reason: cross_topic`)としてユーザー確認待ちになった。
+  第2ケースは「テーマ横断」だったのに対し、今回は「同一テーマ内の論点
+  横断」という新しい実データ配置で、既存の判定ロジック
+  (`evaluateCandidateConfirmation.mjs`、`structureRef`の一致のみを見る)が
+  無改修で正しく機能することを確認した。
+- **ケース固有ハードコードの除去(2件目の適用例ケースの追加で顕在化)**:
+  `src/devViewer/server.mjs`の`approve-as-evidence`/`reject`ルートが
+  `teigakuho-application`という1ケース名に固定されていた(これまで適用例
+  ケースが1件しか無かったため表面化していなかった技術的負債)ため、
+  `/api/case/:caseName`と同じ動的な形へ一般化した。どの定義ケースへ
+  統合すべきかは、適用例ケースJSON自身が持つ`definitionCaseName`
+  フィールド(`runApplicationCandidates.mjs`等のParser出力に追加)から
+  判定する。`dev-viewer/index.html`側も、`CASE_NAME_APPLICATION`という
+  単一のモジュール直下定数を廃止し、描画中の`applicationData.case`を
+  呼び出し側から渡す形へ一般化した。
+- **運用上の教訓(実装中に発生・その場で復旧済み)**: 開発中、既に人間の
+  確認(第2ケースでのユーザー承認)を経て`approved`状態になっている
+  `teigakuho-definition.json`に対し、Parserの候補検出スクリプト
+  (`run-application-candidates.mjs`)を「フィールド追加の確認」目的で
+  不用意に再実行してしまい、`teigakuho-application.json`側の確定状態
+  (confirmationStatus)が一時的にリセットされる事態が発生した(gateChecks
+  がこの不整合を検知しfail-closedで停止したため、`teigakuho-definition.
+  json`自体〈Knowledgeの承認状態・sourceRefs〉は無傷だった)。既存の
+  確定済みデータと矛盾しないことを検証したうえで復旧した。さらに、
+  上記のcaseNameハードコード除去の過程で、`approve-as-evidence`ルートの
+  「読み込み」側は動的化した一方「書き込み」側(`writeCase("teigakuho-
+  definition", ...)`)を直し忘れるという実装ミスがあり、ブラウザから
+  実際に第5ケースの「記録する」操作を検証した際に、
+  `teigakuho-definition.json`が誤って第5ケースのデータで上書きされる
+  という2件目のインシデントが発生した。いずれも実データ(gitignore対象、
+  `output/`配下)への影響にとどまり、コード(Git管理対象)や人間の承認
+  判断そのものは失われていない。前者は再実行前の状態から、後者は
+  誤って書き込まれた内容(データ自体は正しく計算されていた)から、
+  タイムスタンプも含めて正確に復旧したことをgateChecks・テストスイート・
+  ブラウザの3方向で確認済み。**教訓**: 人間レビューを経て状態が進んだ
+  ケースファイルに対し、Parserの候補検出スクリプトを「軽い確認」目的で
+  再実行しない(idempotencyは「人間レビュー前」の範囲でのみ保証される)。
+- **実データ確認**: `node scripts/run-foreign-currency-case.mjs` → `node
+  scripts/run-foreign-currency-knowledge-candidate.mjs` → `node scripts/
+  run-foreign-currency-application-candidates.mjs`の順に実行し、ブラウザ
+  (開発用確認UI)で全6ケースが並んで表示されること、専門家レビューUIの
+  「記録する」操作(論点横断の適用例の人間確認統合)が実際に機能すること
+  を確認した。**Knowledge候補は`candidate`のまま(承認していない)**。
+- **申し送り**: テーマ11の教材には、この他に「仕訳なし」という結果になる
+  項目(外貨建前渡金、決算時に換算替を行わない旨の説明)、1つの局面に
+  複数の仕訳が同居する項目、月割計算のような複合(3つ以上の項の掛け算+
+  埋め込まれた分数)な計算式が存在する。今回は「項×項＝項」という最も
+  単純な形状のみを対象とし、これらは意図的に対象外とした(検出器の
+  `×`/`＝`が複数回現れる行を除外するガードにより、機械的に対象外に
+  なっている。教材内容としては存在するが、今回のスコープでは候補にすら
+  していない)。将来、これらの構造を検証する際の実データ候補として
+  記録しておく(下記「後回し」にも追記)。
+
 ## 後回し(縦切りMVP完了後、`vertical_slice_mvp_roadmap.md`9節で判断済み)
 
 - [ ] Source候補一覧レポートの正式フィールド名・型のコード化
