@@ -6,6 +6,7 @@ import {
   findNestedParentLabel,
   detectJournalPatterns,
   detectPlainTermFormulas,
+  detectAdditionGroupFormulas,
 } from "../../src/parser/blockDetection.mjs";
 
 // 架空の計算式を使う(教材原文は使わない)。
@@ -186,4 +187,31 @@ test("detectPlainTermFormulas: 複数件を検出できる", () => {
   const page = ["架空項Ａ×架空項Ｂ＝架空額Ａ", "架空項Ｃ×架空項Ｄ＝架空額Ｂ"].join("\n");
   const result = detectPlainTermFormulas(page);
   assert.equal(result.length, 2);
+});
+
+// 第6ケース(テーマ7-10 仕入諸掛、按分計算の平均法)の実データ検証で確認した
+// 形状(先頭が加算グループ)。
+
+test("detectAdditionGroupFormulas: 「（項＋項）×...＝...」を検出する", () => {
+  const page = "見出し\n（架空項Ａ＋架空項Ｂ）×      ＝架空額\n次の行";
+  const result = detectAdditionGroupFormulas(page);
+  assert.equal(result.length, 1);
+  assert.equal(result[0].matchedLine, "（架空項Ａ＋架空項Ｂ）×      ＝架空額");
+  assert.equal(result[0].detectorId, "additionGroupFormulaDetector");
+});
+
+test("detectAdditionGroupFormulas: 先頭が減算グループの行は検出しない(既存detectTermBasedFormulasの対象)", () => {
+  const page = "（架空項Ａ－架空項Ｂ）×架空率＝架空額";
+  assert.equal(detectAdditionGroupFormulas(page).length, 0);
+});
+
+test("detectAdditionGroupFormulas: 直前の「(番号) ラベル」をprecedingHeadingとして保持する", () => {
+  const page = ["(1) 架空方法", "（架空項Ａ＋架空項Ｂ）×      ＝架空額"].join("\n");
+  const [candidate] = detectAdditionGroupFormulas(page);
+  assert.equal(candidate.precedingHeading, "(1) 架空方法");
+});
+
+test("detectAdditionGroupFormulas: パターンに一致しない行は検出しない", () => {
+  const page = "架空の地の文。式は含まれない。";
+  assert.equal(detectAdditionGroupFormulas(page).length, 0);
 });

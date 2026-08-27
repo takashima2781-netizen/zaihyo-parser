@@ -5,6 +5,7 @@ import {
   tokenizeSubtractFractionFormula,
   tokenizeBareNumberFractionFormula,
   tokenizePlainTermFormula,
+  tokenizeAdditionFractionFormula,
   renderTokens,
 } from "../../src/knowledge/formulaTokenizer.mjs";
 
@@ -122,4 +123,58 @@ test("tokenizePlainTermFormula: 往復整合性が成り立つ", () => {
 
 test("tokenizePlainTermFormula: 想定外の形状(×またが＝が無い)はfail-closedで例外を投げる", () => {
   assert.throws(() => tokenizePlainTermFormula("架空額＝架空項Ａ＋架空項Ｂ"), /一致しない/);
+});
+
+// 第6ケース(テーマ7-10 仕入諸掛、按分計算の平均法)用: 分母が単一項ではなく
+// 演算(＋)を含む式になる形状。
+test("tokenizeAdditionFractionFormula: 想定形状を5トークン語彙へ分解する(分母が複数トークン)", () => {
+  const formula = "（架空項Ａ＋架空項Ｂ）×（架空項Ｃ／（架空項Ｄ＋架空項Ｅ））＝架空額";
+  const structure = tokenizeAdditionFractionFormula(formula);
+
+  assert.equal(structure.kind, "sequence");
+  assert.equal(structure.tokens.length, 5);
+  assert.deepEqual(structure.tokens[0], {
+    kind: "group",
+    tokens: [
+      { kind: "term", value: "架空項Ａ" },
+      { kind: "operator", value: "＋" },
+      { kind: "term", value: "架空項Ｂ" },
+    ],
+  });
+  assert.equal(structure.tokens[1].value, "×");
+  assert.deepEqual(structure.tokens[2], {
+    kind: "group",
+    tokens: [
+      {
+        kind: "fraction",
+        numerator: [{ kind: "term", value: "架空項Ｃ" }],
+        denominator: [
+          { kind: "term", value: "架空項Ｄ" },
+          { kind: "operator", value: "＋" },
+          { kind: "term", value: "架空項Ｅ" },
+        ],
+      },
+    ],
+  });
+  assert.equal(structure.tokens[3].value, "＝");
+  assert.deepEqual(structure.tokens[4], { kind: "term", value: "架空額" });
+});
+
+test("tokenizeAdditionFractionFormula: 往復整合性が成り立つ(分母の括弧が正しく復元される)", () => {
+  const formula = "（架空項Ａ＋架空項Ｂ）×（架空項Ｃ／（架空項Ｄ＋架空項Ｅ））＝架空額";
+  assert.equal(renderTokens(tokenizeAdditionFractionFormula(formula)), formula);
+});
+
+test("tokenizeAdditionFractionFormula: 想定外の形状はfail-closedで例外を投げる", () => {
+  assert.throws(
+    () => tokenizeAdditionFractionFormula("架空額＝架空項Ａ－架空項Ｂ"),
+    /一致しない/,
+  );
+});
+
+test("renderTokens: 単一項の分子/分母には括弧を付けない(既存の往復整合性を壊さない)", () => {
+  const formula = "（架空項Ａ－架空項Ｂ）×（１架空単位／架空全体単位）＝架空額";
+  // 既存のtokenizeSubtractFractionFormula(分子/分母とも単一項)で、
+  // renderTokensのfraction分岐拡張後も出力が変わらないことを確認する。
+  assert.equal(renderTokens(tokenizeSubtractFractionFormula(formula)), formula);
 });

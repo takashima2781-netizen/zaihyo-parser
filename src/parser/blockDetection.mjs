@@ -132,6 +132,62 @@ export function detectJournalPatterns(pageText) {
   return candidates;
 }
 
+// 加算グループを伴う用語式パターン検出器(第6ケースで追加): 「（項＋項）×
+// ...＝...」という形を検出する。既存の`detectTermBasedFormulas`は先頭の
+// 括弧グループが減算(－)であることを要求するため、加算(＋)のグループには
+// 一致しない(テーマ7-10 仕入諸掛の按分計算〈平均法〉の定義式で確認、
+// `（期首仕入諸掛＋当期仕入諸掛）×...＝期末仕入諸掛`)。既存の検出器を
+// 条件分岐で複雑にせず、独立した検出器として追加する(既存方針を踏襲)。
+const ADDITION_GROUP_FORMULA_LINE = /[（(][^（）()]*[＋+][^（）()]*[）)]\s*×.*[＝=].+/;
+
+/**
+ * @param {string} pageText
+ * @returns {Array<{
+ *   matchedLine: string,
+ *   lineIndex: number,
+ *   contextBefore: string[],
+ *   contextAfter: string[],
+ *   precedingHeading: string | null,
+ *   detectorId: "additionGroupFormulaDetector",
+ * }>}
+ */
+export function detectAdditionGroupFormulas(pageText) {
+  const rawLines = pageText.split("\n");
+  const candidates = [];
+
+  for (let i = 0; i < rawLines.length; i++) {
+    const line = rawLines[i];
+    if (!ADDITION_GROUP_FORMULA_LINE.test(line)) continue;
+
+    const contextBefore = rawLines.slice(Math.max(0, i - 1), i).map((l) => l.trim());
+    const contextAfter = rawLines.slice(i + 1, i + 2).map((l) => l.trim());
+
+    // 直前の数行に「(番号) ラベル」(例: "(1) 平均法")があれば、どの方法の
+    // 式かを区別するための手がかりとして保持する(`detectJournalPatterns`と
+    // 同じ考え方、意味判断は行わない)。
+    let precedingHeading = null;
+    for (let j = i - 1; j >= Math.max(0, i - 6); j--) {
+      const trimmed = rawLines[j].trim();
+      const headingMatch = trimmed.match(/^[（(][０-９0-9]+[）)]\s*(\S+)/);
+      if (headingMatch) {
+        precedingHeading = trimmed;
+        break;
+      }
+    }
+
+    candidates.push({
+      matchedLine: line.trim(),
+      lineIndex: i,
+      contextBefore,
+      contextAfter,
+      precedingHeading,
+      detectorId: "additionGroupFormulaDetector",
+    });
+  }
+
+  return candidates;
+}
+
 // 素朴な用語式パターン検出器(第5ケースで追加): 「項×項＝項」という、
 // 括弧(減算)も分数も伴わない最も単純な計算式の形を検出する。
 // `detectTermBasedFormulas`(括弧内減算 or 先頭数値のいずれかを要求)は、
