@@ -107,12 +107,21 @@ test("generateFormulaOrderingExercise: Exercise生成によって入力knowledge
   assert.equal(JSON.stringify(entry), before);
 });
 
-test("generateFormulaOrderingExercise: 対象外のknowledge idはfail-closedで拒否する", () => {
-  const entry = fakeApprovedEntry({ id: "dk-other" });
-  assert.throws(() => generateFormulaOrderingExercise(entry), /対象外/);
+test("generateFormulaOrderingExercise: knowledge idに依存しない(特定ID専用の制限を撤廃済み)", () => {
+  const entry = fakeApprovedEntry({ id: "dk-other-calc-formula" });
+  const exercise = generateFormulaOrderingExercise(entry);
+  assert.equal(exercise.knowledgeRef.knowledgeId, "dk-other-calc-formula");
 });
 
-test("generateFormulaOrderingExercise: 想定外のknowledgeKindはfail-closedで拒否する", () => {
+test("generateFormulaOrderingExercise: exercise.idはknowledge.idから決定的に導出される(再生成しても安定)", () => {
+  const entry = fakeApprovedEntry({ id: "dk-other-calc-formula" });
+  const first = generateFormulaOrderingExercise(entry);
+  const second = generateFormulaOrderingExercise(entry);
+  assert.equal(first.id, second.id);
+  assert.equal(first.id, "exercise-dk-other-calc-formula-formula_ordering");
+});
+
+test("generateFormulaOrderingExercise: 想定外のknowledgeKindはfail-closedで拒否する(supports判定を介さず直接呼ばれた場合の防御)", () => {
   const entry = fakeApprovedEntry({ knowledgeKind: "journal_pattern" });
   assert.throws(() => generateFormulaOrderingExercise(entry), /想定外/);
 });

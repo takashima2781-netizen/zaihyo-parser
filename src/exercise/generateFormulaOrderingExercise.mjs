@@ -1,17 +1,24 @@
-// M5: Exercise生成(定額法1件専用、汎用問題生成エンジンではない)
+// M5: Exercise生成(用語ベース計算式Knowledge専用のgenerator、汎用問題生成
+// エンジンではない)。
 //
 // `planning/m5_exercise_generation_design.md`(改訂版)に従う。
-// 承認済みKnowledge(dk-calc-formula-teigakuho)1件から、並び替え形式の
-// Exercise1件を生成する。
+// knowledgeKind==="calculation_formula"の承認済みKnowledgeから、並び替え
+// 形式のExerciseを1件生成する。特定のKnowledge ID(定額法1件)への依存は
+// `exerciseGeneratorRegistry.mjs`の導入により除去した(Exercise生成層の
+// 汎化、Knowledge IDのハードコードが複数Knowledgeを静かに取りこぼす不具合
+// になっていたための修正)。
 //
 // 責務分離(4-3節・7-1節):
 // - 提示順序のシャッフルはここでは行わない(M6の表示時の責務)。
 // - 正誤判定の実行(ユーザー回答との比較)もここでは行わない
 //   (M6の責務。ここで用意するのは`answer.grading.method`という契約のみ)。
+// - どのKnowledgeにこのgeneratorを適用するかの判定(`supports`)は
+//   `exerciseGeneratorRegistry.mjs`側の責務。この関数はknowledgeKindの
+//   防御的な再検証のみ行う(このgeneratorが呼び出し経路を介さず直接
+//   呼ばれた場合でもfail-closedを保つため)。
 
 import { renderTokens } from "../knowledge/formulaTokenizer.mjs";
 
-const EXPECTED_KNOWLEDGE_ID = "dk-calc-formula-teigakuho";
 const EXPECTED_KNOWLEDGE_KIND = "calculation_formula";
 
 // 教材由来ではない、アプリ側の固定の操作説明文(生成AIによる言い換え・
@@ -26,11 +33,6 @@ const INSTRUCTION_TEXT = "正しい式になるように並べ替えてくださ
 export function generateFormulaOrderingExercise(approvedEntry) {
   const { knowledge } = approvedEntry;
 
-  if (knowledge.id !== EXPECTED_KNOWLEDGE_ID) {
-    throw new Error(
-      `このM5実装は${EXPECTED_KNOWLEDGE_ID}専用です。対象外のKnowledgeです: ${knowledge.id}`,
-    );
-  }
   if (knowledge.knowledgeKind !== EXPECTED_KNOWLEDGE_KIND) {
     throw new Error(`想定外のknowledgeKindです(fail-closed): ${knowledge.knowledgeKind}`);
   }
@@ -53,7 +55,10 @@ export function generateFormulaOrderingExercise(approvedEntry) {
 
   return {
     type: "Exercise",
-    id: "exercise-teigakuho-formula-ordering",
+    // Knowledge ID+exerciseKindから決定的に導出する(同じKnowledgeを
+    // 何度再生成しても同じExercise IDになる、`exerciseKind`が異なれば
+    // 同一Knowledgeから複数Exerciseを生成してもID衝突しない)。
+    id: `exercise-${knowledge.id}-formula_ordering`,
     exerciseKind: "formula_ordering",
     knowledgeRef: {
       knowledgeId: knowledge.id,
