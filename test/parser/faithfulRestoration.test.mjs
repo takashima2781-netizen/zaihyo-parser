@@ -53,6 +53,21 @@ test("normalizeCjkLetterSpacing: もともと空白が無い文字列は変更�
   assert.equal(result.removedCount, 0);
 });
 
+// 第4ケース(テーマ4-1 手形)の実データ検証で確認した、勘定科目名の代わりに
+// 使われる「○○○」「〇〇〇」(空欄記入を促すプレースホルダー記号)。
+
+test("normalizeCjkLetterSpacing: ○(白丸記号)の間の空白も除去する", () => {
+  const result = normalizeCjkLetterSpacing("○ ○ ○");
+  assert.equal(result.normalized, "○○○");
+  assert.equal(result.removedCount, 2);
+});
+
+test("normalizeCjkLetterSpacing: 〇(漢数字の零)の間の空白も除去する", () => {
+  const result = normalizeCjkLetterSpacing("〇 〇 〇");
+  assert.equal(result.normalized, "〇〇〇");
+  assert.equal(result.removedCount, 2);
+});
+
 test("normalizeCjkLetterSpacing: 末尾の記号の前の空白は対象外(記号はCJK文字ではないため)", () => {
   const result = normalizeCjkLetterSpacing("架空勘定 ※");
   assert.equal(result.normalized, "架空勘定 ※");

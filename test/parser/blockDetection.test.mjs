@@ -95,6 +95,22 @@ test("detectJournalPatterns: 仕訳パターン行を検出する", () => {
   assert.equal(result[0].detectorId, "journalPatternDetector");
 });
 
+test("detectJournalPatterns: 行頭が(借)の場合、inlineLabelRawはnull(第3ケースと同じ挙動)", () => {
+  const page = "(借) 架空勘定Ａ ×××  (貸) 架空勘定Ｂ ×××";
+  const [candidate] = detectJournalPatterns(page);
+  assert.equal(candidate.inlineLabelRaw, null);
+});
+
+// 第4ケース(テーマ4-1 手形)の実データ検証で確認した形状。「(借)」の
+// 直前に役割ラベル(例: "振出人")が同じ行に同居している。
+test("detectJournalPatterns: (借)の前に同居する役割ラベルをinlineLabelRawとして保持する", () => {
+  const page = "架空役割                (借) 架空勘定Ａ ×××   (貸) 架空勘定Ｂ ×××";
+  const [candidate] = detectJournalPatterns(page);
+  assert.equal(candidate.inlineLabelRaw, "架空役割");
+  assert.equal(candidate.debitAccountRaw, "架空勘定Ａ");
+  assert.equal(candidate.creditAccountRaw, "架空勘定Ｂ");
+});
+
 test("detectJournalPatterns: 直前の「(番号) ラベル」をprecedingHeadingとして保持する", () => {
   const page = ["(1) 架空局面", "(借) 架空勘定Ａ ×××  (貸) 架空勘定Ｂ ×××"].join("\n");
   const [candidate] = detectJournalPatterns(page);

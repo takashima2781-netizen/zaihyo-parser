@@ -64,15 +64,22 @@ export function detectTermBasedFormulas(pageText) {
   return candidates;
 }
 
-// 仕訳パターン検出器(第3ケース専用の最小追加): 「(借)勘定科目×××
-// (貸)勘定科目×××」という形の行を検出する。具体的な金額の代わりに
-// 「×××」というプレースホルダーで一般化された仕訳の型を示す教材上の
-// 記法であり、計算式検出器(用語ベース計算式)とは別のパターンとして扱う
-// (第3ケースの実データ〈テーマ8-11 無形固定資産の会計処理〉で確認済み)。
-// ラベル検出系(設例/解説/留意点等)・方程式検出器は引き続き対象外
+// 仕訳パターン検出器(第3ケースで追加): 「(借)勘定科目×××(貸)勘定科目
+// ×××」という形の行を検出する。具体的な金額の代わりに「×××」という
+// プレースホルダーで一般化された仕訳の型を示す教材上の記法であり、
+// 計算式検出器(用語ベース計算式)とは別のパターンとして扱う(第3ケースの
+// 実データ〈テーマ8-11 無形固定資産の会計処理〉で確認済み)。ラベル検出系
+// (設例/解説/留意点等)・方程式検出器は引き続き対象外
 // (`m1_minimal_parser_prototype_design.md`3節の方針を維持)。
+//
+// 第4ケースの実データ(テーマ4-1 手形、約束手形の振出人/名宛人)で、
+// 「(借)」の直前に役割ラベル(例: "振出人")が同じ行に同居しているケースを
+// 確認したため、`^`固定ではなく行内のどこにあってもマッチできるよう
+// 拡張した(前方の文字列は`inlineLabelRaw`として保持し、意味判断は
+// 行わない)。第3ケースのように行頭が「(借)」のままの場合は
+// `inlineLabelRaw`はnullになり、既存の挙動と変わらない。
 const JOURNAL_PATTERN_LINE =
-  /^[（(]借[）)]\s*(.+?)\s*×××\s*[（(]貸[）)]\s*(.+?)\s*×××\s*$/;
+  /[（(]借[）)]\s*(.+?)\s*×××\s*[（(]貸[）)]\s*(.+?)\s*×××\s*$/;
 
 /**
  * @param {string} pageText
@@ -81,6 +88,7 @@ const JOURNAL_PATTERN_LINE =
  *   lineIndex: number,
  *   debitAccountRaw: string,
  *   creditAccountRaw: string,
+ *   inlineLabelRaw: string | null,
  *   precedingHeading: string | null,
  *   detectorId: "journalPatternDetector",
  * }>}
@@ -93,6 +101,9 @@ export function detectJournalPatterns(pageText) {
     const line = rawLines[i].trim();
     const match = line.match(JOURNAL_PATTERN_LINE);
     if (!match) continue;
+
+    const journalStartIndex = line.indexOf(match[0]);
+    const inlineLabelRaw = line.slice(0, journalStartIndex).trim() || null;
 
     // 直前の数行に「(番号) ラベル」(例: "(1) 支出時")があれば、どの局面の
     // 仕訳かを区別するための手がかりとして保持する。意味判断は行わない
@@ -109,6 +120,7 @@ export function detectJournalPatterns(pageText) {
 
     candidates.push({
       matchedLine: line,
+      inlineLabelRaw,
       lineIndex: i,
       debitAccountRaw: match[1],
       creditAccountRaw: match[2],
