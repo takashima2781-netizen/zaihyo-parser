@@ -57,7 +57,20 @@ export function createServer({ rootDir }) {
     return JSON.parse(await readFile(filePath, "utf8"));
   }
 
+  // fail-closed: 書き込み先のファイル名(caseName)と、書き込もうとしている
+  // データ自身が持つ`case`フィールドが一致することを必ず確認する。
+  // このチェックが無いと、呼び出し側のバグ(例: 定義ケース名の取り違え)に
+  // よって、あるケースのデータが別のケースのファイルへ誤って書き込まれ
+  // うる(第5ケース追加時に実際に発生した事故、`TASK.md`「第5ケース」節
+  // 参照)。呼び出し側の個別修正では再発防止にならないため、書き込みの
+  // 最終防衛線としてここに集約する。
   async function writeCase(caseName, data) {
+    if (data.case !== caseName) {
+      throw new Error(
+        `書き込み先("${caseName}")とデータ自身のcaseフィールド("${data.case}")が一致しない` +
+          `(fail-closed、別ケースへの誤書き込みを防止した)`,
+      );
+    }
     const filePath = path.join(casesDir, `${caseName}.json`);
     await writeFile(filePath, JSON.stringify(data, null, 2), "utf8");
   }
@@ -151,6 +164,25 @@ export function createServer({ rootDir }) {
           });
           if (!gateResult.ok) {
             throw new Error(`gateChecks failed: ${gateResult.violations.join("; ")}`);
+          }
+
+          // fail-closed: 2つの書き込み(applicationCase/definitionCase)は
+          // 個々には正当でも、片方だけ書き込まれると2ファイル間の整合性が
+          // 崩れる(第5ケース追加時に実際に発生した事故、`writeCase`側の
+          // caseフィールド検証だけでは、1つ目の書き込みが先に成功してしまう
+          // ことを防げない)。両方の書き込み先を、実際に書き込む前にまとめて
+          // 検証する。
+          if (result.applicationCase.case !== caseName) {
+            throw new Error(
+              `書き込み先("${caseName}")とapplicationCaseのcaseフィールド("${result.applicationCase.case}")` +
+                `が一致しない(fail-closed、書き込み前に検出した)`,
+            );
+          }
+          if (result.definitionCase.case !== applicationCase.definitionCaseName) {
+            throw new Error(
+              `書き込み先("${applicationCase.definitionCaseName}")とdefinitionCaseのcaseフィールド` +
+                `("${result.definitionCase.case}")が一致しない(fail-closed、書き込み前に検出した)`,
+            );
           }
 
           await writeCase(caseName, result.applicationCase);

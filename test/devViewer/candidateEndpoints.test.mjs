@@ -225,6 +225,65 @@ test("POST .../approve-as-evidence: gateChecks違反時はfail-closedで拒否�
   }
 });
 
+// 第5ケース追加時に実際に発生した事故(`TASK.md`「第5ケース」節)の再発防止
+// テスト: 適用例ケースのdefinitionCaseNameが指すファイルが、実際には
+// 別のcaseフィールドを持つ(取り違え・破損等)場合、書き込み先とデータ自身の
+// caseフィールドが一致しないため、fail-closedで書き込みを拒否すること。
+test("POST .../approve-as-evidence: 書き込み先とデータのcaseフィールドが不一致ならfail-closedで拒否する(別ケースへの誤書き込み防止)", async () => {
+  const tempRoot = await mkdtemp(path.join(tmpdir(), "boki-candidate-endpoints-test-"));
+  await mkdir(path.join(tempRoot, "output", "cases"), { recursive: true });
+  await mkdir(path.join(tempRoot, "dev-viewer"), { recursive: true });
+  await mkdir(path.join(tempRoot, "learning-ui"), { recursive: true });
+  await writeFile(path.join(tempRoot, "dev-viewer", "index.html"), "<html></html>", "utf8");
+  await writeFile(path.join(tempRoot, "learning-ui", "index.html"), "<html></html>", "utf8");
+
+  // teigakuho-definition.jsonという名前のファイルなのに、中身のcaseフィールドは
+  // 別の名前を持つ(取り違え・破損等を模した状態)。
+  const mismatchedDefinitionCase = fakeDefinitionCase();
+  mismatchedDefinitionCase.case = "some-other-definition";
+  const mismatchedDefinitionRaw = JSON.stringify(mismatchedDefinitionCase);
+  await writeFile(
+    path.join(tempRoot, "output", "cases", "teigakuho-definition.json"),
+    mismatchedDefinitionRaw,
+    "utf8",
+  );
+  const applicationRaw = JSON.stringify(fakeApplicationCase());
+  await writeFile(
+    path.join(tempRoot, "output", "cases", "teigakuho-application.json"),
+    applicationRaw,
+    "utf8",
+  );
+
+  const server = createServer({ rootDir: tempRoot });
+  await new Promise((resolve) => server.listen(0, resolve));
+  const { port } = server.address();
+  try {
+    const base = `http://localhost:${port}`;
+    const { status, data } = await post(
+      base,
+      "/api/case/teigakuho-application/candidates/cand-topic-fakeB-app/approve-as-evidence",
+      {},
+    );
+    assert.equal(status, 400);
+    assert.match(data.error, /一致しない/);
+
+    // どちらのファイルも書き換わっていないこと(誤書き込みが実際に防止された)
+    const definitionOnDisk = await readFile(
+      path.join(tempRoot, "output", "cases", "teigakuho-definition.json"),
+      "utf8",
+    );
+    assert.equal(definitionOnDisk, mismatchedDefinitionRaw);
+    const applicationOnDisk = await readFile(
+      path.join(tempRoot, "output", "cases", "teigakuho-application.json"),
+      "utf8",
+    );
+    assert.equal(applicationOnDisk, applicationRaw);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test("GET /api/case/teigakuho-application は候補一覧を返す", async () => {
   await withTempServer(async (base) => {
     const res = await fetch(`${base}/api/case/teigakuho-application`);
