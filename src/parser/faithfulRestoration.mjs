@@ -55,6 +55,40 @@ export function applyKnownCorrection(rawText, correction) {
 // 一度も使われないため実装しない(未使用のコードを持ち込まない、
 // self-review時に削除。次のケースで実際に必要になった時点で追加する)。
 
+// --- 第3ケース専用: 仕訳パターンの字間空白除去 ---
+//
+// 実データ確認(テーマ8-11 無形固定資産の会計処理、仕訳パターン2件)で、
+// 勘定科目名の文字間に空白が挿入されている箇所があることを確認した
+// (例: 「無 形 固 定 資 産」)。同じ勘定科目名(「無形固定資産」)が
+// 別の行では空白なしで印字されていることも確認しており、これは抽出の
+// 崩れではなく、教材側の字間調整(タイプセット上の見た目の調整)である。
+//
+// fraction_splitのような個別確認済み補正(`applyKnownCorrection`)とは
+// 異なり、「全角文字(漢字・かな・カナ)の間の空白を詰める」という変換は
+// 文字そのものを一切変更しない(文字の並びが保持されるため、原文を
+// 失う〈原則2〉リスクが無い)。そのため、行ごとの個別確認済みテキストを
+// 要求せず、機械的な正規化として実装する。ただし対象は今回確認できた
+// 仕訳パターンの勘定科目名という狭い用途にとどめ、汎用的なテキスト
+// クレンジングユーティリティとしては扱わない。
+const CJK_CHAR = "[一-龠々〆ヵヶぁ-んァ-ヶーＡ-Ｚａ-ｚ０-９]";
+const CJK_SPACING_PATTERN = new RegExp(`(${CJK_CHAR})[ 　]+(?=${CJK_CHAR})`, "g");
+
+/**
+ * 全角文字の間にある字間調整用の空白を除去する。文字自体は一切変更しない
+ * (fail-closed: 除去後に想定外の空白が残っていないか呼び出し側で確認できる
+ * よう、除去した空白の個数を返す)。
+ * @param {string} text
+ * @returns {{ normalized: string, removedCount: number }}
+ */
+export function normalizeCjkLetterSpacing(text) {
+  let removedCount = 0;
+  const normalized = text.replace(CJK_SPACING_PATTERN, (_match, char) => {
+    removedCount += 1;
+    return char;
+  });
+  return { normalized, removedCount };
+}
+
 // --- 第2ケース専用: 座標ベースの分数対応付け ---
 //
 // `get_text(sort=True)`の読み順ヒューリスティックは、1ページに複数の

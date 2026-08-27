@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
+import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -30,11 +32,46 @@ test("GET / returns the viewer HTML", async () => {
   });
 });
 
-test("GET /api/case/<unknown> returns 404 (許可リストに無いケース名は拒否する)", async () => {
+test("GET /api/case/<unknown> returns 404 (対応するケースファイルが存在しないため)", async () => {
   await withServer(async (base) => {
     const res = await fetch(`${base}/api/case/not-a-real-case`);
     assert.equal(res.status, 404);
   });
+});
+
+// ケースの存在確認は明示的なホワイトリストではなく、output/cases/配下に
+// 対応するファイルが実在するかで動的に判定する
+// (`vertical_slice_generalization_readiness_audit.md`のB分類項目を、
+// 第3ケース追加を機に実施)。ハードコードされた許可リストに追加しなくても、
+// ファイルさえ置けば新しいケースがそのまま配信されることを確認する。
+test("GET /api/case/<new-case>: ホワイトリストに無い新しいケース名でも、ファイルが存在すれば配信する(動的判定)", async () => {
+  const tempRoot = await mkdtemp(path.join(tmpdir(), "boki-server-dynamic-case-test-"));
+  try {
+    await mkdir(path.join(tempRoot, "output", "cases"), { recursive: true });
+    await mkdir(path.join(tempRoot, "dev-viewer"), { recursive: true });
+    await mkdir(path.join(tempRoot, "learning-ui"), { recursive: true });
+    await writeFile(path.join(tempRoot, "dev-viewer", "index.html"), "<html></html>", "utf8");
+    await writeFile(path.join(tempRoot, "learning-ui", "index.html"), "<html></html>", "utf8");
+    await writeFile(
+      path.join(tempRoot, "output", "cases", "brand-new-case.json"),
+      JSON.stringify({ case: "brand-new-case" }),
+      "utf8",
+    );
+
+    const server = createServer({ rootDir: tempRoot });
+    await new Promise((resolve) => server.listen(0, resolve));
+    const { port } = server.address();
+    try {
+      const res = await fetch(`http://localhost:${port}/api/case/brand-new-case`);
+      assert.equal(res.status, 200);
+      const data = await res.json();
+      assert.equal(data.case, "brand-new-case");
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
 });
 
 test("GET /api/case/../../secret はパストラバーサルできない", async () => {

@@ -64,6 +64,62 @@ export function detectTermBasedFormulas(pageText) {
   return candidates;
 }
 
+// 仕訳パターン検出器(第3ケース専用の最小追加): 「(借)勘定科目×××
+// (貸)勘定科目×××」という形の行を検出する。具体的な金額の代わりに
+// 「×××」というプレースホルダーで一般化された仕訳の型を示す教材上の
+// 記法であり、計算式検出器(用語ベース計算式)とは別のパターンとして扱う
+// (第3ケースの実データ〈テーマ8-11 無形固定資産の会計処理〉で確認済み)。
+// ラベル検出系(設例/解説/留意点等)・方程式検出器は引き続き対象外
+// (`m1_minimal_parser_prototype_design.md`3節の方針を維持)。
+const JOURNAL_PATTERN_LINE =
+  /^[（(]借[）)]\s*(.+?)\s*×××\s*[（(]貸[）)]\s*(.+?)\s*×××\s*$/;
+
+/**
+ * @param {string} pageText
+ * @returns {Array<{
+ *   matchedLine: string,
+ *   lineIndex: number,
+ *   debitAccountRaw: string,
+ *   creditAccountRaw: string,
+ *   precedingHeading: string | null,
+ *   detectorId: "journalPatternDetector",
+ * }>}
+ */
+export function detectJournalPatterns(pageText) {
+  const rawLines = pageText.split("\n");
+  const candidates = [];
+
+  for (let i = 0; i < rawLines.length; i++) {
+    const line = rawLines[i].trim();
+    const match = line.match(JOURNAL_PATTERN_LINE);
+    if (!match) continue;
+
+    // 直前の数行に「(番号) ラベル」(例: "(1) 支出時")があれば、どの局面の
+    // 仕訳かを区別するための手がかりとして保持する。意味判断は行わない
+    // (単なる検出根拠の記録、`termBasedFormulaDetector`と同じ考え方)。
+    let precedingHeading = null;
+    for (let j = i - 1; j >= Math.max(0, i - 6); j--) {
+      const trimmed = rawLines[j].trim();
+      const headingMatch = trimmed.match(/^[（(][０-９0-9]+[）)]\s*(\S+)/);
+      if (headingMatch) {
+        precedingHeading = trimmed;
+        break;
+      }
+    }
+
+    candidates.push({
+      matchedLine: line,
+      lineIndex: i,
+      debitAccountRaw: match[1],
+      creditAccountRaw: match[2],
+      precedingHeading,
+      detectorId: "journalPatternDetector",
+    });
+  }
+
+  return candidates;
+}
+
 // 「設 例」ラベル(教材の設例見出し)を、候補行より前の範囲で探す。
 // 第1ケース(トップレベル、ネストなし)では使われない、第2ケース専用の
 // 最小限の追加(`case2_readiness_and_generalization_analysis.md`2-4節・

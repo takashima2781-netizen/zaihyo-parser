@@ -320,6 +320,65 @@ M1〜M6を「1ケース専用の縦切りMVP」から「教材を増やしてい
   この間一切変化しなかった。gateChecks・既存テストとも実データに対して
   正常に通ることを確認済み。
 
+## 第3ケース: 仕訳パターン(テーマ8-11 無形固定資産)の追加(完了)
+
+第1・第2ケース(いずれも`calculation_formula`)ではまだ検証できていない
+構造を優先し、`knowledgeKind`が異なる仕訳パターン(テーマ8-11 無形固定
+資産の会計処理、「(借)勘定科目×××(貸)勘定科目×××」という形)を第3
+ケースとして選定・実装した。実PDF調査(page183〜188)で複数候補
+(方程式の複数ステップ変形〈page186〉、分母に減算を含む月割計算
+〈page188〉、仕訳パターン〈page187〉)を比較し、既存の5トークン語彙
+(term/operator/fraction/group/power)を変更せずに表現できる仕訳パターンを
+選定した(他候補は新しいcontent構造を要する可能性があり、今回は見送り)。
+
+- **Block Detection拡張**: `detectJournalPatterns`(`src/parser/
+  blockDetection.mjs`)を追加。既存の`detectTermBasedFormulas`とは別の
+  検出器として実装し、既存の用語ベース計算式検出器は無変更。
+- **Faithful Restoration拡張**: 勘定科目名の文字間にある字間調整用の
+  空白を除去する`normalizeCjkLetterSpacing`(`src/parser/
+  faithfulRestoration.mjs`)を追加。文字自体は変更しないため原則2
+  (原文保持)に抵触しない、機械的な正規化として実装した(個別確認済み
+  補正〈fraction_split〉とは異なる位置づけ)。
+- **新しいknowledgeKind「journal_pattern」**: 既存の5トークン語彙の
+  うちtermのみを使って表現できることを確認し、新しいトークン種別は
+  追加していない。`src/knowledge/journalPatternTokenizer.mjs`・
+  `src/knowledge/deriveJournalPatternKnowledgeCandidate.mjs`を追加
+  (`deriveKnowledgeCandidate.mjs`の`computeEvidenceAndConsolidation`は
+  そのまま再利用)。
+- **Exercise generator registryの実地検証**: `generateJournalOrderingExercise`
+  を追加登録し、実際に2件のgeneratorが並存する状態を実データで確認した
+  (前回追加したレジストリ設計が機能することの裏付け)。
+- **専門家レビューUIの汎化を実データで確認**: 「6. 学習対象として採用
+  するか」の2層UI(専門家レビュー領域/開発者向け詳細)が、新しい
+  knowledgeKindに対しても無改修でそのまま機能することをブラウザで確認
+  した。
+- **開発用確認UIの複数ケース表示に対応**: `dev-viewer/index.html`の
+  `CASE_NAME`単一定数を`DEFINITION_CASES`配列へ一般化し、`render()`が
+  DOM要素を返す関数へ変更、`server.mjs`の`ALLOWED_CASES`(静的ホワイト
+  リスト)を`output/cases/`の実ファイル存在確認による動的判定へ変更した
+  (`vertical_slice_generalization_readiness_audit.md`のB分類項目を、
+  第3ケース追加を機に実施)。
+- **実データ確認**: page187から仕訳パターン2件(支出時/決算時)を
+  それぞれ独立したSource+Knowledge候補として生成し、ブラウザで全3ケース
+  (定額法定義+適用2件、無形固定資産の仕訳2件)が並んで表示されること、
+  各ケースの「採用する」操作パネルが平易な言葉で機能することを確認した。
+  **Knowledge候補はいずれも`candidate`のまま(私からは承認していない)**。
+- **判断の申し送り**: 2件の仕訳パターン(支出時/決算時)は、既存の
+  「1 Source(1つの完結した型)→1 Knowledge」という確立済みの粒度
+  パターンに従い、独立した2件のKnowledge候補として扱った(1つの
+  Knowledgeへ合成しない)。これは会計的な意味判断というより既存パターンへの
+  機械的な当てはめだが、教材内容の解釈に関わる判断のため、最終的な粒度が
+  適切かはユーザー確認の対象として残す。
+- **Parser/M2層の汎化についての所見**: 3ケース目を終えても、Parser
+  オーケストレータ・Faithful Restoration・M2生成関数のロジックは、
+  検出器・選別条件・復元技術のいずれも案件ごとに異なり、明確な共通の
+  抽象化パターンはまだ見えていない(むしろ、多様な形状ごとに専用の
+  検出器/復元ロジックを追加していく設計〈CLAUDE.md原則5〉が実データで
+  裏付けられている)。一方、Knowledge審査〜Exercise生成〜学習UIの層は、
+  レジストリ設計により無改修で新しいknowledgeKindへ対応できることを
+  確認した。この所見を踏まえ、Parser/M2層の汎化はまだ見送り、次は
+  第4ケースへ進める。
+
 ## 後回し(縦切りMVP完了後、`vertical_slice_mvp_roadmap.md`9節で判断済み)
 
 - [ ] Source候補一覧レポートの正式フィールド名・型のコード化

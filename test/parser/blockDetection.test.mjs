@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   detectTermBasedFormulas,
   findNestedParentLabel,
+  detectJournalPatterns,
 } from "../../src/parser/blockDetection.mjs";
 
 // 架空の計算式を使う(教材原文は使わない)。
@@ -80,4 +81,45 @@ test("findNestedParentLabel: 候補より前にある「設 例」ラベルを�
 test("findNestedParentLabel: ラベルが見つからなければnullを返す(推測しない)", () => {
   const page = ["架空の見出し", "架空の問題文…", "93,000×      ＝12,000"].join("\n");
   assert.equal(findNestedParentLabel(page, 2), null);
+});
+
+// 第3ケース(仕訳パターン)の実データ検証で確認した形状
+// (`(借)勘定科目×××(貸)勘定科目×××`)。
+
+test("detectJournalPatterns: 仕訳パターン行を検出する", () => {
+  const page = "見出し\n(借) 架空勘定Ａ ×××  (貸) 架空勘定Ｂ ×××\n次の行";
+  const result = detectJournalPatterns(page);
+  assert.equal(result.length, 1);
+  assert.equal(result[0].debitAccountRaw, "架空勘定Ａ");
+  assert.equal(result[0].creditAccountRaw, "架空勘定Ｂ");
+  assert.equal(result[0].detectorId, "journalPatternDetector");
+});
+
+test("detectJournalPatterns: 直前の「(番号) ラベル」をprecedingHeadingとして保持する", () => {
+  const page = ["(1) 架空局面", "(借) 架空勘定Ａ ×××  (貸) 架空勘定Ｂ ×××"].join("\n");
+  const [candidate] = detectJournalPatterns(page);
+  assert.equal(candidate.precedingHeading, "(1) 架空局面");
+});
+
+test("detectJournalPatterns: 複数件を検出できる", () => {
+  const page = [
+    "(1) 架空局面Ａ",
+    "(借) 架空勘定Ａ ×××  (貸) 架空勘定Ｂ ×××",
+    "(2) 架空局面Ｂ",
+    "(借) 架空勘定Ｃ ×××  (貸) 架空勘定Ｄ ×××",
+  ].join("\n");
+  const result = detectJournalPatterns(page);
+  assert.equal(result.length, 2);
+  assert.equal(result[0].precedingHeading, "(1) 架空局面Ａ");
+  assert.equal(result[1].precedingHeading, "(2) 架空局面Ｂ");
+});
+
+test("detectJournalPatterns: (借)/(貸)を含まない行は検出しない", () => {
+  const page = "架空の地の文。仕訳は含まれない。";
+  assert.equal(detectJournalPatterns(page).length, 0);
+});
+
+test("detectJournalPatterns: ×××が片側にしか無い行は検出しない(想定外の形状)", () => {
+  const page = "(借) 架空勘定Ａ ×××  (貸) 架空勘定Ｂ 架空額";
+  assert.equal(detectJournalPatterns(page).length, 0);
 });

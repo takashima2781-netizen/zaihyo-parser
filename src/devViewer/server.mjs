@@ -5,6 +5,7 @@
 // (呼び出し側の責務とする)。
 
 import { createServer as createHttpServer } from "node:http";
+import { existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -13,10 +14,6 @@ import { rebuildApprovedKnowledge } from "../knowledge/approvedKnowledgeStore.mj
 import { rejectCandidate as rejectSourceCandidate } from "../parser/candidateActions.mjs";
 import { confirmAndIntegrateCandidate } from "../parser/confirmAndIntegrateCandidate.mjs";
 import { runApplicationIntegrationGateChecks } from "../gateChecks/applicationIntegrationChecks.mjs";
-
-// 現時点でこのUIが表示できるのは定額法1ケース(+第2ケースの適用例2件)のみ。
-// 新しいケースを追加する際は、ここに明示的に追加する(汎用化しない)。
-export const ALLOWED_CASES = new Set(["teigakuho-definition", "teigakuho-application"]);
 
 // M3(往復整合性チェック)・M6(正誤判定)が、生成処理と独立した再実装では
 // なく、実際に使われているのと同じロジックをブラウザ側でもimportできる
@@ -46,6 +43,15 @@ export function createServer({ rootDir }) {
   const srcDir = path.join(rootDir, "src");
   const exercisesPath = path.join(rootDir, "output", "exercises", "exercises.json");
 
+  // ケースの存在確認は、明示的なホワイトリストではなく
+  // `output/cases/`配下に対応するファイルが実在するかで動的に判定する
+  // (`approvedKnowledgeStore.mjs`と同じ、ディレクトリ走査による判定方式)。
+  // caseName自体は各ルートのURL正規表現(`[a-zA-Z0-9_-]+`)により、
+  // パストラバーサルに使える文字を含まないことが既に保証されている。
+  function caseExists(caseName) {
+    return existsSync(path.join(casesDir, `${caseName}.json`));
+  }
+
   async function readCase(caseName) {
     const filePath = path.join(casesDir, `${caseName}.json`);
     return JSON.parse(await readFile(filePath, "utf8"));
@@ -60,7 +66,7 @@ export function createServer({ rootDir }) {
   // 承認済みKnowledgeの派生ビュー(approved-knowledge.json)を全件再生成する
   // (`m4_review_workflow_design.md`6-2節: 個別追記ではなく毎回作り直す)。
   async function applyReviewAction(caseName, actionFn, res) {
-    if (!ALLOWED_CASES.has(caseName)) {
+    if (!caseExists(caseName)) {
       res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
       res.end(JSON.stringify({ error: `unknown case: ${caseName}` }));
       return;
@@ -195,7 +201,7 @@ export function createServer({ rootDir }) {
       const caseMatch = url.pathname.match(/^\/api\/case\/([a-zA-Z0-9_-]+)$/);
       if (caseMatch) {
         const caseName = caseMatch[1];
-        if (!ALLOWED_CASES.has(caseName)) {
+        if (!caseExists(caseName)) {
           res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
           res.end(JSON.stringify({ error: `unknown case: ${caseName}` }));
           return;

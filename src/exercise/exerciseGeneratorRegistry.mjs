@@ -11,13 +11,17 @@
 //
 // 同じknowledgeKindに対して複数のgeneratorを登録できる。呼び出し側は
 // 「supportsするgeneratorすべて」を実行するため、1つのKnowledgeから複数種類の
-// Exerciseを生成する構造を、この設計は妨げない(将来の拡張、今回は未実装)。
+// Exerciseを生成する構造を、この設計は妨げない(将来の拡張)。
 //
-// 今回はgeneratorを1件だけ登録する。定額法1件専用だったExercise生成を、
-// 承認済みKnowledgeがN件になっても安全に処理できる最小構造へ直すことが
-// 目的であり、新しい出題形式の追加自体は今回のスコープではない。
+// 第3ケース(仕訳パターン、knowledgeKind: "journal_pattern")の追加により、
+// 実際に2件のgeneratorが並存する状態を実データで確認した。2つのgenerator
+// は機構的には類似する(トップレベルトークンの並び替え)が、対象とする
+// knowledgeKind・exerciseKindが異なるため、あえて1つの関数へ統合せず
+// 独立したファイルのまま登録する(`formulaTokenizer.mjs`の2形状関数と同じ
+// 方針、実データで確認できた範囲を超えて先回りして共通化しない)。
 
 import { generateFormulaOrderingExercise } from "./generateFormulaOrderingExercise.mjs";
+import { generateJournalOrderingExercise } from "./generateJournalOrderingExercise.mjs";
 
 export const exerciseGenerators = [
   {
@@ -26,5 +30,12 @@ export const exerciseGenerators = [
       return knowledge.knowledgeKind === "calculation_formula";
     },
     generate: generateFormulaOrderingExercise,
+  },
+  {
+    exerciseKind: "journal_ordering",
+    supports(knowledge) {
+      return knowledge.knowledgeKind === "journal_pattern";
+    },
+    generate: generateJournalOrderingExercise,
   },
 ];

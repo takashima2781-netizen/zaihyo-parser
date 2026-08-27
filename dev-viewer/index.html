@@ -14,6 +14,16 @@
   }
   h1 { font-size: 18px; margin: 0 0 4px; }
   .meta { color: #666; font-size: 13px; margin-bottom: 24px; }
+  .case-block {
+    padding-top: 20px;
+    margin-top: 20px;
+    border-top: 4px solid #333;
+  }
+  .case-block:first-child {
+    padding-top: 0;
+    margin-top: 0;
+    border-top: none;
+  }
   section {
     background: #fff;
     border: 1px solid #ccc;
@@ -193,7 +203,17 @@
     // src/devViewer/server.mjs参照)。
     import { renderTokens } from "/lib/formulaTokenizer.mjs";
 
-    const CASE_NAME = "teigakuho-definition";
+    // 表示するケースの一覧。新しいケースを追加する際はここに1行足す
+    // (実データで確認できた範囲だけをリスト化する、教材追加のたびに
+    // render()本体等のロジックを変更する必要はない)。
+    // applicationCaseNameは、そのKnowledgeに対する「他の教材箇所からの
+    // 追加候補」を扱う別ケースファイルがある場合のみ設定する(第1ケースの
+    // みが対象、第3ケースは単独のSource+Knowledgeのため無し)。
+    const DEFINITION_CASES = [
+      { caseName: "teigakuho-definition", applicationCaseName: "teigakuho-application" },
+      { caseName: "intangible-journal-acquisition", applicationCaseName: null },
+      { caseName: "intangible-journal-amortization", applicationCaseName: null },
+    ];
     const CASE_NAME_APPLICATION = "teigakuho-application";
 
     // M5: /api/exercisesの取得結果をキャッシュしておく。M4の承認/修正/除外は
@@ -203,9 +223,11 @@
     // 毎回再取得する必要が無い)。
     let latestExercisesData = null;
 
-    // M4: 承認/修正/除外のPOSTを呼ぶ共通関数。
-    async function postReview(action, body) {
-      const res = await fetch(`/api/case/${CASE_NAME}/${action}`, {
+    // M4: 承認/修正/除外のPOSTを呼ぶ共通関数。caseNameは呼び出し側
+    // (render()内、data.caseから取得)が渡す。複数ケースを並べて表示できる
+    // ようにするため、モジュール直下の定数ではなくケースごとに指定する。
+    async function postReview(caseName, action, body) {
+      const res = await fetch(`/api/case/${caseName}/${action}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body ?? {}),
@@ -322,7 +344,7 @@
     // 内部用語(reviewStatus/approved-knowledge.json等)は開発者向け詳細へ
     // 移し、主画面には出さない
     // (`knowledge_integration_review_scope_design.md`をUI表示層へ適用)。
-    function renderReviewPanel(dkc) {
+    function renderReviewPanel(dkc, caseName) {
       const rawFormula = dkc.knowledge.content.rawFormula;
       const devStatusLine = el("div", { class: "field" }, [
         el("span", { class: "label" }, "内部状態(reviewStatus): "),
@@ -435,7 +457,7 @@
 
       approveConfirmBtn.addEventListener("click", async () => {
         try {
-          await postReview("approve", {});
+          await postReview(caseName, "approve", {});
           await refreshAndRenderAll();
         } catch (err) {
           errorBox.textContent = `エラー: ${err.message}`;
@@ -444,7 +466,7 @@
 
       editSaveBtn.addEventListener("click", async () => {
         try {
-          await postReview("edit", {
+          await postReview(caseName, "edit", {
             contentConfidence: { level: levelInput.value, note: confNoteInput.value },
             scopeNote: scopeNoteInput.value,
             note: editNoteInput.value || undefined,
@@ -457,7 +479,7 @@
 
       rejectConfirmBtn.addEventListener("click", async () => {
         try {
-          await postReview("reject", { note: rejectNoteInput.value || undefined });
+          await postReview(caseName, "reject", { note: rejectNoteInput.value || undefined });
           await refreshAndRenderAll();
         } catch (err) {
           errorBox.textContent = `エラー: ${err.message}`;
@@ -486,13 +508,12 @@
     }
 
     function render(data, applicationData) {
-      const app = document.getElementById("app");
-      app.innerHTML = "";
+      const container = el("div", { class: "case-block" }, []);
 
       const { structureContext, block, candidateReport, outOfScopeDetections } = data;
 
       // 0. ケース概要
-      app.append(
+      container.append(
         el("section", {}, [
           el("h2", {}, `ケース: ${data.case}`),
           field("生成日時", data.generatedAt),
@@ -500,7 +521,7 @@
       );
 
       // 1. 教材上の位置情報
-      app.append(
+      container.append(
         el("section", {}, [
           el("h2", {}, [el("span", { class: "step" }, "1"), "教材上の位置情報"]),
           field(
@@ -519,10 +540,10 @@
           field("検出根拠", `${block.detection.detectorId}(直前見出し: ${block.detection.precedingHeading ?? "(検出できず)"})`),
         ]),
       );
-      app.append(el("div", { class: "arrow" }, "↓ [1] Extraction"));
+      container.append(el("div", { class: "arrow" }, "↓ [1] Extraction"));
 
       // 2. extractionRaw
-      app.append(
+      container.append(
         el("section", {}, [
           el("h2", {}, [el("span", { class: "step" }, "2"), "抽出結果(extractionRaw) — PDFから何が抽出されたか"]),
           field(
@@ -532,12 +553,12 @@
           field("生テキスト", pre(block.extractionRaw.text)),
         ]),
       );
-      app.append(el("div", { class: "arrow" }, "↓ [5] Faithful Restoration"));
+      container.append(el("div", { class: "arrow" }, "↓ [5] Faithful Restoration"));
 
       // 3. Faithful Restoration
       const fr = block.diag.faithfulReconstruction;
       const artifacts = block.diag.extraction.artifacts ?? [];
-      app.append(
+      container.append(
         el("section", {}, [
           el("h2", {}, [el("span", { class: "step" }, "3"), "Faithful Restoration — どこがどう補正されたか"]),
           field(
@@ -570,19 +591,19 @@
           ),
         ]),
       );
-      app.append(el("div", { class: "arrow" }, "↓"));
+      container.append(el("div", { class: "arrow" }, "↓"));
 
       // 4. sourceFaithful
-      app.append(
+      container.append(
         el("section", {}, [
           el("h2", {}, [el("span", { class: "step" }, "4"), "sourceFaithful — 教材上の忠実な表現(正本)"]),
           el("div", { class: "formula" }, block.sourceFaithful),
         ]),
       );
-      app.append(el("div", { class: "arrow" }, "↓ [4] Source Segmentation"));
+      container.append(el("div", { class: "arrow" }, "↓ [4] Source Segmentation"));
 
       // 5. Source Segmentation判定
-      app.append(
+      container.append(
         el("section", {}, [
           el("h2", {}, [el("span", { class: "step" }, "5"), "Source Segmentation判定 — なぜ確定Sourceになったか"]),
           field(
@@ -596,10 +617,10 @@
           field("根拠", block.segmentationDecision.note),
         ]),
       );
-      app.append(el("div", { class: "arrow" }, "↓"));
+      container.append(el("div", { class: "arrow" }, "↓"));
 
       // 6. 確定Source(まとめ)
-      app.append(
+      container.append(
         el("section", {}, [
           el("h2", {}, [el("span", { class: "step" }, "6"), "確定Source(ContentBlock) — 全体像"]),
           field("id", block.id),
@@ -613,12 +634,12 @@
         ]),
       );
 
-      app.append(el("div", { class: "arrow" }, "↓ M2: Derived Knowledge候補生成"));
+      container.append(el("div", { class: "arrow" }, "↓ M2: Derived Knowledge候補生成"));
 
       // 7. Derived Knowledge候補
       const dkc = data.derivedKnowledgeCandidate;
       if (!dkc) {
-        app.append(
+        container.append(
           el("section", {}, [
             el("h2", {}, [el("span", { class: "step" }, "7"), "Derived Knowledge候補"]),
             el("div", { class: "scope-out" }, "まだ生成されていません(M2未実行。node scripts/run-teigakuho-knowledge-candidate.mjs を実行してください)。"),
@@ -629,7 +650,7 @@
         const rendered = renderTokens(k.content.structure);
         const roundTripOk = rendered === k.content.rawFormula;
 
-        app.append(
+        container.append(
           el("section", {}, [
             el("h2", {}, [el("span", { class: "step" }, "7"), "Derived Knowledge候補 — Sourceから何が生成されたか"]),
 
@@ -682,7 +703,7 @@
               return details;
             })()),
 
-            field("6. 学習対象として採用するか", renderReviewPanel(dkc)),
+            field("6. 学習対象として採用するか", renderReviewPanel(dkc, data.case)),
 
             field(
               "7. この知識が使われている他の例",
@@ -692,14 +713,14 @@
         );
       }
 
-      app.append(el("div", { class: "arrow" }, "↓ M5: Exercise生成"));
+      container.append(el("div", { class: "arrow" }, "↓ M5: Exercise生成"));
 
       // 8. Exercise(閲覧のみ。問題を解くUIはM6で作る)
       const exercise = latestExercisesData?.exercises?.find(
         (ex) => ex.knowledgeRef.knowledgeId === (dkc?.knowledge?.id ?? null),
       );
       if (!dkc || dkc.reviewStatus !== "approved") {
-        app.append(
+        container.append(
           el("section", {}, [
             el("h2", {}, [el("span", { class: "step" }, "8"), "Exercise"]),
             el(
@@ -710,7 +731,7 @@
           ]),
         );
       } else if (!exercise) {
-        app.append(
+        container.append(
           el("section", {}, [
             el("h2", {}, [el("span", { class: "step" }, "8"), "Exercise"]),
             el(
@@ -722,7 +743,7 @@
           ]),
         );
       } else {
-        app.append(
+        container.append(
           el("section", {}, [
             el("h2", {}, [el("span", { class: "step" }, "8"), "Exercise — Knowledgeから何が生成されたか"]),
 
@@ -768,7 +789,7 @@
       }
 
       // 参考: 候補一覧・スコープ外検出
-      app.append(
+      container.append(
         el("section", {}, [
           el("h2", {}, "(参考) Source候補一覧レポート / このケースの対象外だった検出"),
           field(
@@ -791,6 +812,8 @@
           ),
         ]),
       );
+
+      return container;
     }
 
     // F群の事実(共通表示)を折りたたみで見せる補助関数。自動統合済み・
@@ -1061,8 +1084,8 @@
           el(
             "div",
             { class: "scope-out" },
-            "第2ケースのSource候補データがありません" +
-              "(node scripts/run-application-candidates.mjs を実行すると生成されます)。",
+            "このKnowledgeについては、他の教材箇所からの追加候補データがまだありません" +
+              "(該当する候補生成スクリプトを実行すると生成されます)。",
           ),
         );
         return container;
@@ -1125,29 +1148,45 @@
     }
 
     // M4の承認/修正/除外、Sourceの追加候補への承認/却下、いずれの操作後も、
-    // 定義Source(teigakuho-definition)・適用例Source(teigakuho-application)
-    // 両方を再取得して描画し直す(片方だけ古い状態のまま表示され続けることを防ぐ)。
+    // 表示対象の全ケースを再取得して描画し直す(片方だけ古い状態のまま
+    // 表示され続けることを防ぐ)。DEFINITION_CASESに無いケース(まだ生成
+    // されていない教材)はエラーにせず単純にスキップする(教材を1つずつ
+    // 追加していく開発サイクルと整合する、fail-closedにする必要はない
+    // ——存在しないことがエラーではなく、まだ扱っていないだけのため)。
     async function refreshAndRenderAll() {
       try {
         const exercisesRes = await fetch("/api/exercises");
         latestExercisesData = exercisesRes.ok ? await exercisesRes.json() : null;
 
-        const definitionRes = await fetch(`/api/case/${CASE_NAME}`);
-        if (!definitionRes.ok) {
-          throw new Error(`APIエラー: ${definitionRes.status}`);
+        const app = document.getElementById("app");
+        app.innerHTML = "";
+
+        let renderedCount = 0;
+        for (const { caseName, applicationCaseName } of DEFINITION_CASES) {
+          const definitionRes = await fetch(`/api/case/${caseName}`);
+          if (!definitionRes.ok) continue;
+          const definitionData = await definitionRes.json();
+
+          let applicationData = null;
+          if (applicationCaseName) {
+            const applicationRes = await fetch(`/api/case/${applicationCaseName}`);
+            applicationData = applicationRes.ok ? await applicationRes.json() : null;
+          }
+
+          app.append(render(definitionData, applicationData));
+          renderedCount += 1;
         }
-        const definitionData = await definitionRes.json();
 
-        const applicationRes = await fetch(`/api/case/${CASE_NAME_APPLICATION}`);
-        const applicationData = applicationRes.ok ? await applicationRes.json() : null;
+        if (renderedCount === 0) {
+          throw new Error("表示できるケースが1件もありません");
+        }
 
-        render(definitionData, applicationData);
         document.getElementById("error").textContent = "";
       } catch (err) {
         document.getElementById("error").textContent =
           `読み込みに失敗しました: ${err.message}\n` +
-          `output/cases/${CASE_NAME}.json が存在するか、node scripts/run-teigakuho-case.mjs を` +
-          `先に実行したか確認してください。`;
+          `output/cases/ にケースファイルが存在するか確認してください` +
+          `(node scripts/run-teigakuho-case.mjs 等を先に実行する必要があります)。`;
       }
     }
 
