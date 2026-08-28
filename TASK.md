@@ -3,6 +3,27 @@
 現在のフェーズ・直近のタスクを記録する。意思決定の経緯・参考資料は
 `planning/` を参照。開発原則は `CLAUDE.md`、プロダクト仕様は `SPEC.md` を参照。
 
+## 進捗サマリ(報告のたびに更新)
+
+- **現在Phase**: 汎用性検証フェーズ完了 → Phase E(初版完成)着手
+  (`planning/generality_validation_phase_assessment.md`で終了判定)
+- **Phase進捗**: 汎用性検証フェーズは終了条件5件中3件達成・2件が
+  「新ケース不要・既存作業で解消可能」と判定して終了。Phase E最初の項目
+  (学習UIの複数Exercise対応、E5)着手・完了。次はE3(journal_pattern
+  Knowledgeの承認待ち)。Phase C・Dは未着手(いずれも着手前にユーザー確認が
+  必要な論点を含む)
+- **初版完成までの残Phase**: Phase C(教材の本格投入)→ Phase D(財表ドリル
+  との統合)→ Phase E残り(E3解消)
+- **現在のブロッカー**: なし
+- **人間の判断待ち**:
+  - 為替手形の振出人を学習対象に含めるか
+    (`planning/exchange_bill_drawer_journal_material_inquiry.md`)
+  - 減価償却費の月割計算(期中売却/除却/焼失/買換)を学習対象に含めるか
+    (`planning/depreciation_proration_formula_material_inquiry.md`)
+  - journal_pattern Knowledge候補(6件、いずれも`candidate`のまま)の承認
+    判断(会計内容の正しさの確認、E3解消に必要)
+  - Phase C・D着手前のアーキテクチャ確認(規模、財表ドリルとの統合方針)
+
 ## 現在のフェーズ
 
 **Parser設計フェーズ完了後、「教材の1論点をPDFから実際に解けるところまで
@@ -610,6 +631,41 @@ material_inquiry.md`にまとめた。テーマ8-3(売却)〜8-6(買換)で、
 表現が見当たらなかった。この計算式を(A)具体例をそのまま型として記録する、
 (B)記録を見送る、のいずれで扱うべきかご判断いただきたい。この確認を
 待つ間も開発(第7ケース以降)は継続する。
+
+## 汎用性検証フェーズの終了判定・Phase E着手(完了)
+
+ユーザー依頼により、第1〜6ケースを「教材構造の汎用性検証フェーズ」として
+アーキテクチャ観点ごとに棚卸しし、終了条件を定義・評価した
+(`planning/generality_validation_phase_assessment.md`)。
+
+- **終了条件5件を定義**: Block Detection検出器の追加(E1)・Faithful
+  Restoration補正の追加(E2)・knowledgeKind単位の一気通貫(E3)・複数Source
+  統合(E4)・複数Exercise/Knowledge同時存在時のUI(E5)。
+- **評価結果**: E1・E2・E4は達成済み(教材構造の多様性そのものに関わる
+  条件、4回・4パターン・2種類の実データで反復確認済み)。E3・E5は未達
+  だが、**いずれも新しいPDFページの追加では解消しない**種類のギャップ
+  (E3はjournal_pattern Knowledgeの承認待ち、E5は学習UI側の実装ギャップ)
+  と判定した。
+- **第7ケースは不要と判断し、汎用性検証フェーズを終了**。次フェーズ
+  (Phase C: 教材の本格投入、Phase D: 財表ドリルとの統合、Phase E: 初版
+  完成)の大枠を整理した。Phase C・Dは着手前にユーザー確認が必要な
+  アーキテクチャ論点を含むため保留し、Claude Code側で完結できる**Phase
+  Eの一部(E5)を先に着手**する方針とした。
+- **E5(学習UIの複数Exercise対応)を実装・完了**: `learning-ui/index.html`
+  が`data.exercises[0]`固定で、承認済みKnowledgeが何件あっても常に1問しか
+  表示できなかった問題(第1ケース時点から持ち越されていた既知の制限、
+  `vertical_slice_mvp_retrospective.md`2節)を修正した。問題一覧画面
+  (問題番号+出題形式ラベルのみ、教材内容〈正解〉は一切表示しない)→
+  選択した問題の解答画面→結果画面(「問題一覧に戻る」を追加)という
+  画面遷移を追加した。一覧の見出しラベル(「計算式の並び替え」等)は
+  アプリ側の固定文言であり、教材由来のテキストではない
+  (`instructionOrigin: app_generated`と同じ位置づけ)。
+- **実データ確認**: 実際のブラウザで、一覧表示(実データ1問)・解答画面への
+  遷移・「問題一覧に戻る」の往復を確認した。複数問題が同時に存在する
+  状態でのレンダリング・独立した状態管理・「解答済み」表示は、
+  架空データ(教材原文ではない)2問を一時的に用いた検証で確認し、確認後は
+  `node scripts/run-teigakuho-exercise.mjs`で実データの状態
+  (`output/exercises/exercises.json`、gitignore対象)へ復元した。
 
 ## 後回し(縦切りMVP完了後、`vertical_slice_mvp_roadmap.md`9節で判断済み)
 
