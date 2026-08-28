@@ -50,18 +50,27 @@ Source/Knowledge生成処理を財表ドリルのコードへ埋め込む必要�
 将来別教材を追加できる責務分離を維持することを優先する。詳細な調査・設計は
 `planning/phase_d_investigation_and_design.md` を参照。
 
-### 検証済みのend-to-endの流れ(基準、2026-08-28実機確認)
+### v1完成(マイルストーン、2026-08-28)
 
-Phase Dで、以下の流れを実データ(定額法1件)でブラウザ実機確認済み。以降の
-教材・科目もこの流れに乗せることを設計上の基準とする。
+簿記論教材(book1)の一部論点について、以下のend-to-endを実データで一気通貫
+させた状態を**v1**として完成・固定した(commit `08967be`、TASK.md「Phase E」
+節に詳細)。
 
 ```
-教材 → Source → Knowledge → Exercise → Exercise View → 学習UI(財表ドリル)
+教材 → Source → Knowledge → Exercise → Exercise View → 学習エンジン(財表ドリル)
   → 回答 → 採点 → 学習履歴
 ```
 
-boki-appが担うのは「教材 → Exercise」まで(Exercise View形式への変換を含む)。
-「学習UI以降」は学習エンジン(財表ドリル)の既存機能をそのまま使う。
+- calculation_formula・journal_pattern の両knowledgeKindで、承認済み
+  Knowledgeから生成したExerciseが、財表ドリル(`Zaihyo Parser/html-v2`、
+  コード変更なし)上で実際に出題・回答・正誤判定・学習履歴反映まで動作する
+  ことをブラウザ実機で確認済み。
+- boki-appが担うのは「教材 → Exercise(Exercise View形式への変換を含む)」
+  まで。「学習エンジン以降」は財表ドリルの既存機能をそのまま使う。
+
+**今後のあらゆる改善・拡張は、このend-to-endを壊さないことを基準とする。**
+新しい変更を加えるときは、このv1のend-to-end(定額法1件+journal_pattern
+6件で確認可能)が引き続き動作することを確認してから完了とする。
 
 ### 将来課題(初版のブロッカーにはしない): 学習エンジン側の1データセット制約
 
