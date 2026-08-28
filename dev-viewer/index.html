@@ -203,23 +203,25 @@
     // src/devViewer/server.mjs参照)。
     import { renderTokens } from "/lib/formulaTokenizer.mjs";
 
-    // 表示するケースの一覧。新しいケースを追加する際はここに1行足す
-    // (実データで確認できた範囲だけをリスト化する、教材追加のたびに
-    // render()本体等のロジックを変更する必要はない)。
-    // applicationCaseNameは、そのKnowledgeに対する「他の教材箇所からの
-    // 追加候補」を扱う別ケースファイルがある場合のみ設定する(第1ケースの
-    // みが対象、第3ケースは単独のSource+Knowledgeのため無し)。
-    const DEFINITION_CASES = [
-      { caseName: "teigakuho-definition", applicationCaseName: "teigakuho-application" },
-      { caseName: "intangible-journal-acquisition", applicationCaseName: null },
-      { caseName: "intangible-journal-amortization", applicationCaseName: null },
-      { caseName: "promissory-note-drawer-journal", applicationCaseName: null },
-      { caseName: "promissory-note-payee-journal", applicationCaseName: null },
-      { caseName: "exchange-bill-payee-journal", applicationCaseName: null },
-      { caseName: "exchange-bill-remittee-journal", applicationCaseName: null },
-      { caseName: "foreign-currency-definition", applicationCaseName: "foreign-currency-application" },
-      { caseName: "apportionment-average-definition", applicationCaseName: null },
-    ];
+    // 表示するケースの一覧は、`/api/cases`(`output/cases/`配下の実ファイル
+    // 走査)から動的に取得する(第7ケース以降、ケース追加のたびにこの
+    // 配列を手動編集する必要が無いようにするため、`planning/phase_c_
+    // readiness_assessment.md`2節で対応)。「定義ケース+その適用例ケース」
+    // というペアは、適用例ケース自身が持つ`definitionCaseName`から動的に
+    // 組み立てる。
+    async function fetchDefinitionCases() {
+      const res = await fetch("/api/cases");
+      if (!res.ok) {
+        throw new Error(`/api/cases の取得に失敗しました: HTTPエラー ${res.status}`);
+      }
+      const { cases } = await res.json();
+      const definitionCases = cases.filter((c) => c.kind === "definition");
+      const applicationCases = cases.filter((c) => c.kind === "application");
+      return definitionCases.map(({ caseName }) => {
+        const applicationCase = applicationCases.find((a) => a.definitionCaseName === caseName);
+        return { caseName, applicationCaseName: applicationCase?.caseName ?? null };
+      });
+    }
 
     // M5: /api/exercisesの取得結果をキャッシュしておく。M4の承認/修正/除外は
     // ケースデータだけを再取得してrender()を呼び直すため(既存の実装)、
@@ -1158,10 +1160,9 @@
 
     // M4の承認/修正/除外、Sourceの追加候補への承認/却下、いずれの操作後も、
     // 表示対象の全ケースを再取得して描画し直す(片方だけ古い状態のまま
-    // 表示され続けることを防ぐ)。DEFINITION_CASESに無いケース(まだ生成
-    // されていない教材)はエラーにせず単純にスキップする(教材を1つずつ
-    // 追加していく開発サイクルと整合する、fail-closedにする必要はない
-    // ——存在しないことがエラーではなく、まだ扱っていないだけのため)。
+    // 表示され続けることを防ぐ)。ケース一覧自体も`/api/cases`から毎回
+    // 取得し直すため、新しいケースファイルが追加されていれば自動的に
+    // 表示対象へ加わる。
     async function refreshAndRenderAll() {
       try {
         const exercisesRes = await fetch("/api/exercises");
@@ -1170,8 +1171,9 @@
         const app = document.getElementById("app");
         app.innerHTML = "";
 
+        const definitionCases = await fetchDefinitionCases();
         let renderedCount = 0;
-        for (const { caseName, applicationCaseName } of DEFINITION_CASES) {
+        for (const { caseName, applicationCaseName } of definitionCases) {
           const definitionRes = await fetch(`/api/case/${caseName}`);
           if (!definitionRes.ok) continue;
           const definitionData = await definitionRes.json();

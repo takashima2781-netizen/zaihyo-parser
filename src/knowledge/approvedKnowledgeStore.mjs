@@ -11,6 +11,8 @@
 import { readdir, readFile, writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 
+import { checkIdUniqueness } from "../gateChecks/idUniquenessChecks.mjs";
+
 /**
  * @param {string} rootDir
  * @returns {Promise<{ knowledge: Array<{ approvedAt: string, sourceCase: string, knowledge: object }> }>}
@@ -26,11 +28,20 @@ export async function rebuildApprovedKnowledge(rootDir) {
     fileNames = [];
   }
 
+  // `.test.json`(統合テストが書き出す一時ファイル)は対象外とする。実
+  // ケースと同じ`case`/ID値を持つため、含めると下記のID一意性検証が
+  // 常に(テスト実行環境では)失敗してしまう。
+  const caseFileNames = fileNames
+    .filter((name) => name.endsWith(".json") && !name.endsWith(".test.json"))
+    .sort();
+
+  const allCaseData = [];
   const approved = [];
-  for (const fileName of fileNames.filter((name) => name.endsWith(".json")).sort()) {
+  for (const fileName of caseFileNames) {
     const caseData = JSON.parse(
       await readFile(path.join(casesDir, fileName), "utf8"),
     );
+    allCaseData.push(caseData);
     const dkc = caseData.derivedKnowledgeCandidate;
     if (dkc && dkc.reviewStatus === "approved") {
       approved.push({
@@ -39,6 +50,15 @@ export async function rebuildApprovedKnowledge(rootDir) {
         knowledge: dkc.knowledge,
       });
     }
+  }
+
+  // fail-closed: 確定Source ID・Knowledge IDがケース横断で重複していないか
+  // を、書き出す前に検証する(`planning/phase_c_readiness_assessment.md`
+  // 4節)。教材投入量が増えるほど、命名衝突が静かにデータを壊すリスクが
+  // 増すため、承認済みビューを再生成するこのタイミングで毎回確認する。
+  const idCheck = checkIdUniqueness(allCaseData);
+  if (!idCheck.ok) {
+    throw new Error(`ID一意性検証に失敗した(fail-closed): ${idCheck.violations.join("; ")}`);
   }
 
   const result = { knowledge: approved };

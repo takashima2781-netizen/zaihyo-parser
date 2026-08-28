@@ -93,6 +93,68 @@ test("rebuildApprovedKnowledge: 実際にoutput/knowledge/approved-knowledge.jso
   );
 });
 
+// ID一意性検証(第7ケース以降の教材投入増を見据えて追加、
+// `planning/phase_c_readiness_assessment.md`4節)。
+test("rebuildApprovedKnowledge: Knowledge IDがケース間で重複していればfail-closedで拒否し、書き出さない", async () => {
+  await withTempRoot(
+    {
+      "case-a.json": {
+        case: "case-a",
+        derivedKnowledgeCandidate: { reviewStatus: "candidate", knowledge: fakeKnowledge("dk-dup") },
+      },
+      "case-b.json": {
+        case: "case-b",
+        derivedKnowledgeCandidate: { reviewStatus: "candidate", knowledge: fakeKnowledge("dk-dup") },
+      },
+    },
+    async (rootDir) => {
+      await assert.rejects(() => rebuildApprovedKnowledge(rootDir), /ID一意性検証に失敗した/);
+    },
+  );
+});
+
+test("rebuildApprovedKnowledge: 確定Source IDがケース間で重複していればfail-closedで拒否する", async () => {
+  await withTempRoot(
+    {
+      "case-a.json": { case: "case-a", block: { id: "block-dup" } },
+      "case-b.json": { case: "case-b", block: { id: "block-dup" } },
+    },
+    async (rootDir) => {
+      await assert.rejects(() => rebuildApprovedKnowledge(rootDir), /ID一意性検証に失敗した/);
+    },
+  );
+});
+
+// `.test.json`(統合テストの一時出力)は、実ケースと同じID値を持つことが
+// あるため、走査対象から除外する(除外しないと上記のID一意性検証が常に
+// 誤検知してしまう)。
+test("rebuildApprovedKnowledge: .test.jsonファイルは走査対象に含めない", async () => {
+  await withTempRoot(
+    {
+      "case-a.json": {
+        case: "case-a",
+        derivedKnowledgeCandidate: {
+          reviewStatus: "approved",
+          reviewedAt: "2026-01-01T00:00:00.000Z",
+          knowledge: fakeKnowledge("dk-a"),
+        },
+      },
+      "case-a.test.json": {
+        case: "case-a",
+        derivedKnowledgeCandidate: {
+          reviewStatus: "approved",
+          reviewedAt: "2026-01-01T00:00:00.000Z",
+          knowledge: fakeKnowledge("dk-a"),
+        },
+      },
+    },
+    async (rootDir) => {
+      const result = await rebuildApprovedKnowledge(rootDir);
+      assert.equal(result.knowledge.length, 1);
+    },
+  );
+});
+
 test("rebuildApprovedKnowledge: ケースファイルが無い(output/cases/が無い)場合も空配列で正常終了する", async () => {
   const rootDir = await mkdtemp(path.join(tmpdir(), "boki-approved-knowledge-empty-"));
   try {

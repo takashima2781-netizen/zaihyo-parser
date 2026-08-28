@@ -8,7 +8,11 @@
 // (`input/corrections/apportionment-average-definition.json`による
 // fraction_split補正、第1ケースと同じ手法) → 確定Source(JSON)
 //
-// このケース専用に書く(第1・第3・第4・第5ケースと同じ方針)。
+// テーマ/論点見出し検出・F3確定・ContentBlock組み立て・書き出しという
+// 共通の骨格は`formulaCaseHelpers.mjs`(Phase C着手前のアーキテクチャ確認で
+// 第1・第5・第6ケースの3件から抽出、`planning/phase_c_readiness_
+// assessment.md`2節)を使う。検出器・候補選別・Faithful Restorationは、
+// このケース固有のロジックとして引き続きここに書く(CLAUDE.md原則5・6)。
 //
 // [3] Block Detectionについて: この定義式「（期首仕入諸掛＋当期仕入諸掛）
 // ×（期末商品／（期首商品＋当期仕入高）)＝期末仕入諸掛」は、既存の
@@ -29,14 +33,16 @@
 // (今回1件のみの実データであり、汎用的な複数分数の座標対応付けロジックへ
 // 先回りして一般化しない、原則6)。
 
-import { readFile, writeFile, mkdir } from "node:fs/promises";
-import path from "node:path";
+import { readFile } from "node:fs/promises";
 
-import { extractPages } from "./extract.mjs";
-import { detectThemeHeading, detectTopicHeading } from "./structureRecognition.mjs";
 import { detectAdditionGroupFormulas } from "./blockDetection.mjs";
-import { applyF3 } from "./sourceSegmentation.mjs";
 import { applyKnownCorrection } from "./faithfulRestoration.mjs";
+import {
+  detectThemeAndTopic,
+  confirmTopLevelSegmentation,
+  buildFormulaConfirmedSource,
+  writeFormulaCase,
+} from "./formulaCaseHelpers.mjs";
 
 const THEME_PAGE = 112;
 const TOPIC_PAGE = 147;
@@ -46,34 +52,14 @@ const TOPIC_PRINTED_PAGE = "118";
  * @param {{ pdfPath: string, correctionPath: string, outputPath: string }} options
  */
 export async function runApportionmentCase({ pdfPath, correctionPath, outputPath }) {
-  const [themePage] = await extractPages(pdfPath, [THEME_PAGE]);
-  const theme = detectThemeHeading(themePage.text);
-  if (!theme) {
-    throw new Error(`テーマ7見出しが検出できなかった(fail-closed、ページ${THEME_PAGE})`);
-  }
-  const themeNode = {
-    type: "StructureNode",
-    nodeKind: "theme",
-    id: `theme-${theme.number}`,
-    label: { number: theme.number, titleRaw: theme.titleRaw },
-    location: { page: THEME_PAGE },
-  };
+  const { themeNode, topicNode, topicPageData } = await detectThemeAndTopic({
+    pdfPath,
+    themePage: THEME_PAGE,
+    topicPage: TOPIC_PAGE,
+    expectedTopicNumber: "7-10",
+  });
 
-  const [topicPage] = await extractPages(pdfPath, [TOPIC_PAGE]);
-  const topic = detectTopicHeading(topicPage.text);
-  if (!topic || topic.number !== "7-10") {
-    throw new Error(`topic-7-10見出しが検出できなかった(fail-closed、ページ${TOPIC_PAGE})`);
-  }
-  const topicNode = {
-    type: "StructureNode",
-    nodeKind: "topic",
-    id: `topic-${topic.number}`,
-    label: { number: topic.number, titleRaw: topic.titleRaw },
-    location: { page: TOPIC_PAGE },
-    parentId: themeNode.id,
-  };
-
-  const candidates = detectAdditionGroupFormulas(topicPage.text);
+  const candidates = detectAdditionGroupFormulas(topicPageData.text);
   if (candidates.length === 0) {
     throw new Error(
       `ページ${TOPIC_PAGE}で加算グループ式候補が検出できなかった(fail-closed、` +
@@ -96,10 +82,7 @@ export async function runApportionmentCase({ pdfPath, correctionPath, outputPath
       reason: "このケース(按分計算・平均法)の対象外。次フェーズ以降の別ケースとして扱う",
     }));
 
-  const segmentation = applyF3({ nestedUnder: null });
-  if (!segmentation.confirmed) {
-    throw new Error("F3で確定できなかった(fail-closed)");
-  }
+  const segmentation = confirmTopLevelSegmentation();
 
   const extractionRawText = [
     ...target.contextBefore,
@@ -113,52 +96,29 @@ export async function runApportionmentCase({ pdfPath, correctionPath, outputPath
   }
   const restored = applyKnownCorrection(extractionRawText, correction);
 
-  const confirmedSource = {
-    type: "ContentBlock",
-    id: correction.blockId,
-    blockKind: "formula_termbased",
+  const block = buildFormulaConfirmedSource({
+    blockId: correction.blockId,
     structureRef: topicNode.id,
-    location: {
-      page: TOPIC_PAGE,
-      printedPageLabel: TOPIC_PRINTED_PAGE,
-      sequenceOnPage: 1,
-    },
-    extractionRaw: {
-      text: extractionRawText,
-      tool: topicPage.tool,
-      toolVersion: topicPage.toolVersion,
-      invocation: topicPage.invocation,
-    },
+    page: TOPIC_PAGE,
+    printedPageLabel: TOPIC_PRINTED_PAGE,
+    extractionRawText,
+    tool: topicPageData.tool,
+    toolVersion: topicPageData.toolVersion,
+    invocation: topicPageData.invocation,
     sourceFaithful: restored.sourceFaithful,
-    diag: {
-      extraction: {
-        status: "captured_differs",
-        artifacts: [restored.artifact],
-      },
-      faithfulReconstruction: {
-        performed: true,
-        method: "human_reviewed",
-        confidence: "high",
-      },
-    },
-    segmentationDecision: segmentation,
-    detection: {
-      detectorId: target.detectorId,
-      precedingHeading: target.precedingHeading,
-    },
-  };
+    diagExtractionStatus: "captured_differs",
+    diagExtractionArtifacts: [restored.artifact],
+    segmentation,
+    detectorId: target.detectorId,
+    precedingHeading: target.precedingHeading,
+  });
 
-  const caseOutput = {
-    case: "apportionment-average-definition",
-    generatedAt: new Date().toISOString(),
-    structureContext: { theme: themeNode, topic: topicNode },
-    block: confirmedSource,
-    candidateReport: { candidates: [] },
+  return writeFormulaCase({
+    outputPath,
+    caseName: "apportionment-average-definition",
+    themeNode,
+    topicNode,
+    block,
     outOfScopeDetections: outOfScopeCandidates,
-  };
-
-  await mkdir(path.dirname(outputPath), { recursive: true });
-  await writeFile(outputPath, JSON.stringify(caseOutput, null, 2), "utf8");
-
-  return caseOutput;
+  });
 }

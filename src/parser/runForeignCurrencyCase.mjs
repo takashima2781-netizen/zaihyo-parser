@@ -7,7 +7,11 @@
 // トップレベル) → [5]Faithful Restoration(CJK字間空白の除去、念のため
 // 適用するが実データでは除去対象なし) → 確定Source(JSON)
 //
-// このケース専用に書く(第1・第3・第4ケースと同じ方針)。
+// テーマ/論点見出し検出・F3確定・ContentBlock組み立て・書き出しという
+// 共通の骨格は`formulaCaseHelpers.mjs`(Phase C着手前のアーキテクチャ確認で
+// 第1・第5・第6ケースの3件から抽出、`planning/phase_c_readiness_
+// assessment.md`2節)を使う。検出器・候補選別・Faithful Restorationは、
+// このケース固有のロジックとして引き続きここに書く(CLAUDE.md原則5・6)。
 //
 // [3] Block Detectionについて: 既存の`detectTermBasedFormulas`(括弧内減算
 // または先頭数値のいずれかを要求)は、この定義式「外貨建取引額×為替レート
@@ -20,14 +24,14 @@
 // いない。第1ケース(定額法定義式)と同じ構造的事実であり、トップレベルの
 // 独立したSourceとして扱う(F3)。
 
-import { readFile, writeFile, mkdir } from "node:fs/promises";
-import path from "node:path";
-
-import { extractPages } from "./extract.mjs";
-import { detectThemeHeading, detectTopicHeading } from "./structureRecognition.mjs";
 import { detectPlainTermFormulas } from "./blockDetection.mjs";
-import { applyF3 } from "./sourceSegmentation.mjs";
 import { normalizeCjkLetterSpacing } from "./faithfulRestoration.mjs";
+import {
+  detectThemeAndTopic,
+  confirmTopLevelSegmentation,
+  buildFormulaConfirmedSource,
+  writeFormulaCase,
+} from "./formulaCaseHelpers.mjs";
 
 const THEME_PAGE = 200;
 const TOPIC_PAGE = 201;
@@ -39,34 +43,14 @@ const BLOCK_ID = "block-foreign-currency-def";
  * @param {{ pdfPath: string, outputPath: string }} options
  */
 export async function runForeignCurrencyCase({ pdfPath, outputPath }) {
-  const [themePage] = await extractPages(pdfPath, [THEME_PAGE]);
-  const theme = detectThemeHeading(themePage.text);
-  if (!theme) {
-    throw new Error(`テーマ11見出しが検出できなかった(fail-closed、ページ${THEME_PAGE})`);
-  }
-  const themeNode = {
-    type: "StructureNode",
-    nodeKind: "theme",
-    id: `theme-${theme.number}`,
-    label: { number: theme.number, titleRaw: theme.titleRaw },
-    location: { page: THEME_PAGE },
-  };
+  const { themeNode, topicNode, topicPageData } = await detectThemeAndTopic({
+    pdfPath,
+    themePage: THEME_PAGE,
+    topicPage: TOPIC_PAGE,
+    expectedTopicNumber: "11-1",
+  });
 
-  const [topicPage] = await extractPages(pdfPath, [TOPIC_PAGE]);
-  const topic = detectTopicHeading(topicPage.text);
-  if (!topic || topic.number !== "11-1") {
-    throw new Error(`topic-11-1見出しが検出できなかった(fail-closed、ページ${TOPIC_PAGE})`);
-  }
-  const topicNode = {
-    type: "StructureNode",
-    nodeKind: "topic",
-    id: `topic-${topic.number}`,
-    label: { number: topic.number, titleRaw: topic.titleRaw },
-    location: { page: TOPIC_PAGE },
-    parentId: themeNode.id,
-  };
-
-  const candidates = detectPlainTermFormulas(topicPage.text);
+  const candidates = detectPlainTermFormulas(topicPageData.text);
   if (candidates.length !== 1) {
     throw new Error(
       `想定していた定義式候補数(1)と実際の検出数(${candidates.length})が一致しない` +
@@ -80,70 +64,42 @@ export async function runForeignCurrencyCase({ pdfPath, outputPath }) {
     );
   }
 
-  const segmentation = applyF3({ nestedUnder: null });
-  if (!segmentation.confirmed) {
-    throw new Error("F3で確定できなかった(fail-closed)");
-  }
+  const segmentation = confirmTopLevelSegmentation();
 
   const restored = normalizeCjkLetterSpacing(target.formulaRaw);
   const sourceFaithful = restored.normalized;
 
-  const confirmedSource = {
-    type: "ContentBlock",
-    id: BLOCK_ID,
-    blockKind: "formula_termbased",
+  const block = buildFormulaConfirmedSource({
+    blockId: BLOCK_ID,
     structureRef: topicNode.id,
-    location: {
-      page: TOPIC_PAGE,
-      printedPageLabel: TOPIC_PRINTED_PAGE,
-      sequenceOnPage: 1,
-    },
-    extractionRaw: {
-      text: target.matchedLine,
-      tool: topicPage.tool,
-      toolVersion: topicPage.toolVersion,
-      invocation: topicPage.invocation,
-    },
+    page: TOPIC_PAGE,
+    printedPageLabel: TOPIC_PRINTED_PAGE,
+    extractionRawText: target.matchedLine,
+    tool: topicPageData.tool,
+    toolVersion: topicPageData.toolVersion,
+    invocation: topicPageData.invocation,
     sourceFaithful,
-    diag: {
-      extraction: {
-        status: restored.removedCount > 0 ? "captured_differs" : "captured_matches_sourceFaithful",
-        artifacts:
-          restored.removedCount > 0
-            ? [
-                {
-                  kind: "letter_spacing",
-                  stage: "extraction",
-                  resolved: true,
-                  note: `勘定科目名の文字間にあった字間調整用の空白(${restored.removedCount}箇所)を機械的に除去した`,
-                },
-              ]
-            : [],
-      },
-      faithfulReconstruction: {
-        performed: true,
-        method: "human_reviewed",
-        confidence: "high",
-      },
-    },
-    segmentationDecision: segmentation,
-    detection: {
-      detectorId: target.detectorId,
-      precedingHeading: null,
-    },
-  };
+    diagExtractionStatus: restored.removedCount > 0 ? "captured_differs" : "captured_matches_sourceFaithful",
+    diagExtractionArtifacts:
+      restored.removedCount > 0
+        ? [
+            {
+              kind: "letter_spacing",
+              stage: "extraction",
+              resolved: true,
+              note: `勘定科目名の文字間にあった字間調整用の空白(${restored.removedCount}箇所)を機械的に除去した`,
+            },
+          ]
+        : [],
+    segmentation,
+    detectorId: target.detectorId,
+  });
 
-  const caseOutput = {
-    case: "foreign-currency-definition",
-    generatedAt: new Date().toISOString(),
-    structureContext: { theme: themeNode, topic: topicNode },
-    block: confirmedSource,
-    candidateReport: { candidates: [] },
-    outOfScopeDetections: [],
-  };
-
-  await mkdir(path.dirname(outputPath), { recursive: true });
-  await writeFile(outputPath, JSON.stringify(caseOutput, null, 2), "utf8");
-
-  return caseOutput;
+  return writeFormulaCase({
+    outputPath,
+    caseName: "foreign-currency-definition",
+    themeNode,
+    topicNode,
+    block,
+  });
 }

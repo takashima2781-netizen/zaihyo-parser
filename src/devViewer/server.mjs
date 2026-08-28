@@ -6,7 +6,7 @@
 
 import { createServer as createHttpServer } from "node:http";
 import { existsSync } from "node:fs";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, writeFile, readdir } from "node:fs/promises";
 import path from "node:path";
 
 import { approveCandidate, rejectCandidate, editCandidate } from "../knowledge/reviewActions.mjs";
@@ -242,6 +242,40 @@ export function createServer({ rootDir }) {
             }),
         }[action];
         await applyReviewAction(caseName, actionFn, res);
+        return;
+      }
+
+      // ケース一覧: `output/cases/`配下の実ファイルを走査して返す
+      // (`approvedKnowledgeStore.mjs`と同じ動的判定方式)。dev-viewer側の
+      // 表示対象リスト(旧`DEFINITION_CASES`ハードコード配列)を、ケース
+      // 追加のたびに手動編集する必要が無いようにするため追加した
+      // (`planning/phase_c_readiness_assessment.md`2節)。
+      // `candidates`配列を持つケース(適用例ケース)は`kind: "application"`、
+      // それ以外(`block`を持つ確定Sourceケース)は`kind: "definition"`と
+      // 判定する。適用例ケースは自身の`definitionCaseName`をそのまま返す。
+      if (url.pathname === "/api/cases") {
+        // `.test.json`(統合テストが書き出す一時ファイル)は対象外とする。
+        // 中身の`case`フィールドが実ファイルと同じ名前になるため、含めると
+        // 一覧が重複表示されてしまう。
+        let fileNames = [];
+        try {
+          fileNames = (await readdir(casesDir)).filter(
+            (name) => name.endsWith(".json") && !name.endsWith(".test.json"),
+          );
+        } catch {
+          fileNames = [];
+        }
+        const cases = [];
+        for (const fileName of fileNames.sort()) {
+          const data = JSON.parse(await readFile(path.join(casesDir, fileName), "utf8"));
+          cases.push({
+            caseName: data.case,
+            kind: Array.isArray(data.candidates) ? "application" : "definition",
+            definitionCaseName: data.definitionCaseName ?? null,
+          });
+        }
+        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ cases }));
         return;
       }
 

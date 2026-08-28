@@ -74,6 +74,55 @@ test("GET /api/case/<new-case>: ホワイトリストに無い新しいケース
   }
 });
 
+// `/api/cases`は`output/cases/`配下を動的に走査する(dev-viewer側の
+// ハードコードされたケース一覧を廃止するために追加、`planning/phase_c_
+// readiness_assessment.md`2節)。
+test("GET /api/cases: 定義ケースと適用例ケースを動的に判別して返す", async () => {
+  const tempRoot = await mkdtemp(path.join(tmpdir(), "boki-server-cases-list-test-"));
+  try {
+    await mkdir(path.join(tempRoot, "output", "cases"), { recursive: true });
+    await mkdir(path.join(tempRoot, "dev-viewer"), { recursive: true });
+    await mkdir(path.join(tempRoot, "learning-ui"), { recursive: true });
+    await writeFile(path.join(tempRoot, "dev-viewer", "index.html"), "<html></html>", "utf8");
+    await writeFile(path.join(tempRoot, "learning-ui", "index.html"), "<html></html>", "utf8");
+    await writeFile(
+      path.join(tempRoot, "output", "cases", "fake-definition.json"),
+      JSON.stringify({ case: "fake-definition" }),
+      "utf8",
+    );
+    await writeFile(
+      path.join(tempRoot, "output", "cases", "fake-application.json"),
+      JSON.stringify({ case: "fake-application", definitionCaseName: "fake-definition", candidates: [] }),
+      "utf8",
+    );
+    // .test.jsonは対象外になること(一覧に重複表示させない)の確認用。
+    await writeFile(
+      path.join(tempRoot, "output", "cases", "fake-definition.test.json"),
+      JSON.stringify({ case: "fake-definition" }),
+      "utf8",
+    );
+
+    const server = createServer({ rootDir: tempRoot });
+    await new Promise((resolve) => server.listen(0, resolve));
+    const { port } = server.address();
+    try {
+      const res = await fetch(`http://localhost:${port}/api/cases`);
+      assert.equal(res.status, 200);
+      const { cases } = await res.json();
+      assert.equal(cases.length, 2);
+      const def = cases.find((c) => c.caseName === "fake-definition");
+      const app = cases.find((c) => c.caseName === "fake-application");
+      assert.equal(def.kind, "definition");
+      assert.equal(app.kind, "application");
+      assert.equal(app.definitionCaseName, "fake-definition");
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test("GET /api/case/../../secret はパストラバーサルできない", async () => {
   await withServer(async (base) => {
     const res = await fetch(`${base}/api/case/..%2F..%2Fpackage`);
