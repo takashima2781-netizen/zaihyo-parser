@@ -204,9 +204,12 @@ test(
       const res = await fetch(`${base}/api/exercises`);
       assert.equal(res.status, 200);
       const data = await res.json();
-      assert.equal(data.exercises.length, 1);
-      assert.equal(data.exercises[0].exerciseKind, "formula_ordering");
-      assert.ok(data.exercises[0].knowledgeRef.knowledgeId);
+      // 承認済みKnowledge数は今後も増減しうるため、件数を固定値で断定しない。
+      assert.ok(data.exercises.length >= 1);
+      for (const exercise of data.exercises) {
+        assert.ok(["formula_ordering", "journal_ordering"].includes(exercise.exerciseKind));
+        assert.ok(exercise.knowledgeRef.knowledgeId);
+      }
     });
   },
 );

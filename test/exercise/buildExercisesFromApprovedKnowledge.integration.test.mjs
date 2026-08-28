@@ -21,15 +21,25 @@ test(
     const approved = JSON.parse(readFileSync(approvedKnowledgePath, "utf8"));
     const result = buildExercisesFromApprovedKnowledge(approved);
 
-    assert.equal(result.exercises.length, 1);
-    const exercise = result.exercises[0];
+    // 承認済みKnowledge数は今後も増減しうるため、件数を固定値で断定しない。
+    // 生成された各Exerciseが構造的な契約を満たすことだけを検証する
+    // (実データの内容そのものはアサーションに埋め込まない)。
+    assert.ok(result.exercises.length >= 1);
 
-    assert.equal(exercise.knowledgeRef.knowledgeId, "dk-calc-formula-teigakuho");
-    assert.equal(exercise.exerciseKind, "formula_ordering");
-    assert.equal(exercise.answer.grading.method, "exact_sequence_match");
-    assert.equal(exercise.answer.correctOrder.length, 5);
-    assert.equal(exercise.answer.correctOrder.join(""), exercise.reveal.rawFormula);
-    assert.equal(exercise.prompt.instructionOrigin, "app_generated");
-    assert.deepEqual(Object.keys(exercise.reveal).sort(), ["rawFormula", "sourceRefs"]);
+    for (const exercise of result.exercises) {
+      assert.ok(["formula_ordering", "journal_ordering"].includes(exercise.exerciseKind));
+      assert.equal(exercise.answer.grading.method, "exact_sequence_match");
+      assert.ok(exercise.answer.correctOrder.length >= 1);
+      assert.equal(exercise.answer.correctOrder.join(""), exercise.reveal.rawFormula);
+      assert.equal(exercise.prompt.instructionOrigin, "app_generated");
+      assert.deepEqual(Object.keys(exercise.reveal).sort(), ["rawFormula", "sourceRefs"]);
+    }
+
+    const teigakuhoExercise = result.exercises.find(
+      (ex) => ex.knowledgeRef.knowledgeId === "dk-calc-formula-teigakuho",
+    );
+    assert.ok(teigakuhoExercise, "定額法のExerciseが含まれているはず");
+    assert.equal(teigakuhoExercise.exerciseKind, "formula_ordering");
+    assert.equal(teigakuhoExercise.answer.correctOrder.length, 5);
   },
 );

@@ -5,42 +5,45 @@
 
 ## 進捗サマリ(報告のたびに更新)
 
-- **現在Phase**: Phase E(初版完成・実使用確認)
-- **Phase進捗**: Phase Dが完了し(財表ドリルとの接続、実機確認済み)、
-  Phase Eの完了条件を確定した。calculation_formula(定額法)は8条件すべてを
-  実データで確認済み。journal_patternの一気通貫確認は、Knowledge候補の
-  採用可否についてユーザー判断待ち(下記「journal_pattern Knowledge候補」
-  参照)
-- **Phase E完了条件**(すべて満たされた時点で初版完成と宣言する):
-  1. 実際の財表教材から生成されたKnowledgeが承認されている
-  2. そこからExerciseが生成される
-  3. Exercise Viewへ変換できる
-  4. 実際の学習エンジン(財表ドリル)で出題できる
-  5. 回答できる
-  6. 正誤判定できる
-  7. 学習履歴へ反映される
-  8. 既存機能に重大なregressionがない
-  (calculation_formula・journal_patternの両knowledgeKindについて、それぞれ
-  1件以上で1〜7を満たすことを条件とする。全Knowledge候補の承認を条件には
-  しない)
-- **完了済み**: calculation_formula(定額法)で1〜7を実機確認済み(Phase D)。
-  npm test 253件成功(8、現時点でregression無し)
-- **未完了**: journal_pattern側の1〜7(Knowledge候補の採用可否がユーザー
-  判断待ちのため未着手。判断を受けたら承認→Exercise生成→Exercise View
-  変換→実機確認まで一気通貫で実施する)
-- **初版完成までの推定残作業**: journal_pattern Knowledge候補のうち1件以上の
-  承認を受けたら、自動化済みのパイプラインを流すだけ(作業自体は小さい)
+**初版(v1)完成(2026-08-28)。** Phase Eの完了条件(下記8件)をすべて満たした。
+
+- **現在Phase**: 初版完成。次はv1完成後の改善タスク(次フェーズ、着手前に
+  ユーザー確認)
+- **Phase進捗**: Phase E完了。journal_pattern Knowledge候補6件(#1〜#6)を
+  ユーザー承認(2026-08-28)。#3・#5、#4・#6は仕訳の型が同一でも学習対象の
+  状況・当事者の立場が異なるため統合せず別Knowledgeとして承認
+  (CLAUDE.md「Knowledgeの同一性判断」節)。承認→Exercise生成→Exercise View
+  変換→財表ドリルでの実機確認まで一気通貫で実施し、全項目を確認した
+- **Phase E完了条件**(すべて充足):
+  1. ✅ 実際の財表教材から生成されたKnowledgeが承認されている(計7件:
+     calculation_formula1件+journal_pattern6件)
+  2. ✅ そこからExerciseが生成される(7件生成、`output/exercises/
+     exercises.json`)
+  3. ✅ Exercise Viewへ変換できる(7件変換、`output/exercise-view/
+     boki-app-exercise-view.json`)
+  4. ✅ 実際の学習エンジン(財表ドリル)で出題できる(ブラウザ実機で7件とも
+     表示確認)
+  5. ✅ 回答できる(並べ替え操作を実機確認、○○○/〇〇〇双方のプレース
+     ホルダー表示も確認)
+  6. ✅ 正誤判定できる(正しい順序で回答し「正解」判定を実機確認)
+  7. ✅ 学習履歴へ反映される(連続正解数への反映をlocalStorageで実機確認)
+  8. ✅ 既存機能に重大なregressionがない(npm test 253件成功。テスト2件が
+     承認済みKnowledge件数の増加〈1→7〉により古い固定値を前提にしていたため
+     修正した。実装側の不具合ではない)
+- **完了済み**: 上記8件すべて。calculation_formula・journal_pattern両方の
+  knowledgeKindで一気通貫を実機確認済み
+- **未完了**: なし(Phase Eの範囲では)
+- **初版完成までの推定残作業**: なし(完成)
 - **現在のブロッカー**: なし
-- **人間の判断待ち**:
-  - **journal_pattern Knowledge候補の採用可否**(下記「journal_pattern
-    Knowledge候補」参照。Phase E完了に必要)
-  - 為替手形の振出人を学習対象に含めるか(後回し可、初版完成の前提条件では
-    ない)
-  - 減価償却費の月割計算を学習対象に含めるか(後回し可、同上)
+- **人間の判断待ち**(いずれも初版完成後の任意の改善事項。急ぎではない):
+  - 為替手形の振出人を学習対象に含めるか
+  - 減価償却費の月割計算を学習対象に含めるか
+  - journal_pattern Knowledge候補、残り49件の採用可否(次フェーズで、
+    機械的に安全なものと人間判断が必要なものを分離して提示する予定)
   - 財表ドリル側は現状「1データセットのみ保持」する設計のため、財表用と
     boki-app用のファイルを切り替えるには都度手動での読み込み直しが必要
-    (財表ドリル側の設計変更が要る話であり、boki-appの権限外。急ぎではない、
-    詳細はCLAUDE.md「将来課題」節に記録済み)
+    (財表ドリル側の設計変更が要る話であり、boki-appの権限外。詳細は
+    CLAUDE.md「将来課題」節に記録済み)
 
 ## 保留事項の整理(今すぐの判断は不要、後から追加可能)
 
@@ -55,21 +58,28 @@
 同上。この1つの計算技法が無くても初版は成立する。詳細:
 `planning/depreciation_proration_formula_material_inquiry.md`
 
-### 3. journal_pattern Knowledge候補 — ユーザー判断待ち(Phase E完了に必要)
+### 3. journal_pattern Knowledge候補6件 — 承認済み(2026-08-28)
 
-Phase E完了(journal_pattern側の一気通貫確認)に必要な最小限として、まず
-以前から報告している6件についてユーザー判断を仰ぐ。判断結果は本セッション
-内でチャットへ一覧形式で提示済み(教材内容/記録するKnowledge/出題される
-問題/重複統合の要否/Claude Codeの推奨、の列)。
+以前から報告していた6件(#1無形固定資産支出時・#2無形固定資産決算時
+・#3約束手形の振出人・#4約束手形の名宛人・#5為替手形の名宛人・#6為替
+手形の指図人)は、ユーザー判断によりすべて採用・承認された
+(`scripts/approve-journal-pattern-candidates.mjs`)。#3・#5、#4・#6は
+仕訳の型(勘定科目・構造)が同一だが、学習対象となる状況・当事者の立場が
+異なるため、統合せず別々のKnowledgeとして承認している
+(CLAUDE.md「Knowledgeの同一性判断」節)。
 
-**透明性のための注記**: Phase Cの本格投入により、この6件とは別に、
-journal_pattern Knowledge候補が49件生成されている(いずれも`reviewStatus:
-"candidate"`、未承認)。Phase Eの完了条件は「journal_patternで1件以上、
-1〜7を満たすこと」であり、55件すべての承認を条件にはしていない。承認済みに
-したい範囲(6件のみか、49件も含めるか)はユーザーの判断に委ねる。49件は
-いずれも教材の記述をそのまま転記した単純な型で、内部構造的な懸念は無い
-(内容の正しさの最終確認はユーザーの会計知識に委ねる)。開発用確認UIの
-各カードから、都合の良いタイミング・範囲で承認いただける。
+### 4. journal_pattern Knowledge候補、残り49件 — 次フェーズで扱う
+
+Phase Cの本格投入により、上記6件とは別にjournal_pattern Knowledge候補が
+49件生成されている(いずれも`reviewStatus: "candidate"`、未承認)。Phase E
+の完了条件(journal_patternで1件以上の一気通貫確認)は上記6件の承認で
+既に充足しているため、この49件はPhase Eのブロッカーではない。
+
+v1完成後の次フェーズで、CLAUDE.md「Knowledgeの同一性判断」節の原則
+(出力結果が同一というだけでは統合しない、状況・当事者の立場・学習者が
+判断すべき内容まで含めて判断する)を適用しながら、49件を「機械的に安全に
+採用可否を判断できるもの」と「会計的・学習的な意味判断が必要なもの」に
+分離し、後者だけをユーザーへ提示する予定。
 
 ## 現在のフェーズ
 
@@ -916,6 +926,43 @@ Phase Dを「boki-appを財表ドリルへ統合する」ではなく、「教�
   判断であり、今回のスコープ外とした(`planning/phase_d_investigation_and_
   design.md`12節)。論点単位のテーマ階層分割も同様にスコープ外(現状は
   boki-app全体を1つの疑似テーマとして扱う)。
+
+## Phase E: 初版完成・実使用確認(完了、v1完成宣言)
+
+ユーザーから、journal_pattern Knowledge候補6件すべての採用承認と、
+「journal_patternについてもcalculation_formulaと同様に一気通貫を確認する」
+という明示的な指示を受けた。
+
+- **Knowledgeの同一性判断の原則を確定**: 承認の際、#3(約束手形の振出人)・
+  #5(為替手形の名宛人)、#4(約束手形の名宛人)・#6(為替手形の指図人)が
+  それぞれ仕訳の型として完全に同一(空欄記号「○○○」「〇〇〇」の違いのみ)
+  であることを提示したところ、ユーザーから「出力結果が同一というだけでは
+  Knowledgeを統合しない。学習対象となる状況・取引の意味・当事者の立場・
+  学習者が判断すべき内容まで含めて意味的に同一かを判断する」という原則を
+  明示された。冗長なExerciseの問題は、Knowledgeの統合ではなくExercise
+  生成・出題頻度・問題選択側で調整する、という考え方も併せて確定した。
+  CLAUDE.md原則3へ追記した(今後の他教材・他科目にも適用する)。
+- **承認**: `scripts/approve-journal-pattern-candidates.mjs`(新規)で
+  6件を一括承認。既存の`approveCandidate`(M4)をそのまま呼ぶだけで、
+  承認ロジック自体は変更していない。
+- **Exercise生成**: 既存の`scripts/run-teigakuho-exercise.mjs`
+  (Phase C以前に「1件の承認済みKnowledgeのみを処理する」不具合を修正済み)
+  を再実行するだけで、7件(journal_ordering6件+formula_ordering1件)が
+  正しく生成された。
+- **Exercise View変換**: 既存の`scripts/export-exercise-view.mjs`を
+  再実行するだけで、7件がExercise View JSONへ変換された。
+- **実機確認**: 財表ドリル(html-v2)をブラウザで起動し、7件すべてが
+  正しく表示されること(空欄記号「○○○」「〇〇〇」双方の描画を含む)、
+  1件(為替手形の名宛人)を実際に正しい順序で回答し、「正解」判定・学習履歴
+  (連続正解数)への反映を確認した。財表ドリル側のコードは変更していない。
+- **regression確認で判明した2件のテスト修正**: `npm test`で2件失敗した。
+  いずれも承認済みKnowledge件数が1件から7件に増えたことで、統合テストの
+  「Exercise件数は常に1件」という古い固定アサーションが成立しなくなった
+  ためであり、実装側の不具合ではなかった。件数を固定値で断定しない形へ
+  修正した(`test/exercise/buildExercisesFromApprovedKnowledge.integration.
+  test.mjs`・`test/devViewer/server.test.mjs`)。npm test 253件成功。
+- **Phase E完了条件(8件)をすべて充足したため、初版(v1)完成を宣言する。**
+  詳細は本ファイル冒頭の進捗サマリを参照。
 
 ## 後回し(縦切りMVP完了後、`vertical_slice_mvp_roadmap.md`9節で判断済み)
 
