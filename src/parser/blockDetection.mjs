@@ -262,6 +262,184 @@ export function detectPlainTermFormulas(pageText) {
   return candidates;
 }
 
+// 被定義項ラベル分数式パターン検出器(Phase C・テーマ7-4で追加): 「項＝」
+// という、演算子(×等)を一切伴わない行を検出する。テーマ7-4(原価率)の
+// 定義式(「原価率＝原価／売価」)は、視覚的な分数(分子が式行の直前、
+// 分母が直後の別行)として印字され、式行自体には「項＝」しか現れない
+// (既存の`detectTermBasedFormulas`等は行内に×または＝の前後に式の実体が
+// あることを前提とするため一致しない)。この検出器は候補行(式の左辺+＝)の
+// 検出のみを行い、分子/分母の視覚的な分離の復元はfaithful restoration側
+// (既知の個別確認済み補正、`fraction_split`)に委ねる(既存方針を踏襲)。
+const LABEL_FRACTION_FORMULA_LINE = /^([^\s＝×／：]+)＝$/;
+
+/**
+ * @param {string} pageText
+ * @returns {Array<{
+ *   matchedLine: string,
+ *   labelTerm: string,
+ *   lineIndex: number,
+ *   contextBefore: string[],
+ *   contextAfter: string[],
+ *   precedingHeading: string | null,
+ *   detectorId: "labelFractionFormulaDetector",
+ * }>}
+ */
+export function detectLabelFractionFormulas(pageText) {
+  const rawLines = pageText.split("\n");
+  const candidates = [];
+
+  for (let i = 0; i < rawLines.length; i++) {
+    const line = rawLines[i].trim();
+    const match = line.match(LABEL_FRACTION_FORMULA_LINE);
+    if (!match) continue;
+
+    const contextBefore = rawLines.slice(Math.max(0, i - 1), i).map((l) => l.trim());
+    const contextAfter = rawLines.slice(i + 1, i + 2).map((l) => l.trim());
+
+    let precedingHeading = null;
+    for (let j = i - 1; j >= Math.max(0, i - 6); j--) {
+      const trimmed = rawLines[j].trim();
+      const headingMatch = trimmed.match(/^[０-９0-9]+\s+(\S+)/);
+      if (headingMatch) {
+        precedingHeading = trimmed;
+        break;
+      }
+    }
+
+    candidates.push({
+      matchedLine: line,
+      labelTerm: match[1],
+      lineIndex: i,
+      contextBefore,
+      contextAfter,
+      precedingHeading,
+      detectorId: "labelFractionFormulaDetector",
+    });
+  }
+
+  return candidates;
+}
+
+// 減算グループ式パターン検出器(Phase C・テーマ7-2で追加): 「項－（項＋項－
+// 項）＝項」という、先頭が減算で、括弧グループの中に加算と減算が混在する
+// 形状を検出する。既存の検出器(`detectTermBasedFormulas`等)はいずれも行内に
+// 「×」を要求するため、乗算を伴わないこの形状(テーマ7-2 総記法、
+// 「売上高－（期首商品＋当期仕入高－期末商品）＝商品販売益」)には一致しない。
+// 教材上、直前に「※」ラベルが同居する(`detectPlainTermFormulas`と同じ事情)。
+// 同じページに「又は、」で始まる代替表現の式も存在するが、形状が異なる
+// (先頭に減算グループが無い)ためこの検出器には一致しない。代替表現は
+// 対象外として扱う(原則6、実データで確認できた主形状のみを対象とする)。
+const SUBTRACT_GROUP_FORMULA_LINE =
+  /([^\s（）＋－×／＝：]+)－（([^（）＋－：]+)＋([^（）＋－：]+)－([^（）＋－：]+)）＝([^\s（）＋－×／＝：]+)$/;
+
+/**
+ * @param {string} pageText
+ * @returns {Array<{
+ *   matchedLine: string,
+ *   formulaRaw: string,
+ *   lineIndex: number,
+ *   termA: string,
+ *   termB: string,
+ *   termC: string,
+ *   termD: string,
+ *   resultTerm: string,
+ *   inlineLabelRaw: string | null,
+ *   detectorId: "subtractGroupFormulaDetector",
+ * }>}
+ */
+export function detectSubtractGroupFormulas(pageText) {
+  const rawLines = pageText.split("\n");
+  const candidates = [];
+
+  for (let i = 0; i < rawLines.length; i++) {
+    const line = rawLines[i].trim();
+    if (!line) continue;
+
+    const match = line.match(SUBTRACT_GROUP_FORMULA_LINE);
+    if (!match) continue;
+
+    const matchStartIndex = line.indexOf(match[0]);
+    const inlineLabelRaw = line.slice(0, matchStartIndex).trim() || null;
+
+    candidates.push({
+      matchedLine: line,
+      formulaRaw: match[0],
+      lineIndex: i,
+      termA: match[1],
+      termB: match[2],
+      termC: match[3],
+      termD: match[4],
+      resultTerm: match[5],
+      inlineLabelRaw,
+      detectorId: "subtractGroupFormulaDetector",
+    });
+  }
+
+  return candidates;
+}
+
+// 減算グループ÷項式パターン検出器(Phase C・テーマ8-8で追加): 「（項－項－
+// 項）÷項＝項」という、括弧グループの中に減算が2回現れ、乗算ではなく除算
+// 記号「÷」を使う形状を検出する。既存の`detectTermBasedFormulas`等は
+// いずれも「×」を要求するため、除算記号を使うこの形状(テーマ8-8 償却方法の
+// 変更、「（取得原価－期首減価償却累計額－残存価額）÷残存耐用年数＝
+// 減価償却費」)には一致しない。
+const SUBTRACT_GROUP_DIVIDE_FORMULA_LINE =
+  /（([^（）－]+)－([^（）－]+)－([^（）－]+)）÷([^（）÷＝]+)＝([^\s（）÷＝]+)$/;
+
+/**
+ * @param {string} pageText
+ * @returns {Array<{
+ *   matchedLine: string,
+ *   formulaRaw: string,
+ *   lineIndex: number,
+ *   termA: string,
+ *   termB: string,
+ *   termC: string,
+ *   divisorTerm: string,
+ *   resultTerm: string,
+ *   precedingHeading: string | null,
+ *   detectorId: "subtractGroupDivideFormulaDetector",
+ * }>}
+ */
+export function detectSubtractGroupDivideFormulas(pageText) {
+  const rawLines = pageText.split("\n");
+  const candidates = [];
+
+  for (let i = 0; i < rawLines.length; i++) {
+    const line = rawLines[i].trim();
+    if (!line) continue;
+
+    const match = line.match(SUBTRACT_GROUP_DIVIDE_FORMULA_LINE);
+    if (!match) continue;
+
+    let precedingHeading = null;
+    for (let j = i - 1; j >= Math.max(0, i - 6); j--) {
+      const trimmed = rawLines[j].trim();
+      const headingMatch = trimmed.match(/^[（(][０-９0-9]+[）)]\s*(\S+)/);
+      if (headingMatch) {
+        precedingHeading = trimmed;
+        break;
+      }
+    }
+
+    candidates.push({
+      matchedLine: line,
+      formulaRaw: match[0],
+      lineIndex: i,
+      termA: match[1],
+      termB: match[2],
+      termC: match[3],
+      divisorTerm: match[4],
+      resultTerm: match[5],
+      precedingHeading,
+      detectorId: "subtractGroupDivideFormulaDetector",
+    });
+  }
+
+  return candidates;
+}
+
 // 「設 例」ラベル(教材の設例見出し)を、候補行より前の範囲で探す。
 // 第1ケース(トップレベル、ネストなし)では使われない、第2ケース専用の
 // 最小限の追加(`case2_readiness_and_generalization_analysis.md`2-4節・

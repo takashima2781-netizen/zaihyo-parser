@@ -7,6 +7,9 @@ import {
   detectJournalPatterns,
   detectPlainTermFormulas,
   detectAdditionGroupFormulas,
+  detectLabelFractionFormulas,
+  detectSubtractGroupFormulas,
+  detectSubtractGroupDivideFormulas,
 } from "../../src/parser/blockDetection.mjs";
 
 // 架空の計算式を使う(教材原文は使わない)。
@@ -214,4 +217,67 @@ test("detectAdditionGroupFormulas: 直前の「(番号) ラベル」をpreceding
 test("detectAdditionGroupFormulas: パターンに一致しない行は検出しない", () => {
   const page = "架空の地の文。式は含まれない。";
   assert.equal(detectAdditionGroupFormulas(page).length, 0);
+});
+
+// Phase C・テーマ7-4(原価率)用: 視覚的な分数(分子が式行の直前、分母が
+// 直後の別行)として印字され、式行自体には「項＝」しか現れない形状。
+test("detectLabelFractionFormulas: 「項＝」のみの行を検出する", () => {
+  const page = "架空項Ａ\n架空率＝\n架空項Ｂ";
+  const result = detectLabelFractionFormulas(page);
+  assert.equal(result.length, 1);
+  assert.equal(result[0].labelTerm, "架空率");
+  assert.deepEqual(result[0].contextBefore, ["架空項Ａ"]);
+  assert.deepEqual(result[0].contextAfter, ["架空項Ｂ"]);
+  assert.equal(result[0].detectorId, "labelFractionFormulaDetector");
+});
+
+test("detectLabelFractionFormulas: ×や／を含む行は検出しない(既存検出器の対象)", () => {
+  const page = "架空項Ａ×架空項Ｂ＝架空額\n架空率＝架空項Ａ／架空項Ｂ";
+  assert.equal(detectLabelFractionFormulas(page).length, 0);
+});
+
+test("detectLabelFractionFormulas: 複数件を検出できる", () => {
+  const page = "架空項Ａ\n架空率＝\n架空項Ｂ\n\n架空項Ｃ\n架空率２＝\n架空項Ｄ";
+  assert.equal(detectLabelFractionFormulas(page).length, 2);
+});
+
+// Phase C・テーマ7-2(総記法)用: 先頭が減算で、括弧グループの中に加算と
+// 減算が混在する形状。
+test("detectSubtractGroupFormulas: 「項－（項＋項－項）＝項」を検出する", () => {
+  const page = "見出し\n※ 架空項Ａ－（架空項Ｂ＋架空項Ｃ－架空項Ｄ）＝架空額\n次の行";
+  const result = detectSubtractGroupFormulas(page);
+  assert.equal(result.length, 1);
+  assert.equal(result[0].formulaRaw, "架空項Ａ－（架空項Ｂ＋架空項Ｃ－架空項Ｄ）＝架空額");
+  assert.equal(result[0].inlineLabelRaw, "※");
+  assert.equal(result[0].detectorId, "subtractGroupFormulaDetector");
+});
+
+test("detectSubtractGroupFormulas: 「又は、」で始まる代替表現(先頭に減算グループが無い)は検出しない", () => {
+  const page = "又は、架空基準（架空項Ａ－架空項Ｂ－架空項Ｃ）＋架空項Ｄ＝架空額";
+  assert.equal(detectSubtractGroupFormulas(page).length, 0);
+});
+
+test("detectSubtractGroupFormulas: パターンに一致しない行は検出しない", () => {
+  const page = "架空の地の文。式は含まれない。";
+  assert.equal(detectSubtractGroupFormulas(page).length, 0);
+});
+
+// Phase C・テーマ8-8(償却方法の変更)用: 括弧グループの中に減算が2回現れ、
+// 除算記号「÷」を使う形状。
+test("detectSubtractGroupDivideFormulas: 「（項－項－項）÷項＝項」を検出する", () => {
+  const page = "見出し\n（架空項Ａ－架空項Ｂ－架空項Ｃ）÷架空項Ｄ＝架空額\n次の行";
+  const result = detectSubtractGroupDivideFormulas(page);
+  assert.equal(result.length, 1);
+  assert.equal(result[0].formulaRaw, "（架空項Ａ－架空項Ｂ－架空項Ｃ）÷架空項Ｄ＝架空額");
+  assert.equal(result[0].detectorId, "subtractGroupDivideFormulaDetector");
+});
+
+test("detectSubtractGroupDivideFormulas: ×を使う行は検出しない(既存detectTermBasedFormulasの対象)", () => {
+  const page = "（架空項Ａ－架空項Ｂ）×架空項Ｃ＝架空額";
+  assert.equal(detectSubtractGroupDivideFormulas(page).length, 0);
+});
+
+test("detectSubtractGroupDivideFormulas: パターンに一致しない行は検出しない", () => {
+  const page = "架空の地の文。式は含まれない。";
+  assert.equal(detectSubtractGroupDivideFormulas(page).length, 0);
 });

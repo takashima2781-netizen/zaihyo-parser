@@ -7,6 +7,16 @@
 // 支払利息/受取利息)にまたがる複合仕訳であり、既存の検出器では正しく全
 // 科目を捉えられないため対象外とする。
 //
+// また、次の3件は、sourceFaithfulがテーマ3-1(現金)・4-1(手形)の既存の
+// Knowledgeと完全に同一の型であることを`checkDuplicateSourceFaithful`
+// (ケース横断のfail-closed検証)で検出したため対象外とした(原則3、
+// テーマ8-1/8-9で発見した論点間重複と同種): 「他人振出当座小切手、受取時」
+// (テーマ3-1のother-check-collection-received-journalと同型)、「他人振出
+// 当座小切手、取立依頼時」(テーマ3-1のother-check-collection-requested-
+// journalと同型)、「手形取立、受取時」(テーマ4-1のpromissory-note-payee-
+// journalと同型)。教材上は正しくこの型が現れる箇所ではあるが、ドリルとして
+// 反復練習する仕訳の型としては既存のKnowledgeと区別できない。
+//
 // 使い方: node scripts/run-note-collection-case.mjs
 
 import { writeFile } from "node:fs/promises";
@@ -21,18 +31,6 @@ const pdfPath = path.join(rootDir, "input", "book1.pdf");
 const outputDir = path.join(rootDir, "output", "cases");
 
 const KNOWLEDGE_CONFIG = {
-  "check-collection-received-journal-2": {
-    knowledgeId: "dk-journal-check-collection-received-2",
-    scopeNote: "本書テーマ4-3(小切手の取立と手形の取立)の他人振出当座小切手、受取時の仕訳でのみ確認",
-  },
-  "check-collection-requested-journal-2": {
-    knowledgeId: "dk-journal-check-collection-requested-2",
-    scopeNote: "本書テーマ4-3(小切手の取立と手形の取立)の他人振出当座小切手、取立依頼時の仕訳でのみ確認",
-  },
-  "note-collection-received-journal": {
-    knowledgeId: "dk-journal-note-collection-received",
-    scopeNote: "本書テーマ4-3(小切手の取立と手形の取立)の手形取立、受取時の仕訳でのみ確認",
-  },
   "note-collection-completed-journal": {
     knowledgeId: "dk-journal-note-collection-completed",
     scopeNote: "本書テーマ4-3(小切手の取立と手形の取立)の手形取立、取立完了時の仕訳でのみ確認",
@@ -76,27 +74,9 @@ try {
     ],
     expectedTopicNumber: "4-3",
     outOfScopeReason:
-      "貸方が2科目(旧手形消滅/利息)にまたがる複合仕訳であり、既存の検出器では正しく全科目を" +
-      "捉えられないため対象外とした(原則4)",
+      "貸方が2科目(旧手形消滅/利息)にまたがる複合仕訳、またはテーマ3-1・4-1の既存Knowledgeと" +
+      "sourceFaithfulが完全に同一の型であるため対象外とした(原則3・4)",
     candidateDefinitions: [
-      {
-        match: (c) => (c.debitAccountRaw ?? "").replace(/\s/g, "") === "現金",
-        caseName: "check-collection-received-journal-2",
-        blockId: "block-check-collection-received-2",
-        sequenceOnPage: 1,
-      },
-      {
-        match: (c) => (c.debitAccountRaw ?? "").replace(/\s/g, "") === "当座預金",
-        caseName: "check-collection-requested-journal-2",
-        blockId: "block-check-collection-requested-2",
-        sequenceOnPage: 2,
-      },
-      {
-        match: (c) => (c.debitAccountRaw ?? "").replace(/\s/g, "") === "受取手形",
-        caseName: "note-collection-received-journal",
-        blockId: "block-note-collection-received",
-        sequenceOnPage: 3,
-      },
       {
         match: (c) => (c.creditAccountRaw ?? "").replace(/\s/g, "") === "受取手形",
         caseName: "note-collection-completed-journal",

@@ -125,6 +125,26 @@ test("rebuildApprovedKnowledge: 確定Source IDがケース間で重複してい
   );
 });
 
+// sourceFaithful重複検証(テーマ8-1/8-9で異なる論点のスクリプトが偶然
+// 同一の仕訳型を生成したことを受けて追加)。
+test("rebuildApprovedKnowledge: sourceFaithfulがケース間で完全一致していればfail-closedで拒否する", async () => {
+  await withTempRoot(
+    {
+      "case-a.json": {
+        case: "case-a",
+        block: { blockKind: "journal_termbased", sourceFaithful: "(借)有形固定資産×××(貸)現金預金×××" },
+      },
+      "case-b.json": {
+        case: "case-b",
+        block: { blockKind: "journal_termbased", sourceFaithful: "(借)有形固定資産×××(貸)現金預金×××" },
+      },
+    },
+    async (rootDir) => {
+      await assert.rejects(() => rebuildApprovedKnowledge(rootDir), /sourceFaithful重複検証に失敗した/);
+    },
+  );
+});
+
 // `.test.json`(統合テストの一時出力)は、実ケースと同じID値を持つことが
 // あるため、走査対象から除外する(除外しないと上記のID一意性検証が常に
 // 誤検知してしまう)。

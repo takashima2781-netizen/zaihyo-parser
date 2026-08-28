@@ -12,6 +12,7 @@ import { readdir, readFile, writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 
 import { checkIdUniqueness } from "../gateChecks/idUniquenessChecks.mjs";
+import { checkDuplicateSourceFaithful } from "../gateChecks/duplicateSourceFaithfulChecks.mjs";
 
 /**
  * @param {string} rootDir
@@ -59,6 +60,17 @@ export async function rebuildApprovedKnowledge(rootDir) {
   const idCheck = checkIdUniqueness(allCaseData);
   if (!idCheck.ok) {
     throw new Error(`ID一意性検証に失敗した(fail-closed): ${idCheck.violations.join("; ")}`);
+  }
+
+  // fail-closed: 仕訳の型・算定式のsourceFaithfulが、異なる論点にまたがって
+  // 完全に同一の型として重複していないかを検証する(テーマ8-1/8-9で実際に
+  // 発生した、異なる論点のスクリプトが偶然同一の仕訳型を生成するケースを
+  // 受けて追加、CLAUDE.md原則3)。
+  const duplicateCheck = checkDuplicateSourceFaithful(allCaseData);
+  if (!duplicateCheck.ok) {
+    throw new Error(
+      `sourceFaithful重複検証に失敗した(fail-closed): ${duplicateCheck.violations.join("; ")}`,
+    );
   }
 
   const result = { knowledge: approved };

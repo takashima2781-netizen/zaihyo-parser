@@ -6,6 +6,10 @@ import {
   tokenizeBareNumberFractionFormula,
   tokenizePlainTermFormula,
   tokenizeAdditionFractionFormula,
+  tokenizeLabelFractionFormula,
+  tokenizeSubtractGroupFormula,
+  tokenizeSubtractGroupDivideFormula,
+  tokenizeSubtractGroupTimesTermFormula,
   renderTokens,
 } from "../../src/knowledge/formulaTokenizer.mjs";
 
@@ -177,4 +181,131 @@ test("renderTokens: 単一項の分子/分母には括弧を付けない(既存�
   // 既存のtokenizeSubtractFractionFormula(分子/分母とも単一項)で、
   // renderTokensのfraction分岐拡張後も出力が変わらないことを確認する。
   assert.equal(renderTokens(tokenizeSubtractFractionFormula(formula)), formula);
+});
+
+// Phase C・テーマ7-4(原価率)用: 被定義項が左辺、分数が右辺という形
+// (既存4形状はいずれも被定義項が右辺だった)。
+test("tokenizeLabelFractionFormula: 想定形状を5トークン語彙へ分解する(被定義項が左辺)", () => {
+  const formula = "架空率＝架空項Ａ／架空項Ｂ";
+  const structure = tokenizeLabelFractionFormula(formula);
+
+  assert.equal(structure.kind, "sequence");
+  assert.deepEqual(structure.tokens, [
+    { kind: "term", value: "架空率" },
+    { kind: "operator", value: "＝" },
+    {
+      kind: "fraction",
+      numerator: [{ kind: "term", value: "架空項Ａ" }],
+      denominator: [{ kind: "term", value: "架空項Ｂ" }],
+    },
+  ]);
+});
+
+test("tokenizeLabelFractionFormula: 往復整合性が成り立つ", () => {
+  const formula = "架空率＝架空項Ａ／架空項Ｂ";
+  assert.equal(renderTokens(tokenizeLabelFractionFormula(formula)), formula);
+});
+
+test("tokenizeLabelFractionFormula: 想定外の形状はfail-closedで例外を投げる", () => {
+  assert.throws(() => tokenizeLabelFractionFormula("架空額＝架空項Ａ＋架空項Ｂ"), /一致しない/);
+});
+
+// Phase C・テーマ7-2(総記法)用: 先頭が減算で、括弧グループの中に加算と
+// 減算が混在する形状。
+test("tokenizeSubtractGroupFormula: 想定形状を5トークン語彙へ分解する", () => {
+  const formula = "架空項Ａ－（架空項Ｂ＋架空項Ｃ－架空項Ｄ）＝架空額";
+  const structure = tokenizeSubtractGroupFormula(formula);
+
+  assert.equal(structure.kind, "sequence");
+  assert.deepEqual(structure.tokens[0], { kind: "term", value: "架空項Ａ" });
+  assert.equal(structure.tokens[1].value, "－");
+  assert.deepEqual(structure.tokens[2], {
+    kind: "group",
+    tokens: [
+      { kind: "term", value: "架空項Ｂ" },
+      { kind: "operator", value: "＋" },
+      { kind: "term", value: "架空項Ｃ" },
+      { kind: "operator", value: "－" },
+      { kind: "term", value: "架空項Ｄ" },
+    ],
+  });
+  assert.equal(structure.tokens[3].value, "＝");
+  assert.deepEqual(structure.tokens[4], { kind: "term", value: "架空額" });
+});
+
+test("tokenizeSubtractGroupFormula: 往復整合性が成り立つ", () => {
+  const formula = "架空項Ａ－（架空項Ｂ＋架空項Ｃ－架空項Ｄ）＝架空額";
+  assert.equal(renderTokens(tokenizeSubtractGroupFormula(formula)), formula);
+});
+
+test("tokenizeSubtractGroupFormula: 想定外の形状はfail-closedで例外を投げる", () => {
+  assert.throws(() => tokenizeSubtractGroupFormula("架空額＝架空項Ａ×架空項Ｂ"), /一致しない/);
+});
+
+// Phase C・テーマ8-8(償却方法の変更)用: 括弧グループの中に減算が2回現れ、
+// 除算記号「÷」を使う形状。
+test("tokenizeSubtractGroupDivideFormula: 想定形状を5トークン語彙へ分解する", () => {
+  const formula = "（架空項Ａ－架空項Ｂ－架空項Ｃ）÷架空項Ｄ＝架空額";
+  const structure = tokenizeSubtractGroupDivideFormula(formula);
+
+  assert.equal(structure.kind, "sequence");
+  assert.deepEqual(structure.tokens[0], {
+    kind: "group",
+    tokens: [
+      { kind: "term", value: "架空項Ａ" },
+      { kind: "operator", value: "－" },
+      { kind: "term", value: "架空項Ｂ" },
+      { kind: "operator", value: "－" },
+      { kind: "term", value: "架空項Ｃ" },
+    ],
+  });
+  assert.equal(structure.tokens[1].value, "÷");
+  assert.deepEqual(structure.tokens[2], { kind: "term", value: "架空項Ｄ" });
+  assert.equal(structure.tokens[3].value, "＝");
+  assert.deepEqual(structure.tokens[4], { kind: "term", value: "架空額" });
+});
+
+test("tokenizeSubtractGroupDivideFormula: 往復整合性が成り立つ", () => {
+  const formula = "（架空項Ａ－架空項Ｂ－架空項Ｃ）÷架空項Ｄ＝架空額";
+  assert.equal(renderTokens(tokenizeSubtractGroupDivideFormula(formula)), formula);
+});
+
+test("tokenizeSubtractGroupDivideFormula: 想定外の形状はfail-closedで例外を投げる", () => {
+  assert.throws(
+    () => tokenizeSubtractGroupDivideFormula("架空額＝架空項Ａ×架空項Ｂ"),
+    /一致しない/,
+  );
+});
+
+// Phase C・テーマ8-8(償却方法の変更)用: 先頭が減算グループだが、乗算の
+// 相手が分数ではなく単純な項である形状。
+test("tokenizeSubtractGroupTimesTermFormula: 想定形状を5トークン語彙へ分解する", () => {
+  const formula = "（架空項Ａ－架空項Ｂ）×架空項Ｃ＝架空額";
+  const structure = tokenizeSubtractGroupTimesTermFormula(formula);
+
+  assert.equal(structure.kind, "sequence");
+  assert.deepEqual(structure.tokens[0], {
+    kind: "group",
+    tokens: [
+      { kind: "term", value: "架空項Ａ" },
+      { kind: "operator", value: "－" },
+      { kind: "term", value: "架空項Ｂ" },
+    ],
+  });
+  assert.equal(structure.tokens[1].value, "×");
+  assert.deepEqual(structure.tokens[2], { kind: "term", value: "架空項Ｃ" });
+  assert.equal(structure.tokens[3].value, "＝");
+  assert.deepEqual(structure.tokens[4], { kind: "term", value: "架空額" });
+});
+
+test("tokenizeSubtractGroupTimesTermFormula: 往復整合性が成り立つ", () => {
+  const formula = "（架空項Ａ－架空項Ｂ）×架空項Ｃ＝架空額";
+  assert.equal(renderTokens(tokenizeSubtractGroupTimesTermFormula(formula)), formula);
+});
+
+test("tokenizeSubtractGroupTimesTermFormula: 想定外の形状はfail-closedで例外を投げる", () => {
+  assert.throws(
+    () => tokenizeSubtractGroupTimesTermFormula("架空額＝架空項Ａ／架空項Ｂ"),
+    /一致しない/,
+  );
 });

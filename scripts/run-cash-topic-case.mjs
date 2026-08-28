@@ -1,11 +1,16 @@
 #!/usr/bin/env node
-// CLIエントリポイント(Phase C・テーマ3-1 現金): 先日付小切手・他人振出の
-// 当座小切手の取立(受取時/取立依頼時)の仕訳3件を確定Source+Knowledge候補
-// として生成する。取立完了時は「仕訳なし」であり抽出対象外。
+// CLIエントリポイント(Phase C・テーマ3-1 現金): 他人振出の当座小切手の
+// 取立(受取時/取立依頼時)の仕訳2件を確定Source+Knowledge候補として生成
+// する。取立完了時は「仕訳なし」であり抽出対象外。
+//
+// 先日付小切手受取時の仕訳((借)受取手形×××(貸)○○○×××)は、テーマ4-1
+// (手形)の名宛人の仕訳(promissory-note-payee-journal)とsourceFaithfulが
+// 完全に同一の型であることを`checkDuplicateSourceFaithful`で検出したため
+// 対象外とした(原則3)。
 //
 // 使い方: node scripts/run-cash-topic-case.mjs
 
-import { readFile, writeFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -17,10 +22,6 @@ const pdfPath = path.join(rootDir, "input", "book1.pdf");
 const outputDir = path.join(rootDir, "output", "cases");
 
 const KNOWLEDGE_CONFIG = {
-  "postdated-check-received-journal": {
-    knowledgeId: "dk-journal-postdated-check-received",
-    scopeNote: "本書テーマ3-1(現金)の先日付小切手受取時の仕訳でのみ確認",
-  },
   "other-check-collection-received-journal": {
     knowledgeId: "dk-journal-other-check-collection-received",
     scopeNote: "本書テーマ3-1(現金)の他人振出当座小切手、受取時の仕訳でのみ確認",
@@ -45,14 +46,9 @@ try {
     ],
     expectedTopicNumber: "3-1",
     outOfScopeReason:
-      "同じページの他の仕訳型または複合仕訳。本ケースの対象(3件)には含めなかった",
+      "同じページの他の仕訳型・複合仕訳、またはテーマ4-1の既存KnowledgeとsourceFaithfulが" +
+      "完全に同一の型であるため対象外とした(原則3・4)",
     candidateDefinitions: [
-      {
-        match: (c) => (c.debitAccountRaw ?? "").replace(/\s/g, "").includes("受取手形"),
-        caseName: "postdated-check-received-journal",
-        blockId: "block-postdated-check-received",
-        sequenceOnPage: 1,
-      },
       {
         match: (c) => (c.debitAccountRaw ?? "").replace(/\s/g, "") === "現金",
         caseName: "other-check-collection-received-journal",

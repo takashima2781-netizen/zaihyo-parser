@@ -7,6 +7,11 @@
 // が続く)は、借方が2科目にまたがる複合仕訳であり、既存の検出器では正しく
 // 全科目を捉えられないため対象外とする。
 //
+// また、「裏書譲渡を受けた場合」の仕訳((借)受取手形×××(貸)○○○×××)は、
+// テーマ4-1(手形)の名宛人の仕訳(promissory-note-payee-journal)と
+// sourceFaithfulが完全に同一の型であることを`checkDuplicateSourceFaithful`
+// で検出したため対象外とした(原則3)。
+//
 // 使い方: node scripts/run-endorsement-case.mjs
 
 import { writeFile } from "node:fs/promises";
@@ -25,10 +30,6 @@ const KNOWLEDGE_CONFIG = {
     knowledgeId: "dk-journal-note-endorsed",
     scopeNote: "本書テーマ4-2(裏書譲渡・割引)の裏書時の仕訳でのみ確認",
   },
-  "note-endorsement-received-journal": {
-    knowledgeId: "dk-journal-note-endorsement-received",
-    scopeNote: "本書テーマ4-2(裏書譲渡・割引)の裏書譲渡を受けた場合の仕訳でのみ確認",
-  },
   "note-own-liability-received-journal": {
     knowledgeId: "dk-journal-note-own-liability-received",
     scopeNote: "本書テーマ4-2(裏書譲渡・割引)の自己が支払義務を負う手形を受け取った場合の仕訳でのみ確認",
@@ -44,20 +45,14 @@ try {
     topicPages: [{ page: 79, printedPageLabel: "50" }],
     expectedTopicNumber: "4-2",
     outOfScopeReason:
-      "割引の仕訳。借方が2科目(現金預金/手形売却損)にまたがる複合仕訳であり、既存の" +
-      "検出器では正しく全科目を捉えられないため対象外とした(原則4)",
+      "割引の仕訳(借方が2科目にまたがる複合仕訳)、またはテーマ4-1の既存Knowledgeと" +
+      "sourceFaithfulが完全に同一の型であるため対象外とした(原則3・4)",
     candidateDefinitions: [
       {
         match: (c) => (c.creditAccountRaw ?? "").replace(/\s/g, "") === "受取手形",
         caseName: "note-endorsed-journal",
         blockId: "block-note-endorsed",
         sequenceOnPage: 1,
-      },
-      {
-        match: (c) => (c.debitAccountRaw ?? "").replace(/\s/g, "") === "受取手形",
-        caseName: "note-endorsement-received-journal",
-        blockId: "block-note-endorsement-received",
-        sequenceOnPage: 2,
       },
       {
         match: (c) => (c.debitAccountRaw ?? "").replace(/\s/g, "") === "支払手形",

@@ -191,6 +191,173 @@ export function tokenizeAdditionFractionFormula(rawFormula) {
   };
 }
 
+const LABEL_FRACTION_FORMULA = /^([^＝／]+)＝([^／＝]+)／([^／＝]+)$/;
+
+/**
+ * 「A＝B／C」という、被定義項(A)が左辺、分数(B／C)が右辺という形(既存の
+ * 4形状はいずれも右辺が被定義項〈結果〉だったのに対し、逆順になる。
+ * Phase C、テーマ7-4 原価率の定義式`原価率＝原価／売価`で確認した形状)を、
+ * 5トークン語彙で構造化する。この式には括弧も乗算も無いため、fractionを
+ * groupで包まずそのままsequenceへ並べる(既存の全形状とは別関数のまま、
+ * 既存方針を踏襲)。
+ * @param {string} rawFormula
+ * @returns {{ kind: "sequence", tokens: object[] }}
+ */
+export function tokenizeLabelFractionFormula(rawFormula) {
+  const match = rawFormula.match(LABEL_FRACTION_FORMULA);
+  if (!match) {
+    throw new Error(
+      `想定している"A＝B／C"という形状に一致しないため、構造化しない` +
+        `(fail-closed、汎用パーサーへのフォールバックはしない): ${rawFormula}`,
+    );
+  }
+  const [, label, numerator, denominator] = match;
+
+  return {
+    kind: "sequence",
+    tokens: [
+      { kind: "term", value: label },
+      { kind: "operator", value: "＝" },
+      {
+        kind: "fraction",
+        numerator: [{ kind: "term", value: numerator }],
+        denominator: [{ kind: "term", value: denominator }],
+      },
+    ],
+  };
+}
+
+const SUBTRACT_GROUP_FORMULA =
+  /^([^（）＋－]+)－（([^（）＋－]+)＋([^（）＋－]+)－([^（）＋－]+)）＝(.+)$/;
+
+/**
+ * 「A－（B＋C－D）＝E」という、先頭が減算で括弧グループの中に加算と減算が
+ * 混在する形(Phase C、テーマ7-2 総記法の算定式
+ * `売上高－（期首商品＋当期仕入高－期末商品）＝商品販売益`で確認した形状)を、
+ * 5トークン語彙で構造化する。既存の`tokenizeSubtractFractionFormula`
+ * (先頭グループが減算、分数を伴う)とは、グループの位置(先頭ではなく2番目)・
+ * グループ内演算子(＋と－が混在)が異なるため別関数のままにする(既存方針を
+ * 踏襲)。
+ * @param {string} rawFormula
+ * @returns {{ kind: "sequence", tokens: object[] }}
+ */
+export function tokenizeSubtractGroupFormula(rawFormula) {
+  const match = rawFormula.match(SUBTRACT_GROUP_FORMULA);
+  if (!match) {
+    throw new Error(
+      `想定している"A－（B＋C－D）＝E"という形状に一致しないため、構造化しない` +
+        `(fail-closed、汎用パーサーへのフォールバックはしない): ${rawFormula}`,
+    );
+  }
+  const [, termA, termB, termC, termD, result] = match;
+
+  return {
+    kind: "sequence",
+    tokens: [
+      { kind: "term", value: termA },
+      { kind: "operator", value: "－" },
+      {
+        kind: "group",
+        tokens: [
+          { kind: "term", value: termB },
+          { kind: "operator", value: "＋" },
+          { kind: "term", value: termC },
+          { kind: "operator", value: "－" },
+          { kind: "term", value: termD },
+        ],
+      },
+      { kind: "operator", value: "＝" },
+      { kind: "term", value: result },
+    ],
+  };
+}
+
+const SUBTRACT_GROUP_DIVIDE_FORMULA =
+  /^（([^（）－]+)－([^（）－]+)－([^（）－]+)）÷([^（）÷＝]+)＝(.+)$/;
+
+/**
+ * 「（A－B－C）÷D＝E」という、括弧グループの中に減算が2回現れ、除算記号
+ * 「÷」を使う形(Phase C、テーマ8-8 償却方法の変更の算定式
+ * `（取得原価－期首減価償却累計額－残存価額）÷残存耐用年数＝減価償却費`で
+ * 確認した形状)を、5トークン語彙で構造化する。fraction種別は「／」を使う
+ * 分数表記(視覚的な分数として印字される)専用として扱ってきたため、
+ * 「÷」は別途operatorとして表現し、既存のfraction種別とは混同しない
+ * (既存方針を踏襲)。
+ * @param {string} rawFormula
+ * @returns {{ kind: "sequence", tokens: object[] }}
+ */
+export function tokenizeSubtractGroupDivideFormula(rawFormula) {
+  const match = rawFormula.match(SUBTRACT_GROUP_DIVIDE_FORMULA);
+  if (!match) {
+    throw new Error(
+      `想定している"（A－B－C）÷D＝E"という形状に一致しないため、構造化しない` +
+        `(fail-closed、汎用パーサーへのフォールバックはしない): ${rawFormula}`,
+    );
+  }
+  const [, termA, termB, termC, divisor, result] = match;
+
+  return {
+    kind: "sequence",
+    tokens: [
+      {
+        kind: "group",
+        tokens: [
+          { kind: "term", value: termA },
+          { kind: "operator", value: "－" },
+          { kind: "term", value: termB },
+          { kind: "operator", value: "－" },
+          { kind: "term", value: termC },
+        ],
+      },
+      { kind: "operator", value: "÷" },
+      { kind: "term", value: divisor },
+      { kind: "operator", value: "＝" },
+      { kind: "term", value: result },
+    ],
+  };
+}
+
+const SUBTRACT_GROUP_TIMES_TERM_FORMULA = /^（([^（）－]+)－([^（）－]+)）×([^×＝]+)＝(.+)$/;
+
+/**
+ * 「（A－B）×C＝D」という、先頭が減算グループだが乗算の相手が分数ではなく
+ * 単純な項である形(Phase C、テーマ8-8 償却方法の変更の算定式
+ * `（取得原価－期首減価償却累計額）×定率法償却率＝減価償却費`で確認した
+ * 形状)を、5トークン語彙で構造化する。`tokenizeSubtractFractionFormula`
+ * (乗算の相手が分数)とは右辺の構造が異なるため別関数のままにする(既存
+ * 方針を踏襲)。
+ * @param {string} rawFormula
+ * @returns {{ kind: "sequence", tokens: object[] }}
+ */
+export function tokenizeSubtractGroupTimesTermFormula(rawFormula) {
+  const match = rawFormula.match(SUBTRACT_GROUP_TIMES_TERM_FORMULA);
+  if (!match) {
+    throw new Error(
+      `想定している"（A－B）×C＝D"という形状に一致しないため、構造化しない` +
+        `(fail-closed、汎用パーサーへのフォールバックはしない): ${rawFormula}`,
+    );
+  }
+  const [, termA, termB, termC, result] = match;
+
+  return {
+    kind: "sequence",
+    tokens: [
+      {
+        kind: "group",
+        tokens: [
+          { kind: "term", value: termA },
+          { kind: "operator", value: "－" },
+          { kind: "term", value: termB },
+        ],
+      },
+      { kind: "operator", value: "×" },
+      { kind: "term", value: termC },
+      { kind: "operator", value: "＝" },
+      { kind: "term", value: result },
+    ],
+  };
+}
+
 /**
  * トークン構造を文字列へ復元する(往復整合性の検証用)。
  * `power`種別はこのケースで使用されないため実装しない
