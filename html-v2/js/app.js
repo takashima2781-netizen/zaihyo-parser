@@ -24,6 +24,7 @@
     queue: [],
     index: 0,
     answeredLog: [],
+    returnTo: null, // v2-49: "memo-list"のとき、出題が終わったらメモ一覧へ戻る
   };
   var studyReview = {
     filter: "all", // "all" | "wrong"
@@ -102,6 +103,25 @@
     exportProgressBtn: document.getElementById("export-progress-btn"),
     progressFileInput: document.getElementById("progress-file-input"),
     debugPanels: document.getElementById("debug-panels"),
+    // v2-49(問題メモ)
+    memoBtn: document.getElementById("memo-btn"),
+    openMemoListBtn: document.getElementById("open-memo-list-btn"),
+    openMemoListCount: document.getElementById("open-memo-list-count"),
+    memoListView: document.getElementById("memo-list-view"),
+    memoListBackBtn: document.getElementById("memo-list-back-btn"),
+    memoListThemeSelect: document.getElementById("memo-list-theme-select"),
+    memoListSummary: document.getElementById("memo-list-summary"),
+    memoList: document.getElementById("memo-list"),
+    memoScreen: document.getElementById("memo-screen"),
+    memoScreenCancelBtn: document.getElementById("memo-screen-cancel-btn"),
+    memoScreenSaveBtn: document.getElementById("memo-screen-save-btn"),
+    memoScreenContext: document.getElementById("memo-screen-context"),
+    memoScreenQuestion: document.getElementById("memo-screen-question"),
+    memoScreenTextarea: document.getElementById("memo-screen-textarea"),
+    memoScreenUpdated: document.getElementById("memo-screen-updated"),
+    memoScreenDeleteBtn: document.getElementById("memo-screen-delete-btn"),
+    exportMemoBtn: document.getElementById("export-memo-btn"),
+    memoFileInput: document.getElementById("memo-file-input"),
   };
 
   // v2-5(docs/v2_5_implementation_report.md §5)。診断パネルは?debug=1のときのみ表示する。
@@ -159,8 +179,10 @@
     els.studyReview.hidden = true;
     els.browseView.hidden = true;
     els.conversionReview.hidden = true;
+    els.memoListView.hidden = true;
     els.header.classList.remove("theme-switch-hidden");
     syncHeaderHeightVar();
+    if (state.data) updateMemoListCount();
     // 学習セッション終了直後などは修得状態が変わっている可能性があるため、都度再計算する。
     if (state.data) updateStudySetupCount();
   }
@@ -170,6 +192,7 @@
     els.studyReview.hidden = true;
     els.browseView.hidden = true;
     els.conversionReview.hidden = true;
+    els.memoListView.hidden = true;
     // v2-16/v2-20: 問題を解いている間はテーマ切替の代わりに進捗・終了ボタンを表示する
     // （ヘッダー内の同じ位置。CSS側のheader.theme-switch-hidden .study-session-headerが担う）。
     els.header.classList.add("theme-switch-hidden");
@@ -181,6 +204,7 @@
     els.studyReview.hidden = true;
     els.browseView.hidden = false;
     els.conversionReview.hidden = true;
+    els.memoListView.hidden = true;
     els.header.classList.remove("theme-switch-hidden");
     syncHeaderHeightVar();
     if (state.data) applyFilter();
@@ -192,9 +216,22 @@
     els.studyReview.hidden = true;
     els.browseView.hidden = true;
     els.conversionReview.hidden = false;
+    els.memoListView.hidden = true;
     els.header.classList.remove("theme-switch-hidden");
     syncHeaderHeightVar();
     if (state.data) renderConversionReview();
+  }
+  // v2-49(問題メモ): メモ一覧画面。他の画面と同じ排他表示の仲間に加える。
+  function showMemoList() {
+    els.studySetup.hidden = true;
+    els.studySession.hidden = true;
+    els.studyReview.hidden = true;
+    els.browseView.hidden = true;
+    els.conversionReview.hidden = true;
+    els.memoListView.hidden = false;
+    els.header.classList.remove("theme-switch-hidden");
+    syncHeaderHeightVar();
+    if (state.data) renderMemoList();
   }
 
   // GitHub Pages公開フェーズ（docs/exercise_view_full_output_separation_report.mdの続き）。
@@ -963,6 +1000,7 @@
   function populateThemeSelect() {
     populateSelectOptions(els.studySetupThemeSelect, state.themeHierarchy, formatThemeTitle);
     populateSelectOptions(els.browseThemeSelect, state.themeHierarchy, formatThemeTitle);
+    populateSelectOptions(els.memoListThemeSelect, state.themeHierarchy, formatThemeTitle);
   }
 
   els.studySetupThemeSelect.addEventListener("change", updateStudySetupCount);
@@ -1068,6 +1106,11 @@
     els.studySessionCardContainer.innerHTML = "";
 
     if (studySession.index >= studySession.queue.length) {
+      if (studySession.returnTo === "memo-list") {
+        studySession.returnTo = null;
+        showMemoList();
+        return;
+      }
       showStudyReview();
       return;
     }
@@ -1076,6 +1119,7 @@
       (studySession.index + 1) + " / " + studySession.queue.length + "問";
 
     var ex = studySession.queue[studySession.index];
+    setCurrentSessionExercise(ex);
     try {
       var card = EVv2.createExerciseCard(ex, state.context, function () {
         studySession.index += 1;
@@ -1392,6 +1436,7 @@
     syncHeaderHeightVar();
     els.studySessionProgress.textContent = "この問題をもう一度解く";
     els.studySessionCardContainer.innerHTML = "";
+    setCurrentSessionExercise(entry.ex);
     try {
       var card = EVv2.createExerciseCard(entry.ex, state.context, function () {
         var back = studyReview.retryReturnTo;
@@ -1443,6 +1488,7 @@
     studySession.queue = queue;
     studySession.index = 0;
     studySession.answeredLog = [];
+    studySession.returnTo = null;
     showStudySession();
     renderStudySessionCard();
   }
@@ -1525,6 +1571,12 @@
   els.endStudyBtn.addEventListener("click", openEndStudyConfirm);
   els.endStudyConfirmNoBtn.addEventListener("click", closeEndStudyConfirm);
   els.endStudyConfirmYesBtn.addEventListener("click", function () {
+    if (studySession.returnTo === "memo-list") {
+      studySession.returnTo = null;
+      closeEndStudyConfirm();
+      showMemoList();
+      return;
+    }
     closeEndStudyConfirm();
     showStudySetup();
   });
@@ -1742,6 +1794,336 @@
     reader.onerror = function () {
       window.alert("ファイルの読み込みに失敗しました。");
       els.progressFileInput.value = "";
+    };
+    reader.readAsText(file);
+  });
+
+  // ---- v2-49(問題メモ、WISHLIST W-1): 問題ごとに1件のメモ。保存はmemoStore.js。----
+  // 学習画面ヘッダーのメモボタン → メモ編集画面（#memo-screen）。
+  // 学習設定画面の「メモ一覧」→ テーマごとのメモ一覧（その問題を解く／メモを編集）。
+
+  var currentSessionEx = null; // 学習画面で今表示している問題（通常出題・もう一度解く・メモから解く共通）
+  var memoScreenTarget = null; // { ex|null, exerciseKey, exerciseType, initialText }
+
+  function setCurrentSessionExercise(ex) {
+    currentSessionEx = ex;
+    updateMemoButton();
+  }
+
+  function updateMemoButton() {
+    var key = currentSessionEx ? EVv2.computeExerciseKey(currentSessionEx) : null;
+    var has = !!(key && EVv2.getMemo(key));
+    els.memoBtn.classList.toggle("has-memo", has);
+    els.memoBtn.setAttribute("aria-label", has ? "この問題のメモ（メモあり）" : "この問題のメモ");
+    els.memoBtn.disabled = !key;
+  }
+
+  function updateMemoListCount() {
+    var n = EVv2.getAllMemos().length;
+    els.openMemoListCount.textContent = n > 0 ? "（" + n + "件）" : "";
+  }
+
+  function exerciseTypeLabel(type) {
+    var handler = EVv2.registry && EVv2.registry[type];
+    if (handler && handler.label) return handler.label;
+    var item = TYPE_ITEMS.filter(function (t) { return t.value === type; })[0];
+    return item ? item.label : type || "形式不明";
+  }
+
+  function structureText(ex, kinds) {
+    return kinds
+      .map(function (kind) {
+        return ex.structure && ex.structure[kind] ? ex.structure[kind].titleRaw.text : null;
+      })
+      .filter(Boolean)
+      .join(" › ");
+  }
+
+  function formatMemoDate(iso) {
+    if (!iso) return "";
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return "";
+    function pad(n) { return (n < 10 ? "0" : "") + n; }
+    return d.getFullYear() + "/" + pad(d.getMonth() + 1) + "/" + pad(d.getDate()) + " " + pad(d.getHours()) + ":" + pad(d.getMinutes());
+  }
+
+  // exerciseKey -> 問題。出題対象(baseExercises)を優先し、無ければ全問題・保留問題からも探す。
+  function buildMemoExerciseIndex() {
+    var index = {};
+    var pools = [state.baseExercises || [], state.data ? state.data.exercises : [], state.data ? state.data.withheldExercises || [] : []];
+    pools.forEach(function (pool) {
+      pool.forEach(function (ex) {
+        var key = EVv2.computeExerciseKey(ex);
+        if (key && !index[key]) index[key] = ex;
+      });
+    });
+    return index;
+  }
+
+  function openMemoScreen(target) {
+    var existing = EVv2.getMemo(target.exerciseKey);
+    memoScreenTarget = {
+      ex: target.ex || null,
+      exerciseKey: target.exerciseKey,
+      exerciseType: target.exerciseType,
+      initialText: existing ? existing.text : "",
+    };
+    var ex = memoScreenTarget.ex;
+    if (ex) {
+      var parts = [];
+      var no = state.exerciseNumberMap[ex.exerciseId];
+      if (no != null) parts.push("No. " + no);
+      parts.push(exerciseTypeLabel(ex.exerciseType));
+      var path = structureText(ex, ["theme", "section", "topic"]);
+      if (path) parts.push(path);
+      els.memoScreenContext.textContent = parts.join(" ・ ");
+      els.memoScreenQuestion.textContent = getReviewQuestionText(ex);
+      els.memoScreenQuestion.hidden = false;
+    } else {
+      els.memoScreenContext.textContent = "この問題は現在の問題データに見つかりません（" + target.exerciseKey + "）";
+      els.memoScreenQuestion.hidden = true;
+    }
+    els.memoScreenTextarea.value = memoScreenTarget.initialText;
+    els.memoScreenUpdated.textContent = existing && existing.updatedAt ? "最終更新: " + formatMemoDate(existing.updatedAt) : "";
+    els.memoScreenDeleteBtn.hidden = !existing;
+    els.memoScreen.hidden = false;
+    els.memoScreenTextarea.focus();
+  }
+
+  function closeMemoScreen() {
+    els.memoScreen.hidden = true;
+    memoScreenTarget = null;
+    updateMemoButton();
+    updateMemoListCount();
+    if (!els.memoListView.hidden) renderMemoList();
+  }
+
+  els.memoBtn.addEventListener("click", function () {
+    if (!currentSessionEx) return;
+    openMemoScreen({
+      ex: currentSessionEx,
+      exerciseKey: EVv2.computeExerciseKey(currentSessionEx),
+      exerciseType: currentSessionEx.exerciseType,
+    });
+  });
+
+  els.memoScreenSaveBtn.addEventListener("click", function () {
+    if (!memoScreenTarget) return;
+    EVv2.saveMemo(memoScreenTarget.exerciseKey, memoScreenTarget.exerciseType, els.memoScreenTextarea.value);
+    closeMemoScreen();
+  });
+
+  els.memoScreenCancelBtn.addEventListener("click", function () {
+    if (!memoScreenTarget) return;
+    if (els.memoScreenTextarea.value === memoScreenTarget.initialText) {
+      closeMemoScreen();
+      return;
+    }
+    confirmDialog("書きかけのメモを破棄しますか？").then(function (yes) {
+      if (yes) closeMemoScreen();
+    });
+  });
+
+  els.memoScreenDeleteBtn.addEventListener("click", function () {
+    if (!memoScreenTarget) return;
+    var key = memoScreenTarget.exerciseKey;
+    confirmDialog("このメモを削除しますか？").then(function (yes) {
+      if (!yes) return;
+      EVv2.deleteMemo(key);
+      closeMemoScreen();
+    });
+  });
+
+  // メモ一覧から、その問題だけを1問出題する。終わったら（または終了したら）メモ一覧へ戻る。
+  function startSingleFromMemo(ex) {
+    studySession.queue = [ex];
+    studySession.index = 0;
+    studySession.answeredLog = [];
+    studySession.returnTo = "memo-list";
+    showStudySession();
+    renderStudySessionCard();
+  }
+
+  function buildMemoRow(memo, ex) {
+    var row = document.createElement("div");
+    row.className = "memo-row";
+
+    var top = document.createElement("div");
+    top.className = "memo-row-top";
+    if (ex && state.exerciseNumberMap[ex.exerciseId] != null) {
+      var no = document.createElement("span");
+      no.className = "badge exercise-number-badge";
+      no.textContent = "No. " + state.exerciseNumberMap[ex.exerciseId];
+      top.appendChild(no);
+    }
+    var typeBadge = document.createElement("span");
+    typeBadge.className = "badge";
+    typeBadge.textContent = exerciseTypeLabel(ex ? ex.exerciseType : memo.exerciseType);
+    top.appendChild(typeBadge);
+    var path = ex ? structureText(ex, ["section", "topic"]) : "";
+    if (path) {
+      var crumb = document.createElement("span");
+      crumb.className = "structure-breadcrumb";
+      crumb.textContent = path;
+      crumb.title = path;
+      top.appendChild(crumb);
+    }
+    row.appendChild(top);
+
+    var text = document.createElement("p");
+    text.className = "memo-row-text";
+    text.textContent = memo.text;
+    row.appendChild(text);
+
+    if (ex) {
+      var q = document.createElement("p");
+      q.className = "memo-row-question";
+      q.textContent = getReviewQuestionText(ex).replace(/\n/g, " ");
+      row.appendChild(q);
+    }
+
+    var bottom = document.createElement("div");
+    bottom.className = "memo-row-bottom";
+    var date = document.createElement("span");
+    date.className = "memo-row-date";
+    date.textContent = formatMemoDate(memo.updatedAt);
+    bottom.appendChild(date);
+
+    var actions = document.createElement("div");
+    actions.className = "memo-row-actions";
+    var editBtn = document.createElement("button");
+    editBtn.type = "button";
+    editBtn.className = "memo-row-btn";
+    editBtn.textContent = "メモを編集";
+    editBtn.addEventListener("click", function () {
+      openMemoScreen({ ex: ex, exerciseKey: memo.exerciseKey, exerciseType: ex ? ex.exerciseType : memo.exerciseType });
+    });
+    actions.appendChild(editBtn);
+    if (ex && state.baseExercises && state.baseExercises.indexOf(ex) !== -1) {
+      var solveBtn = document.createElement("button");
+      solveBtn.type = "button";
+      solveBtn.className = "memo-row-btn memo-row-btn-primary";
+      solveBtn.textContent = "この問題を解く";
+      solveBtn.addEventListener("click", function () {
+        startSingleFromMemo(ex);
+      });
+      actions.appendChild(solveBtn);
+    }
+    bottom.appendChild(actions);
+    row.appendChild(bottom);
+    return row;
+  }
+
+  function renderMemoList() {
+    els.memoList.innerHTML = "";
+    var memos = EVv2.getAllMemos();
+    var index = buildMemoExerciseIndex();
+    var themeId = els.memoListThemeSelect.value || "all";
+
+    // テーマごとにまとめる（テーマの並びは学習設定のテーマ選択と同じ順）。
+    var groups = {};
+    var orphans = [];
+    memos.forEach(function (memo) {
+      var ex = index[memo.exerciseKey] || null;
+      if (!ex) {
+        orphans.push({ memo: memo, ex: null });
+        return;
+      }
+      var tId = ex.structure && ex.structure.theme ? ex.structure.theme.structureNodeId : "__none__";
+      if (!groups[tId]) groups[tId] = [];
+      groups[tId].push({ memo: memo, ex: ex });
+    });
+
+    var order = state.themeHierarchy.map(function (t) { return { id: t.id, title: formatThemeTitle(t.title) }; });
+    order.push({ id: "__none__", title: "テーマ不明" });
+
+    var shown = 0;
+    order.forEach(function (t) {
+      if (themeId !== "all" && themeId !== t.id) return;
+      var items = groups[t.id];
+      if (!items || items.length === 0) return;
+      items.sort(function (a, b) {
+        var na = state.exerciseNumberMap[a.ex.exerciseId];
+        var nb = state.exerciseNumberMap[b.ex.exerciseId];
+        return (na == null ? Infinity : na) - (nb == null ? Infinity : nb);
+      });
+      var h = document.createElement("h3");
+      h.className = "memo-group-title";
+      h.textContent = t.title + "（" + items.length + "件）";
+      els.memoList.appendChild(h);
+      items.forEach(function (it) {
+        els.memoList.appendChild(buildMemoRow(it.memo, it.ex));
+        shown += 1;
+      });
+    });
+
+    if (themeId === "all" && orphans.length > 0) {
+      var oh = document.createElement("h3");
+      oh.className = "memo-group-title";
+      oh.textContent = "問題が見つからないメモ（" + orphans.length + "件）";
+      els.memoList.appendChild(oh);
+      orphans.forEach(function (it) {
+        els.memoList.appendChild(buildMemoRow(it.memo, null));
+        shown += 1;
+      });
+    }
+
+    if (memos.length === 0) {
+      els.memoListSummary.textContent = "まだメモはありません。問題を解いているときに、画面右上のメモボタンから書けます。";
+    } else if (shown === 0) {
+      els.memoListSummary.textContent = "このテーマのメモはありません（全体で" + memos.length + "件）。";
+    } else {
+      els.memoListSummary.textContent = themeId === "all" ? "全" + memos.length + "件" : shown + "件（全体で" + memos.length + "件）";
+    }
+  }
+
+  els.openMemoListBtn.addEventListener("click", showMemoList);
+  els.memoListBackBtn.addEventListener("click", showStudySetup);
+  els.memoListThemeSelect.addEventListener("change", renderMemoList);
+
+  els.exportMemoBtn.addEventListener("click", function () {
+    var jsonText = EVv2.exportMemoData();
+    var blob = new Blob([jsonText], { type: "application/json" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    var ts = new Date().toISOString().replace(/[:.]/g, "-");
+    a.href = url;
+    a.download = "zaihyo-drill-memos." + ts + ".json";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  });
+
+  els.memoFileInput.addEventListener("change", function (e) {
+    var file = e.target.files && e.target.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function () {
+      var ok = window.confirm(
+        "この端末のメモを、選択したファイルの内容で置き換えます。今のこの端末のメモは失われます。よろしいですか？"
+      );
+      if (!ok) {
+        els.memoFileInput.value = "";
+        return;
+      }
+      var result = EVv2.importMemoData(String(reader.result));
+      els.memoFileInput.value = "";
+      if (!result.ok) {
+        window.alert("メモの読み込みに失敗しました: " + result.error);
+        return;
+      }
+      updateMemoListCount();
+      window.alert(
+        "メモ" +
+          result.importedCount +
+          "件を読み込みました。" +
+          (result.skippedCount > 0 ? "（形式不正のため" + result.skippedCount + "件は無視しました）" : "")
+      );
+    };
+    reader.onerror = function () {
+      window.alert("ファイルの読み込みに失敗しました。");
+      els.memoFileInput.value = "";
     };
     reader.readAsText(file);
   });
