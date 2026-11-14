@@ -14,6 +14,7 @@
     batchSize: 30,
     themeHierarchy: [], // 学習設定のテーマ選択用（buildThemeHierarchyが構築）
     exerciseNumberMap: {}, // exerciseId -> 短い通し番号（問題一覧画面の表示用）
+    selectedRange: { kind: "all", id: null, label: "全範囲" }, // v2-50: 範囲を選ぶ画面で選んだ出題範囲
   };
 
   // 1問ずつ学習するセッション画面専用の状態（一覧表示state.filteredとは独立）。
@@ -25,6 +26,7 @@
     index: 0,
     answeredLog: [],
     returnTo: null, // v2-49: "memo-list"のとき、出題が終わったらメモ一覧へ戻る
+    timeLimitSec: 0, // v2-50: 1問ごとの制限時間（秒）。0は制限なし
   };
   var studyReview = {
     filter: "all", // "all" | "wrong"
@@ -41,7 +43,21 @@
     initialError: document.getElementById("initial-setup-error"),
     mainApp: document.getElementById("main-app"),
     studySetup: document.getElementById("study-setup"),
-    studySetupThemeSelect: document.getElementById("study-setup-theme-select"),
+    // v2-50(WISHLIST W-2): トップ → 範囲を選ぶ → 出題設定 → 出題
+    homeView: document.getElementById("home-view"),
+    homeStudyBtn: document.getElementById("home-study-btn"),
+    rangeListView: document.getElementById("range-list-view"),
+    rangeListBackBtn: document.getElementById("range-list-back-btn"),
+    rangeList: document.getElementById("range-list"),
+    studySetupBackBtn: document.getElementById("study-setup-back-btn"),
+    studySetupRangeSummary: document.getElementById("study-setup-range-summary"),
+    studySetupTimeChips: document.getElementById("study-setup-time-chips"),
+    questionTimer: document.getElementById("question-timer"),
+    questionTimerBar: document.getElementById("question-timer-bar"),
+    questionTimerText: document.getElementById("question-timer-text"),
+    timeoutSheet: document.getElementById("timeout-sheet"),
+    timeoutSheetBody: document.getElementById("timeout-sheet-body"),
+    timeoutSheetNextBtn: document.getElementById("timeout-sheet-next-btn"),
     studySetupTypeChips: document.getElementById("study-setup-type-chips"),
     studySetupModeChips: document.getElementById("study-setup-mode-chips"),
     studySetupDockSummary: document.getElementById("study-setup-dock-summary"),
@@ -168,69 +184,60 @@
     // 学習中は内部実装・保存先の説明を出さない（データを問題なく読み込めている場合のみ）。
     // 初回セットアップ画面（読み込み前・エラー時）ではこれまでどおり表示したままにする。
     els.onboardingInfo.hidden = true;
-    showStudySetup();
+    showHome();
   }
 
-  // #main-app内の5画面（学習設定／学習セッション／振り返り／問題一覧／変換レビュー）は
-  // 同時に1つだけ表示する。
-  function showStudySetup() {
-    els.studySetup.hidden = false;
-    els.studySession.hidden = true;
-    els.studyReview.hidden = true;
-    els.browseView.hidden = true;
-    els.conversionReview.hidden = true;
-    els.memoListView.hidden = true;
-    els.header.classList.remove("theme-switch-hidden");
-    syncHeaderHeightVar();
-    if (state.data) updateMemoListCount();
-    // 学習セッション終了直後などは修得状態が変わっている可能性があるため、都度再計算する。
-    if (state.data) updateStudySetupCount();
-  }
-  function showStudySession() {
-    els.studySetup.hidden = true;
-    els.studySession.hidden = false;
-    els.studyReview.hidden = true;
-    els.browseView.hidden = true;
-    els.conversionReview.hidden = true;
-    els.memoListView.hidden = true;
+  // #main-app内の画面は同時に1つだけ表示する。v2-50で画面が増えたため、
+  // 「全部隠してから1つ出す」を共通化した（showView）。
+  var MAIN_VIEW_KEYS = ["homeView", "rangeListView", "studySetup", "studySession", "studyReview", "browseView", "conversionReview", "memoListView"];
+  function showView(key) {
+    MAIN_VIEW_KEYS.forEach(function (k) {
+      els[k].hidden = k !== key;
+    });
+    if (key !== "studySession") {
+      questionTimer.hide();
+      els.timeoutSheet.hidden = true;
+    }
     // v2-16/v2-20: 問題を解いている間はテーマ切替の代わりに進捗・終了ボタンを表示する
     // （ヘッダー内の同じ位置。CSS側のheader.theme-switch-hidden .study-session-headerが担う）。
-    els.header.classList.add("theme-switch-hidden");
+    els.header.classList.toggle("theme-switch-hidden", key === "studySession");
     syncHeaderHeightVar();
+    window.scrollTo(0, 0);
+  }
+  // v2-50: トップ画面（1ページ目）。
+  function showHome() {
+    showView("homeView");
+    if (state.data) updateMemoListCount();
+  }
+  // v2-50: 範囲を選ぶ画面（2ページ目）。学習のたびに進捗が変わるため、表示のたびに描き直す。
+  function showRangeList() {
+    showView("rangeListView");
+    if (state.data) renderRangeList();
+  }
+  // 出題設定画面（3ページ目）。
+  function showStudySetup() {
+    showView("studySetup");
+    // 学習セッション終了直後などは修得状態が変わっている可能性があるため、都度再計算する。
+    if (state.data) {
+      renderSetupRangeSummary();
+      updateStudySetupCount();
+    }
+  }
+  function showStudySession() {
+    showView("studySession");
   }
   function showBrowseView() {
-    els.studySetup.hidden = true;
-    els.studySession.hidden = true;
-    els.studyReview.hidden = true;
-    els.browseView.hidden = false;
-    els.conversionReview.hidden = true;
-    els.memoListView.hidden = true;
-    els.header.classList.remove("theme-switch-hidden");
-    syncHeaderHeightVar();
+    showView("browseView");
     if (state.data) applyFilter();
   }
-  // v2-30(文節ならびかえ): 変換候補のレビュー画面。他の4画面と同じ排他表示の仲間に加える。
+  // v2-30(文節ならびかえ): 変換候補のレビュー画面。
   function showConversionReview() {
-    els.studySetup.hidden = true;
-    els.studySession.hidden = true;
-    els.studyReview.hidden = true;
-    els.browseView.hidden = true;
-    els.conversionReview.hidden = false;
-    els.memoListView.hidden = true;
-    els.header.classList.remove("theme-switch-hidden");
-    syncHeaderHeightVar();
+    showView("conversionReview");
     if (state.data) renderConversionReview();
   }
-  // v2-49(問題メモ): メモ一覧画面。他の画面と同じ排他表示の仲間に加える。
+  // v2-49(問題メモ): メモ一覧画面。
   function showMemoList() {
-    els.studySetup.hidden = true;
-    els.studySession.hidden = true;
-    els.studyReview.hidden = true;
-    els.browseView.hidden = true;
-    els.conversionReview.hidden = true;
-    els.memoListView.hidden = false;
-    els.header.classList.remove("theme-switch-hidden");
-    syncHeaderHeightVar();
+    showView("memoListView");
     if (state.data) renderMemoList();
   }
 
@@ -925,7 +932,7 @@
     showConversionReview();
   });
   els.conversionReviewBackBtn.addEventListener("click", function () {
-    showStudySetup();
+    showHome();
   });
   els.conversionReviewGenerateBtn.addEventListener("click", function () {
     var summary = EVv2.runPhraseReorderBatch(state.data, state.context);
@@ -998,12 +1005,10 @@
   }
 
   function populateThemeSelect() {
-    populateSelectOptions(els.studySetupThemeSelect, state.themeHierarchy, formatThemeTitle);
     populateSelectOptions(els.browseThemeSelect, state.themeHierarchy, formatThemeTitle);
     populateSelectOptions(els.memoListThemeSelect, state.themeHierarchy, formatThemeTitle);
   }
 
-  els.studySetupThemeSelect.addEventListener("change", updateStudySetupCount);
 
   // 問題形式は英語のexerciseTypeそのままだと直感的でないため、日本語ラベルで表示する
   // （フィルタの実装値・buildStudyQueueが参照する値は従来のexerciseType文字列のまま）。
@@ -1065,11 +1070,11 @@
   function buildStudyQueue() {
     var type = typeChipGroup.getValue();
     var studyMode = modeChipGroup.getValue();
-    var themeId = els.studySetupThemeSelect.value;
+    var range = state.selectedRange;
     var all = state.baseExercises || state.data.exercises;
     var byType = filterByType(all, type);
     return byType.filter(function (ex) {
-      return matchesStudyMode(ex, studyMode) && matchesThemeHierarchy(ex, themeId);
+      return matchesStudyMode(ex, studyMode) && EVv2.matchesRange(ex, range);
     });
   }
 
@@ -1079,18 +1084,17 @@
   // ため、別途要約テキストを持たせる必要が無くなった）。
   function updateStudySetupCount() {
     var count = buildStudyQueue().length;
-    var themeId = els.studySetupThemeSelect.value;
-    var theme = themeId === "all" ? null : findTheme(themeId);
-    var themeLabel = theme ? formatThemeTitle(theme.title) : "すべて";
+    var themeLabel = state.selectedRange.label;
     var typeLabel = typeChipGroup.getLabel() || "全て";
     var modeLabel = modeChipGroup.getLabel() || "すべての問題";
+    var timeLabel = timeLimitSeconds() > 0 ? "制限" + timeChipGroup.getLabel() : "制限時間なし";
 
     els.studySetupDockSummary.textContent = "";
     if (count === 0) {
       els.studySetupDockSummary.textContent = "条件に該当する問題がありません";
     } else {
       els.studySetupDockSummary.appendChild(document.createTextNode(themeLabel));
-      [typeLabel, modeLabel].forEach(function (label) {
+      [typeLabel, modeLabel, timeLabel].forEach(function (label) {
         var sep = document.createElement("span");
         sep.className = "sep";
         sep.textContent = "・";
@@ -1120,12 +1124,14 @@
 
     var ex = studySession.queue[studySession.index];
     setCurrentSessionExercise(ex);
+    els.timeoutSheet.hidden = true;
     try {
       var card = EVv2.createExerciseCard(ex, state.context, function () {
         studySession.index += 1;
         renderStudySessionCard();
       });
       els.studySessionCardContainer.appendChild(card);
+      questionTimer.start(studySession.timeLimitSec);
     } catch (e) {
       console.error("カード描画失敗", ex.exerciseId, e);
       var errCard = document.createElement("div");
@@ -1222,14 +1228,9 @@
   }
 
   function showStudyReview() {
-    els.studySetup.hidden = true;
-    els.studySession.hidden = true;
-    els.browseView.hidden = true;
-    els.studyReview.hidden = false;
+    showView("studyReview");
     els.studyReviewListView.hidden = false;
     els.studyReviewDetailView.hidden = true;
-    els.header.classList.remove("theme-switch-hidden");
-    syncHeaderHeightVar();
     renderReviewStats();
     renderReviewList();
   }
@@ -1430,10 +1431,9 @@
   // #study-session画面で行い、回答完了後は振り返り画面（呼び出し元の一覧/詳細）へ戻る。
   function startRetry(entry, returnTo) {
     studyReview.retryReturnTo = returnTo;
-    els.studyReview.hidden = true;
-    els.studySession.hidden = false;
-    els.header.classList.add("theme-switch-hidden");
-    syncHeaderHeightVar();
+    showView("studySession");
+    // 「もう一度解く」は制限時間なしで出題する。
+    questionTimer.hide();
     els.studySessionProgress.textContent = "この問題をもう一度解く";
     els.studySessionCardContainer.innerHTML = "";
     setCurrentSessionExercise(entry.ex);
@@ -1489,6 +1489,7 @@
     studySession.index = 0;
     studySession.answeredLog = [];
     studySession.returnTo = null;
+    studySession.timeLimitSec = timeLimitSeconds();
     showStudySession();
     renderStudySessionCard();
   }
@@ -1514,6 +1515,8 @@
   // （「もう一度解く」で再回答した場合に一覧の結果を最新の状態へ差し替えるため）。
   // progressStore・localStorageには一切書き込まない（studySession.answeredLogはメモリ上のみ）。
   EVv2.onExerciseAnswered = function (entry) {
+    // v2-50: 回答が確定した時点で制限時間の計測を止める。
+    questionTimer.stop();
     var logKey = entry.exerciseKey || entry.ex.exerciseId;
     var existingIndex = -1;
     for (var i = 0; i < studySession.answeredLog.length; i++) {
@@ -1643,7 +1646,7 @@
   });
 
   els.backToSetupBtn.addEventListener("click", function () {
-    showStudySetup();
+    showHome();
   });
 
   els.fileInput.addEventListener("change", function (e) {
@@ -1934,12 +1937,172 @@
     });
   });
 
+  // ---- v2-50(WISHLIST W-2): 範囲を選ぶ画面・出題設定の範囲表示・制限時間 ----
+
+  function rangeRow(range, title, exercises, extraClass) {
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "range-row" + (extraClass ? " " + extraClass : "");
+    var name = document.createElement("span");
+    name.className = "range-row-title";
+    name.textContent = title;
+    btn.appendChild(name);
+    btn.appendChild(EVv2.createProgressMeter(EVv2.summarizeProgress(exercises)));
+    var chev = document.createElement("span");
+    chev.className = "range-row-chevron";
+    chev.setAttribute("aria-hidden", "true");
+    chev.textContent = "›";
+    btn.appendChild(chev);
+    btn.addEventListener("click", function () {
+      state.selectedRange = { kind: range.kind, id: range.id || null, label: title };
+      showStudySetup();
+    });
+    return btn;
+  }
+
+  function renderRangeList() {
+    var all = state.baseExercises || state.data.exercises;
+    els.rangeList.innerHTML = "";
+    els.rangeList.appendChild(rangeRow({ kind: "all" }, "全範囲", all, "range-row-all"));
+
+    EVv2.buildRangeTree(all).forEach(function (theme) {
+      var group = document.createElement("section");
+      group.className = "range-group";
+      var themeTitle = formatThemeTitle(theme.title);
+      group.appendChild(rangeRow(theme, themeTitle, theme.exercises, "range-row-theme"));
+      // テーマ直下に範囲が1つしかない場合も、東進アプリのSTAGEと同じく範囲の行を出す
+      // （テーマ全体と範囲のどちらからでも始められる）。
+      theme.sections.forEach(function (section) {
+        group.appendChild(rangeRow(section, section.title, section.exercises, "range-row-section"));
+      });
+      els.rangeList.appendChild(group);
+    });
+  }
+
+  function renderSetupRangeSummary() {
+    var range = state.selectedRange;
+    var all = state.baseExercises || state.data.exercises;
+    var inRange = all.filter(function (ex) {
+      return EVv2.matchesRange(ex, range);
+    });
+    els.studySetupRangeSummary.innerHTML = "";
+    var title = document.createElement("p");
+    title.className = "setup-range-title";
+    title.textContent = range.label;
+    els.studySetupRangeSummary.appendChild(title);
+    els.studySetupRangeSummary.appendChild(EVv2.createProgressMeter(EVv2.summarizeProgress(inRange)));
+  }
+
+  // 制限時間の選択は次回も同じものを使えるよう、この端末に覚えておく（失敗しても動作には影響しない）。
+  var TIME_LIMIT_PREF_KEY = "zaihyoDrill.timeLimitSec";
+  function loadTimeLimitPref() {
+    try {
+      var v = window.localStorage.getItem(TIME_LIMIT_PREF_KEY);
+      var ok = EVv2.TIME_LIMIT_ITEMS.some(function (it) {
+        return it.value === v;
+      });
+      return ok ? v : "0";
+    } catch (e) {
+      return "0";
+    }
+  }
+  var timeChipGroup = EVv2.createChipGroup(els.studySetupTimeChips, {
+    items: EVv2.TIME_LIMIT_ITEMS,
+    value: loadTimeLimitPref(),
+    onChange: function (v) {
+      try {
+        window.localStorage.setItem(TIME_LIMIT_PREF_KEY, v);
+      } catch (e) {}
+      updateStudySetupCount();
+    },
+  });
+  function timeLimitSeconds() {
+    return parseInt(timeChipGroup.getValue(), 10) || 0;
+  }
+
+  // メモ・編集画面や確認ダイアログを開いている間、タブが裏にある間は時間を止める。
+  function isTimerPaused() {
+    if (document.hidden) return true;
+    if (!els.endStudyConfirmBackdrop.hidden || !els.genericConfirmBackdrop.hidden) return true;
+    var overlays = document.querySelectorAll(".edit-screen, #edit-menu-sheet");
+    for (var i = 0; i < overlays.length; i++) {
+      if (!overlays[i].hidden) return true;
+    }
+    return false;
+  }
+
+  // 時間切れ: 不正解として学習履歴に記録し、振り返りにも残したうえで、正解と解説を出す。
+  function onQuestionTimeout() {
+    var ex = studySession.queue[studySession.index];
+    if (!ex) return;
+    var key = EVv2.computeExerciseKey(ex);
+    EVv2.onExerciseAnswered({
+      ex: ex,
+      exerciseKey: key,
+      yourAnswerText: "（時間切れ）",
+      resultKind: "auto",
+      isCorrect: false,
+    });
+    if (key) EVv2.recordAnswer(key, ex.exerciseType, false);
+
+    var card = els.studySessionCardContainer.querySelector(".ex-card");
+    if (card) {
+      card.inert = true;
+      card.classList.add("is-timed-out");
+    }
+    var desc = describeAnswerForReview(ex);
+    els.timeoutSheetBody.innerHTML = "";
+    var ans = document.createElement("p");
+    ans.className = "timeout-sheet-answer";
+    var ansLabel = document.createElement("span");
+    ansLabel.textContent = "正解";
+    ans.appendChild(ansLabel);
+    ans.appendChild(document.createTextNode(desc.answer));
+    els.timeoutSheetBody.appendChild(ans);
+    if (desc.explanation) {
+      var exp = document.createElement("p");
+      exp.className = "timeout-sheet-explanation";
+      exp.textContent = desc.explanation;
+      els.timeoutSheetBody.appendChild(exp);
+    }
+    els.timeoutSheet.hidden = false;
+    els.timeoutSheetNextBtn.focus();
+  }
+
+  var questionTimer = EVv2.createQuestionTimer({
+    rootEl: els.questionTimer,
+    barEl: els.questionTimerBar,
+    textEl: els.questionTimerText,
+    onExpire: onQuestionTimeout,
+    isPaused: isTimerPaused,
+  });
+
+  els.timeoutSheetNextBtn.addEventListener("click", function () {
+    els.timeoutSheet.hidden = true;
+    studySession.index += 1;
+    renderStudySessionCard();
+  });
+
+  // 自己採点形式は「解答を表示」を押した時点で答えを見ているため、そこで時間を止める。
+  els.studySessionCardContainer.addEventListener(
+    "click",
+    function (e) {
+      if (e.target.closest && e.target.closest(".reveal-btn")) questionTimer.stop();
+    },
+    true
+  );
+
+  els.homeStudyBtn.addEventListener("click", showRangeList);
+  els.rangeListBackBtn.addEventListener("click", showHome);
+  els.studySetupBackBtn.addEventListener("click", showRangeList);
+
   // メモ一覧から、その問題だけを1問出題する。終わったら（または終了したら）メモ一覧へ戻る。
   function startSingleFromMemo(ex) {
     studySession.queue = [ex];
     studySession.index = 0;
     studySession.answeredLog = [];
     studySession.returnTo = "memo-list";
+    studySession.timeLimitSec = 0; // メモから開いた1問は制限時間なし
     showStudySession();
     renderStudySessionCard();
   }
@@ -2078,7 +2241,7 @@
   }
 
   els.openMemoListBtn.addEventListener("click", showMemoList);
-  els.memoListBackBtn.addEventListener("click", showStudySetup);
+  els.memoListBackBtn.addEventListener("click", showHome);
   els.memoListThemeSelect.addEventListener("change", renderMemoList);
 
   els.exportMemoBtn.addEventListener("click", function () {

@@ -1893,3 +1893,364 @@ header h1 {
   border-color: var(--accent);
   color: var(--accent);
 }
+
+/* ============================================================
+   v2-50(WISHLIST W-2): トップ → 範囲を選ぶ → 出題設定 → 出題 の4段構成
+   ============================================================ */
+:root {
+  /* 進捗の4区分（習得／1回正解／不正解／未回答）。テーマ共通トークンから作る */
+  --pm-mastered: var(--success);
+  --pm-once: var(--warning);
+  --pm-wrong: var(--danger);
+  --pm-new: var(--border-strong);
+}
+
+/* ---- トップ ---- */
+.home-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-3);
+  margin-top: var(--sp-2);
+}
+.home-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-3);
+  min-height: 150px;
+  padding: var(--sp-4) var(--sp-3);
+  background: var(--surface-card);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  font-family: inherit;
+  cursor: pointer;
+}
+.home-tile svg {
+  color: var(--accent);
+}
+.home-tile:active {
+  transform: scale(.98);
+}
+.home-tile-label {
+  font-size: 1.05rem;
+  font-weight: 800;
+  line-height: 1.35;
+  text-align: center;
+}
+.home-tile-label small {
+  display: block;
+  margin-top: 2px;
+  font-size: .75rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.home-tile-primary {
+  grid-column: 1 / -1;
+  min-height: 190px;
+  background: var(--accent-fill);
+  border-color: var(--accent-fill);
+  color: var(--accent-ink);
+}
+.home-tile-primary svg {
+  color: var(--accent-ink);
+}
+.home-tile-primary .home-tile-label {
+  font-size: 1.35rem;
+}
+
+/* ---- 画面上部の戻る＋見出し ---- */
+.page-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin: 0 0 var(--sp-3);
+}
+.page-back-btn {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  min-height: 0;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-card);
+  color: var(--text);
+  font-size: 1.6rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#range-list-view .page-title,
+#study-setup .page-title {
+  font-size: 1.1rem;
+  margin: 0;
+}
+.page-title small {
+  margin-left: 6px;
+  font-size: .78rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+/* ---- 進捗メーター（分数＋4色の横棒） ---- */
+.progress-meter {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+.progress-meter-bar {
+  flex: 1 1 auto;
+  display: flex;
+  height: 10px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--pm-new);
+}
+.pm-seg {
+  display: block;
+  height: 100%;
+}
+.pm-mastered { background: var(--pm-mastered); }
+.pm-once { background: var(--pm-once); }
+.pm-wrong { background: var(--pm-wrong); }
+.pm-new { background: var(--pm-new); }
+.progress-meter-frac {
+  flex: 0 0 auto;
+  font-size: .8rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.progress-meter-frac b {
+  font-size: .95rem;
+  color: var(--text);
+}
+.progress-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: .75rem;
+  color: var(--text-muted);
+  margin: 0 0 var(--sp-3);
+}
+.progress-legend .lg {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  margin-right: 4px;
+  vertical-align: -1px;
+}
+.lg-mastered { background: var(--pm-mastered); }
+.lg-once { background: var(--pm-once); }
+.lg-wrong { background: var(--pm-wrong); }
+.lg-new { background: var(--pm-new); }
+
+/* ---- 範囲を選ぶ ---- */
+.range-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+.range-group {
+  background: var(--surface-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+.range-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas: "title chev" "meter chev";
+  align-items: center;
+  gap: 6px var(--sp-3);
+  width: 100%;
+  min-height: 0;
+  padding: 12px 14px;
+  background: none;
+  border: none;
+  border-radius: 0;
+  color: var(--text);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.range-row + .range-row {
+  border-top: 1px solid var(--border);
+}
+.range-row:active {
+  background: var(--surface-sunken);
+}
+.range-row-title {
+  grid-area: title;
+  font-size: .92rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.range-row .progress-meter {
+  grid-area: meter;
+}
+.range-row-chevron {
+  grid-area: chev;
+  font-size: 1.5rem;
+  color: var(--text-faint);
+  line-height: 1;
+}
+.range-row-theme {
+  background: var(--surface-raised);
+}
+.range-row-theme .range-row-title {
+  font-size: 1rem;
+  font-weight: 800;
+}
+.range-row-section {
+  padding-left: 26px;
+}
+.range-row-all {
+  background: var(--surface-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  padding: 16px;
+}
+.range-row-all .range-row-title {
+  font-size: 1.2rem;
+  font-weight: 800;
+}
+.range-row-all .progress-meter-bar {
+  height: 14px;
+}
+
+/* ---- 出題設定 ---- */
+.setup-range-summary {
+  background: var(--surface-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  padding: 12px 14px;
+  margin: 0 0 var(--sp-4);
+}
+.setup-range-title {
+  margin: 0 0 6px;
+  font-weight: 800;
+}
+
+/* ---- 出題画面：制限時間 ---- */
+.question-timer {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: 0 0 var(--sp-2);
+  color: var(--text-muted);
+}
+.question-timer[hidden] {
+  display: none;
+}
+.question-timer-icon {
+  display: flex;
+}
+.question-timer-track {
+  flex: 1 1 auto;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+.question-timer-bar {
+  height: 100%;
+  width: 100%;
+  background: var(--accent-fill);
+  border-radius: 999px;
+  transition: width 1s linear, background-color .3s;
+}
+.question-timer-text {
+  flex: 0 0 auto;
+  min-width: 3.2em;
+  text-align: right;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.question-timer.is-low .question-timer-bar {
+  background: var(--danger);
+}
+.question-timer.is-low .question-timer-text {
+  color: var(--danger);
+}
+.question-timer.is-stopped:not(.is-expired) {
+  opacity: .5;
+}
+
+/* ---- 時間切れシート ---- */
+#study-session {
+  position: relative;
+}
+.ex-card.is-timed-out {
+  opacity: .55;
+}
+.timeout-sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 35;
+  max-width: 720px;
+  margin: 0 auto;
+  max-height: 70dvh;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-radius: var(--radius) var(--radius) 0 0;
+  box-shadow: var(--shadow-md);
+  padding: var(--sp-4) var(--sp-4) max(var(--sp-4), env(safe-area-inset-bottom));
+}
+.timeout-sheet[hidden] {
+  display: none;
+}
+.timeout-sheet-title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: var(--danger);
+}
+.timeout-sheet-title span {
+  margin-left: 8px;
+  font-size: .78rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.timeout-sheet-body {
+  overflow-y: auto;
+  min-height: 0;
+}
+.timeout-sheet-answer {
+  margin: 0 0 var(--sp-2);
+  font-weight: 700;
+}
+.timeout-sheet-answer span {
+  display: inline-block;
+  margin-right: 8px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--success-soft);
+  color: var(--success);
+  font-size: .78rem;
+}
+.timeout-sheet-explanation {
+  margin: 0;
+  font-size: .9rem;
+  color: var(--text-muted);
+  white-space: pre-wrap;
+}
