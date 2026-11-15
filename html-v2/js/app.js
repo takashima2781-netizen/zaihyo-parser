@@ -642,7 +642,13 @@
 
   // v2-3(docs/v2_3_implementation_report.md §5)。出題モード（全て/未修得/チェック）を、
   // 既存の表示形式フィルタ(exerciseType)と組み合わせて適用する。
+  // v2-53: modeは文字列1つ、または複数選択の配列（いずれかに当てはまれば対象）。
   function matchesStudyMode(ex, mode) {
+    if (Array.isArray(mode)) {
+      return mode.some(function (m) {
+        return matchesStudyMode(ex, m);
+      });
+    }
     if (mode === "all") return true;
     var key = EVv2.computeExerciseKey(ex);
     var rec = key ? EVv2.getProgressRecord(key, ex.exerciseType) : null;
@@ -1043,9 +1049,9 @@
   // v2-51: 範囲を選ぶ画面で問題形式を絞り込み、問題数・進捗バーをその形式だけで出す。
   // 選んだ形式は出題設定画面の「問題形式」にも引き継ぐ。
   // v2-52: 範囲を選ぶ画面の学習状態フィルタ（出題設定の「出題モード」と連動）。
-  var rangeModeChipGroup = EVv2.createChipGroup(els.rangeListModeChips, {
+  var rangeModeChipGroup = EVv2.createMultiChipGroup(els.rangeListModeChips, {
     items: MODE_ITEMS,
-    value: "all",
+    value: ["all"],
     onChange: function (v) {
       modeChipGroup.setValue(v);
       if (state.data) renderRangeList();
@@ -1059,9 +1065,9 @@
       if (state.data) renderRangeList();
     },
   });
-  var modeChipGroup = EVv2.createChipGroup(els.studySetupModeChips, {
+  var modeChipGroup = EVv2.createMultiChipGroup(els.studySetupModeChips, {
     items: MODE_ITEMS,
-    value: "all",
+    value: ["all"],
     onChange: function (v) {
       // v2-52: 範囲を選ぶ画面の学習状態フィルタと同じ値を共有する。
       rangeModeChipGroup.setValue(v);
@@ -1121,7 +1127,7 @@
     var count = buildStudyQueue().length;
     var themeLabel = state.selectedRange.label;
     var typeLabel = typeChipGroup.getLabel() || "全て";
-    var modeLabel = modeChipGroup.getValue() === "all" ? "すべての問題" : modeChipGroup.getLabel() + "の問題";
+    var modeLabel = modeChipGroup.isAll() ? "すべての問題" : modeChipGroup.getLabel() + "の問題";
     var timeLabel = timeLimitSeconds() > 0 ? "制限" + timeChipGroup.getLabel() : "制限時間なし";
 
     els.studySetupDockSummary.textContent = "";
@@ -2042,7 +2048,7 @@
     var typeValue = typeChipGroup.getValue();
     var filters = [];
     if (typeValue !== "all") filters.push(typeChipGroup.getLabel());
-    if (mode !== "all") filters.push(modeChipGroup.getLabel());
+    if (!modeChipGroup.isAll()) filters.push(modeChipGroup.getLabel());
     title.textContent = range.label + (filters.length ? "（" + filters.join("・") + "）" : "");
     els.studySetupRangeSummary.appendChild(title);
     els.studySetupRangeSummary.appendChild(EVv2.createProgressMeter(EVv2.summarizeProgress(inRange)));
