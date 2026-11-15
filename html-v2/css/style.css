@@ -2254,3 +2254,8 @@ header h1 {
   color: var(--text-muted);
   white-space: pre-wrap;
 }
+
+/* v2-51: 範囲を選ぶ画面の問題形式フィルタ */
+.range-type-filter {
+  margin-bottom: var(--sp-3);
+}

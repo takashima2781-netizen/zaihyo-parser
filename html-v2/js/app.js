@@ -49,6 +49,7 @@
     rangeListView: document.getElementById("range-list-view"),
     rangeListBackBtn: document.getElementById("range-list-back-btn"),
     rangeList: document.getElementById("range-list"),
+    rangeListTypeChips: document.getElementById("range-list-type-chips"),
     studySetupBackBtn: document.getElementById("study-setup-back-btn"),
     studySetupRangeSummary: document.getElementById("study-setup-range-summary"),
     studySetupTimeChips: document.getElementById("study-setup-time-chips"),
@@ -1027,7 +1028,22 @@
   var typeChipGroup = EVv2.createChipGroup(els.studySetupTypeChips, {
     items: TYPE_ITEMS,
     value: "all",
-    onChange: updateStudySetupCount,
+    onChange: function (v) {
+      // v2-51: 範囲を選ぶ画面の問題形式フィルタと同じ値を共有する。
+      rangeTypeChipGroup.setValue(v);
+      renderSetupRangeSummary();
+      updateStudySetupCount();
+    },
+  });
+  // v2-51: 範囲を選ぶ画面で問題形式を絞り込み、問題数・進捗バーをその形式だけで出す。
+  // 選んだ形式は出題設定画面の「問題形式」にも引き継ぐ。
+  var rangeTypeChipGroup = EVv2.createChipGroup(els.rangeListTypeChips, {
+    items: TYPE_ITEMS,
+    value: "all",
+    onChange: function (v) {
+      typeChipGroup.setValue(v);
+      if (state.data) renderRangeList();
+    },
   });
   var modeChipGroup = EVv2.createChipGroup(els.studySetupModeChips, {
     items: MODE_ITEMS,
@@ -1961,19 +1977,28 @@
   }
 
   function renderRangeList() {
-    var all = state.baseExercises || state.data.exercises;
+    var base = state.baseExercises || state.data.exercises;
+    var type = rangeTypeChipGroup.getValue();
+    var all = filterByType(base, type);
     els.rangeList.innerHTML = "";
     els.rangeList.appendChild(rangeRow({ kind: "all" }, "全範囲", all, "range-row-all"));
 
-    EVv2.buildRangeTree(all).forEach(function (theme) {
+    // v2-51: テーマ・範囲の並び順は絞り込み前（教材の順）で決め、問題形式の絞り込みは
+    // 各行の中身にだけ掛ける（並び替え問題など、配列の後ろに追加された問題があっても順序が崩れない）。
+    // 該当する問題が0問になったテーマ・範囲は出さない。
+    EVv2.buildRangeTree(base).forEach(function (theme) {
+      var themeExercises = filterByType(theme.exercises, type);
+      if (themeExercises.length === 0) return;
       var group = document.createElement("section");
       group.className = "range-group";
       var themeTitle = formatThemeTitle(theme.title);
-      group.appendChild(rangeRow(theme, themeTitle, theme.exercises, "range-row-theme"));
+      group.appendChild(rangeRow(theme, themeTitle, themeExercises, "range-row-theme"));
       // テーマ直下に範囲が1つしかない場合も、東進アプリのSTAGEと同じく範囲の行を出す
       // （テーマ全体と範囲のどちらからでも始められる）。
       theme.sections.forEach(function (section) {
-        group.appendChild(rangeRow(section, section.title, section.exercises, "range-row-section"));
+        var sectionExercises = filterByType(section.exercises, type);
+        if (sectionExercises.length === 0) return;
+        group.appendChild(rangeRow(section, section.title, sectionExercises, "range-row-section"));
       });
       els.rangeList.appendChild(group);
     });
@@ -1981,14 +2006,15 @@
 
   function renderSetupRangeSummary() {
     var range = state.selectedRange;
-    var all = state.baseExercises || state.data.exercises;
+    var all = filterByType(state.baseExercises || state.data.exercises, typeChipGroup.getValue());
     var inRange = all.filter(function (ex) {
       return EVv2.matchesRange(ex, range);
     });
     els.studySetupRangeSummary.innerHTML = "";
     var title = document.createElement("p");
     title.className = "setup-range-title";
-    title.textContent = range.label;
+    var typeValue = typeChipGroup.getValue();
+    title.textContent = range.label + (typeValue === "all" ? "" : "（" + typeChipGroup.getLabel() + "）");
     els.studySetupRangeSummary.appendChild(title);
     els.studySetupRangeSummary.appendChild(EVv2.createProgressMeter(EVv2.summarizeProgress(inRange)));
   }
