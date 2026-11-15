@@ -50,6 +50,7 @@
     rangeListBackBtn: document.getElementById("range-list-back-btn"),
     rangeList: document.getElementById("range-list"),
     rangeListTypeChips: document.getElementById("range-list-type-chips"),
+    rangeListModeChips: document.getElementById("range-list-mode-chips"),
     studySetupBackBtn: document.getElementById("study-setup-back-btn"),
     studySetupRangeSummary: document.getElementById("study-setup-range-summary"),
     studySetupTimeChips: document.getElementById("study-setup-time-chips"),
@@ -645,10 +646,12 @@
     if (mode === "all") return true;
     var key = EVv2.computeExerciseKey(ex);
     var rec = key ? EVv2.getProgressRecord(key, ex.exerciseType) : null;
-    if (mode === "unmastered") {
-      // 未修得の問題 = status !== "mastered"（未回答＝レコードが無い場合も含む）。
-      return !rec || rec.status !== EVv2.PROGRESS_STATUS.MASTERED;
-    }
+    // v2-52: 学習状態の表示（未回答／未修得／習得）と同じ3区分で絞り込めるようにした（ユーザー指示）。
+    // 「未修得」は回答したことがあり、まだ習得していない問題（未回答は含めない）。
+    var status = rec ? rec.status : EVv2.PROGRESS_STATUS.UNANSWERED;
+    if (mode === "unanswered") return status === EVv2.PROGRESS_STATUS.UNANSWERED;
+    if (mode === "unmastered") return status === EVv2.PROGRESS_STATUS.UNMASTERED;
+    if (mode === "mastered") return status === EVv2.PROGRESS_STATUS.MASTERED;
     if (mode === "checked") {
       return !!rec && rec.checked;
     }
@@ -704,7 +707,7 @@
       return "チェックした問題はまだありません。各問題の「チェック登録」ボタンを押すと、ここに表示されます。";
     }
     if (typeOnlyCount > 0 && studyMode === "unmastered") {
-      return "未修得の問題はありません。表示中の範囲はすべて修得済みです。";
+      return "未修得（回答したことがあり、まだ習得していない）の問題はありません。";
     }
     return "条件に一致する問題はありません。";
   }
@@ -1022,8 +1025,10 @@
   ];
   var MODE_ITEMS = [
     { value: "all", label: "すべての問題" },
-    { value: "unmastered", label: "未修得の問題" },
-    { value: "checked", label: "チェック問題" },
+    { value: "unanswered", label: "未回答" },
+    { value: "unmastered", label: "未修得" },
+    { value: "mastered", label: "習得" },
+    { value: "checked", label: "チェック" },
   ];
   var typeChipGroup = EVv2.createChipGroup(els.studySetupTypeChips, {
     items: TYPE_ITEMS,
@@ -1037,6 +1042,15 @@
   });
   // v2-51: 範囲を選ぶ画面で問題形式を絞り込み、問題数・進捗バーをその形式だけで出す。
   // 選んだ形式は出題設定画面の「問題形式」にも引き継ぐ。
+  // v2-52: 範囲を選ぶ画面の学習状態フィルタ（出題設定の「出題モード」と連動）。
+  var rangeModeChipGroup = EVv2.createChipGroup(els.rangeListModeChips, {
+    items: MODE_ITEMS,
+    value: "all",
+    onChange: function (v) {
+      modeChipGroup.setValue(v);
+      if (state.data) renderRangeList();
+    },
+  });
   var rangeTypeChipGroup = EVv2.createChipGroup(els.rangeListTypeChips, {
     items: TYPE_ITEMS,
     value: "all",
@@ -1048,7 +1062,12 @@
   var modeChipGroup = EVv2.createChipGroup(els.studySetupModeChips, {
     items: MODE_ITEMS,
     value: "all",
-    onChange: updateStudySetupCount,
+    onChange: function (v) {
+      // v2-52: 範囲を選ぶ画面の学習状態フィルタと同じ値を共有する。
+      rangeModeChipGroup.setValue(v);
+      renderSetupRangeSummary();
+      updateStudySetupCount();
+    },
   });
 
   // v2-41(デバッグモード改善): 問題一覧（検索・デバッグ用）画面の絞り込みを、学習設定画面と
@@ -1102,7 +1121,7 @@
     var count = buildStudyQueue().length;
     var themeLabel = state.selectedRange.label;
     var typeLabel = typeChipGroup.getLabel() || "全て";
-    var modeLabel = modeChipGroup.getLabel() || "すべての問題";
+    var modeLabel = modeChipGroup.getValue() === "all" ? "すべての問題" : modeChipGroup.getLabel() + "の問題";
     var timeLabel = timeLimitSeconds() > 0 ? "制限" + timeChipGroup.getLabel() : "制限時間なし";
 
     els.studySetupDockSummary.textContent = "";
@@ -1980,7 +1999,13 @@
   function renderRangeList() {
     var base = state.baseExercises || state.data.exercises;
     var type = rangeTypeChipGroup.getValue();
-    var all = filterByType(base, type);
+    var mode = rangeModeChipGroup.getValue();
+    function narrow(list) {
+      return filterByType(list, type).filter(function (ex) {
+        return matchesStudyMode(ex, mode);
+      });
+    }
+    var all = narrow(base);
     els.rangeList.innerHTML = "";
     els.rangeList.appendChild(rangeRow({ kind: "all" }, "全範囲", all, "range-row-all"));
 
@@ -1989,7 +2014,7 @@
     // 該当する問題が0問のテーマ・範囲も「0／0問」として出す（将来問題を追加する可能性があるため、
     // ユーザー指示）。0問の行は選んでも出題できないので押せないようにする。
     EVv2.buildRangeTree(base).forEach(function (theme) {
-      var themeExercises = filterByType(theme.exercises, type);
+      var themeExercises = narrow(theme.exercises);
       var group = document.createElement("section");
       group.className = "range-group";
       var themeTitle = formatThemeTitle(theme.title);
@@ -1997,7 +2022,7 @@
       // テーマ直下に範囲が1つしかない場合も、東進アプリのSTAGEと同じく範囲の行を出す
       // （テーマ全体と範囲のどちらからでも始められる）。
       theme.sections.forEach(function (section) {
-        var sectionExercises = filterByType(section.exercises, type);
+        var sectionExercises = narrow(section.exercises);
         group.appendChild(rangeRow(section, section.title, sectionExercises, "range-row-section"));
       });
       els.rangeList.appendChild(group);
@@ -2006,15 +2031,19 @@
 
   function renderSetupRangeSummary() {
     var range = state.selectedRange;
+    var mode = modeChipGroup.getValue();
     var all = filterByType(state.baseExercises || state.data.exercises, typeChipGroup.getValue());
     var inRange = all.filter(function (ex) {
-      return EVv2.matchesRange(ex, range);
+      return EVv2.matchesRange(ex, range) && matchesStudyMode(ex, mode);
     });
     els.studySetupRangeSummary.innerHTML = "";
     var title = document.createElement("p");
     title.className = "setup-range-title";
     var typeValue = typeChipGroup.getValue();
-    title.textContent = range.label + (typeValue === "all" ? "" : "（" + typeChipGroup.getLabel() + "）");
+    var filters = [];
+    if (typeValue !== "all") filters.push(typeChipGroup.getLabel());
+    if (mode !== "all") filters.push(modeChipGroup.getLabel());
+    title.textContent = range.label + (filters.length ? "（" + filters.join("・") + "）" : "");
     els.studySetupRangeSummary.appendChild(title);
     els.studySetupRangeSummary.appendChild(EVv2.createProgressMeter(EVv2.summarizeProgress(inRange)));
   }
