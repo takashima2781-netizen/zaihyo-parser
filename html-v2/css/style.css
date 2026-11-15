@@ -2259,3 +2259,10 @@ header h1 {
 .range-type-filter {
   margin-bottom: var(--sp-3);
 }
+.range-row:disabled {
+  cursor: default;
+  opacity: .45;
+}
+.range-row:disabled .range-row-chevron {
+  visibility: hidden;
+}

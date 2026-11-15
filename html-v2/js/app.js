@@ -1959,6 +1959,7 @@
     var btn = document.createElement("button");
     btn.type = "button";
     btn.className = "range-row" + (extraClass ? " " + extraClass : "");
+    btn.disabled = exercises.length === 0;
     var name = document.createElement("span");
     name.className = "range-row-title";
     name.textContent = title;
@@ -1985,10 +1986,10 @@
 
     // v2-51: テーマ・範囲の並び順は絞り込み前（教材の順）で決め、問題形式の絞り込みは
     // 各行の中身にだけ掛ける（並び替え問題など、配列の後ろに追加された問題があっても順序が崩れない）。
-    // 該当する問題が0問になったテーマ・範囲は出さない。
+    // 該当する問題が0問のテーマ・範囲も「0／0問」として出す（将来問題を追加する可能性があるため、
+    // ユーザー指示）。0問の行は選んでも出題できないので押せないようにする。
     EVv2.buildRangeTree(base).forEach(function (theme) {
       var themeExercises = filterByType(theme.exercises, type);
-      if (themeExercises.length === 0) return;
       var group = document.createElement("section");
       group.className = "range-group";
       var themeTitle = formatThemeTitle(theme.title);
@@ -1997,7 +1998,6 @@
       // （テーマ全体と範囲のどちらからでも始められる）。
       theme.sections.forEach(function (section) {
         var sectionExercises = filterByType(section.exercises, type);
-        if (sectionExercises.length === 0) return;
         group.appendChild(rangeRow(section, section.title, sectionExercises, "range-row-section"));
       });
       els.rangeList.appendChild(group);
