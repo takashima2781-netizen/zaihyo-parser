@@ -1044,8 +1044,42 @@ var calculationStepsHandler = {
   },
 };
 
+// ---- choice_item（取引ごとに選択肢から1つ選ぶ。v2-58、消費税の振り分け・選ぶ問題） ----
+// ex.choiceOptions: [{ value, label }]、ex.correctChoice: value。
+var choiceItemHandler = {
+  label: "選択",
+  getInteractionMode: function () {
+    return "choice";
+  },
+  getChoices: function (ex) {
+    return (ex.choiceOptions || []).map(function (o) {
+      return { value: o.value, label: o.label };
+    });
+  },
+  isCorrect: function (ex, value) {
+    return value === ex.correctChoice;
+  },
+  getCorrectLabel: function (ex) {
+    var hit = (ex.choiceOptions || []).filter(function (o) {
+      return o.value === ex.correctChoice;
+    })[0];
+    return hit ? hit.label : String(ex.correctChoice);
+  },
+  getAnswerBodyText: function () {
+    return null;
+  },
+  getExplanationText: function (ex) {
+    return ex.explanation ? ex.explanation.raw.text : null;
+  },
+  hideEmptyExplanation: true,
+  getSourceRefs: function (ex) {
+    return ex.prompt ? [ex.prompt] : [];
+  },
+};
+
 EVv2.registry = {
   true_false: trueFalseHandler,
+  choice_item: choiceItemHandler,
   calculation_steps: calculationStepsHandler,
   recall_text: recallTextHandler,
   single_blank: singleBlankHandler,

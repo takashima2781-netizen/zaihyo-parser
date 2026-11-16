@@ -428,6 +428,7 @@
     var t1 = performance.now();
 
     state.data = parsed.data;
+    refreshTypeChips();
 
     var savedAt = opts.cachedAt || new Date().toISOString();
     renderDataSourceStatus(sourceLabel, savedAt);
@@ -1027,6 +1028,7 @@
     { value: "true_false", label: "〇×" },
     { value: "recall_text", label: "暗記" },
     { value: "calculation_steps", label: "計算" },
+    { value: "choice_item", label: "選択" },
     { value: "single_blank", label: "穴埋め" },
     { value: "multi_blank", label: "多重穴埋め" },
     { value: "ordering", label: "並び替え" },
@@ -1059,6 +1061,25 @@
       if (state.data) renderRangeList();
     },
   });
+  // v2-58: 問題形式のチップは、読み込んだ問題データにある形式だけを出す（科目ごとに形式が違い、
+  // 全部並べるとスマホの幅に収まらないため）。選んでいた形式が無くなったら「全て」に戻す。
+  function refreshTypeChips() {
+    if (!state.data || typeof typeChipGroup === "undefined" || typeof rangeTypeChipGroup === "undefined") return;
+    var present = {};
+    state.data.exercises.forEach(function (ex) {
+      present[ex.exerciseType] = true;
+    });
+    var items = TYPE_ITEMS.filter(function (it) {
+      return it.value === "all" || present[it.value];
+    });
+    var keep = items.some(function (it) {
+      return it.value === typeChipGroup.getValue();
+    });
+    var value = keep ? typeChipGroup.getValue() : "all";
+    typeChipGroup.setItems(items, value);
+    rangeTypeChipGroup.setItems(items, value);
+  }
+
   var rangeTypeChipGroup = EVv2.createChipGroup(els.rangeListTypeChips, {
     items: TYPE_ITEMS,
     value: "all",
@@ -1067,6 +1088,7 @@
       if (state.data) renderRangeList();
     },
   });
+  refreshTypeChips(); // 問題データがこれより先に読み込まれていた場合のため
   var modeChipGroup = EVv2.createMultiChipGroup(els.studySetupModeChips, {
     items: MODE_ITEMS,
     value: ["all"],

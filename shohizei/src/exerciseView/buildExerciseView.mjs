@@ -10,6 +10,7 @@
 // 教材構造の segments をそのまま渡す。プレーンな文字列（answerText 等）は行の text をつないだもの。
 
 import { buildCalculationSteps } from "./calculation.mjs";
+import { categoryLegend, parseGroupedAnswer, parseSelectedAnswer } from "./choiceItems.mjs";
 import { removeAlignmentSpaces, removeAlignmentSpacesMultiline, removeAlignmentSpacesInSegments } from "./displayText.mjs";
 
 const SCHEMA_VERSION = "exercise-view-schema-v1.8.0";
@@ -193,6 +194,58 @@ function trainingExercises(structure, diag, bookTitles) {
           made += 1;
         }
         if (made === 0) diag.push({ reason: "true-false-no-items", problem: p.parsed.no });
+        continue;
+      }
+
+      if ((forms.includes("classify_items") || forms.includes("select_applicable")) && p.answer) {
+        const isClassify = forms.includes("classify_items");
+        const items = questionItems(p);
+        let choices;
+        let answerOf;
+        if (isClassify) {
+          const legend = categoryLegend(p.question.instructionRaw ?? "");
+          const parsed = parseGroupedAnswer(p.answer.lines);
+          for (const no of parsed.conflicts) diag.push({ reason: "choice-item-conflict", problem: p.parsed.no, item: no });
+          const symbols = [...new Set([...legend.keys(), ...parsed.symbols])];
+          choices = symbols.map((sym) => ({ value: sym, label: legend.has(sym) ? `${sym} ${legend.get(sym)}` : sym }));
+          answerOf = (no) => (parsed.conflicts.has(no) ? null : parsed.answerOf.get(no) ?? null);
+        } else {
+          const selected = parseSelectedAnswer(p.answer.lines);
+          if (selected.size === 0) {
+            diag.push({ reason: "select-answer-not-found", problem: p.parsed.no });
+            continue;
+          }
+          choices = [
+            { value: "yes", label: "該当する" },
+            { value: "no", label: "該当しない" },
+          ];
+          answerOf = (no) => (selected.has(no) ? "yes" : "no");
+        }
+        let made = 0;
+        for (const [no, item] of items) {
+          const correct = answerOf(no);
+          if (!correct) {
+            diag.push({ reason: "choice-item-answer-not-found", problem: p.parsed.no, item: no });
+            continue;
+          }
+          const ex = baseExercise({
+            id: `${p.stableId}:choice-${no}`,
+            type: "choice_item",
+            stableId: `${p.stableId}:item-${no}`,
+            structure: structureRef,
+            structurePath: path,
+            prompt: rawSpan((item.groupHeading ? item.groupHeading.text.trim() + "\n" : "") + item.lines.map((l) => l.text.trim()).join(""), item.lines[0].source, p.id),
+            instructionRaw,
+            provenance,
+          });
+          ex.choiceOptions = choices;
+          ex.correctChoice = correct;
+          ex.guidanceRich = guidanceRich;
+          ex.choiceMeta = { kind: isClassify ? "classify" : "select" };
+          exercises.push(ex);
+          made += 1;
+        }
+        if (made === 0) diag.push({ reason: "choice-item-no-items", problem: p.parsed.no });
         continue;
       }
 
