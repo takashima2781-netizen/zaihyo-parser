@@ -9,7 +9,7 @@
 | 層 | 中身 | 場所 |
 |---|---|---|
 | 第0層 抽出 | ページの行・文字のかたまり（位置・大きさ・書体）・図形（点線の枠） | `src/extract/`（PyMuPDF） |
-| 第1層 教材構造 | トレーニング: 回 → 問題（問題文・解答・解答への道・シート参照）<br>理論マスター: テーマ → 理論 → 項目 → (1) → ① → イ → (ｲ) | `src/training/`、`src/theory/` |
+| 第1層 教材構造 | トレーニング: 回 → 問題（問題文・解答・解答への道・シート参照）<br>理論マスター: テーマ → 理論 → 項目 → (1) → ① → イ → (ｲ)<br>理論ドクター: 章 → 問題（問い・解答・解説） | `src/training/`、`src/theory/`、`src/doctor/` |
 | 第2層 Exercise View | 学習アプリ（`../html-v2/`）用の問題データ。`meta.subject: "shohizei"` を付ける。<br>今は〇×（`true_false`）・暗記カード（`recall_text`）・並べ替え（`ordering`）・計算（`calculation_steps`、`src/exerciseView/calculation.mjs`）。ほかの問い方は `diagnostics` に件数だけ残す | `src/exerciseView/` |
 
 共通の部品は `src/common/`（行の整理・分数の復元）、書き出し前の検査は `src/gateChecks/`。
@@ -31,6 +31,7 @@
 ```bash
 npm run training -- training-basic-1   # → output/training-basic-1.structure.json と .summary.json
 npm run theory -- 1                    # → output/theory-master-theme1.structure.json と .summary.json（テーマ1〜5 をそれぞれ実行）
+npm run doctor                         # → output/theory-doctor.structure.json と .summary.json
 npm run view                           # → output/shohizei-exercise-view.json と ../html-v2/data/shohizei/exercise_view.json
 npm test
 ```

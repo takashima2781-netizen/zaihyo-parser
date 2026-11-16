@@ -8,6 +8,7 @@
     "test": "node --test",
     "training": "node src/cli/run-training.mjs",
     "theory": "node src/cli/run-theory.mjs",
+    "doctor": "node src/cli/run-doctor.mjs",
     "view": "node src/cli/run-exercise-view.mjs"
   }
 }
