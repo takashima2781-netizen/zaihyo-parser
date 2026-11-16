@@ -172,3 +172,24 @@ test("並べ替え: ピースが12個を超えるカードは段落の切れ目�
   assert.ok(ord.every((e) => e.orderingItems.length <= 12));
   assert.match(ord[0].prompt.text, /（1／3）$/);
 });
+
+test("並べ替えの区切り: 括弧の中と、「。」の直後の括弧では区切らない", async () => {
+  const { splitByPunctuation } = await import("../src/exerciseView/buildExerciseView.mjs");
+  const cases = [
+    ["Aの譲渡等（Bを除く。）及びCには、Dを課する。", ["Aの譲渡等（Bを除く。）及びCには、", "Dを課する。"]],
+    ["Aとする。（法１①）Bは、Cとする。", ["Aとする。（法１①）", "Bは、", "Cとする。"]],
+    ["Aをいう。（Bを含む。）", ["Aをいう。（Bを含む。）"]],
+    ["Aは、(B、C)Dとする。", ["Aは、(B、C)", "Dとする。"]],
+  ];
+  for (const [text, expected] of cases) {
+    const got = splitByPunctuation(text);
+    assert.deepEqual(got, expected);
+    assert.equal(got.join(""), text, "つなげると元の文に戻る");
+  }
+});
+
+test("文節の区切りでも、括弧の中では切らない", async () => {
+  const { keepParenthesesWhole } = await import("../src/exerciseView/buildExerciseView.mjs");
+  assert.deepEqual(keepParenthesesWhole(["Aの出資（Bを除く。", "）の総数", "からCとする。"]), ["Aの出資（Bを除く。）の総数", "からCとする。"]);
+  assert.deepEqual(keepParenthesesWhole(["A", "とB"]), ["A", "とB"]);
+});

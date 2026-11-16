@@ -243,7 +243,24 @@ function setRightEdgesFromLines(lines) {
 }
 /** 行の並びを表示用にする。行頭記号のある行は必ず新しい段落。 */
 function richLines(lines, depth = 0) {
-  return lines.map((l, i) => ({ ...richLine(l, depth), continues: i > 0 && !l.marker && reachesRightEdge(lines[i - 1]) }));
+  return lines.map((l, i) => ({ ...richLine(l, depth), continues: !l.marker && continuesFrom(lines, i) }));
+}
+// 括弧が開いたまま行が終わっていれば、次の行はその続き（カッコ書きは字が小さく、右端まで
+// 届かないまま折り返すことがあるため、右端の判定だけでは見分けられない）。
+function parenDepthAfter(lines, upTo) {
+  let depth = 0;
+  for (let i = 0; i <= upTo; i++) {
+    const text = (lines[i].segments ?? [{ text: lines[i].text }]).map((g) => g.text ?? "").join("") || lines[i].text;
+    for (const ch of text) {
+      if (ch === "（" || ch === "(") depth += 1;
+      else if (ch === "）" || ch === ")") depth = Math.max(0, depth - 1);
+    }
+  }
+  return depth;
+}
+function continuesFrom(lines, i) {
+  if (i === 0) return false;
+  return reachesRightEdge(lines[i - 1]) || parenDepthAfter(lines, i - 1) > 0;
 }
 function reachesRightEdge(line) {
   const edge = rightEdgeByPage.get(`${line.source.doc}:${line.source.page}`);
@@ -252,7 +269,7 @@ function reachesRightEdge(line) {
 
 function collectLines(node, depth, out) {
   const lines = node.lines ?? [];
-  lines.forEach((l, i) => out.push({ ...richLine(l, depth), continues: i > 0 && reachesRightEdge(lines[i - 1]) }));
+  lines.forEach((l, i) => out.push({ ...richLine(l, depth), continues: continuesFrom(lines, i) }));
   for (const c of node.children ?? []) collectLines(c, depth + 1, out);
   return out;
 }
@@ -332,12 +349,24 @@ function theoryExercises(structure, diag) {
 
 const MAX_PIECES = 12;
 
+function parenBalance(text) {
+  let d = 0;
+  for (const ch of text) {
+    if (ch === "（" || ch === "(") d += 1;
+    else if (ch === "）" || ch === ")") d = Math.max(0, d - 1);
+  }
+  return d;
+}
+
 function paragraphsOf(card) {
   const paras = [];
   for (const line of card.answerRich) {
     if (line.segments.some((s) => s.kind === "fraction")) return null;
     const text = line.segments.map((s) => s.text ?? "").join("");
-    if (line.continues && paras.length) {
+    // 前の段落で括弧が閉じていないとき、または閉じ括弧から始まるときも続きとみなす
+    // （条文の入れ子の切れ目をまたいでカッコ書きが続いている場合）。
+    const prevOpen = paras.length > 0 && parenBalance(paras[paras.length - 1].text) > 0;
+    if ((line.continues || prevOpen || /^[ 　]*[）)]/.test(text)) && paras.length) {
       const last = paras[paras.length - 1];
       last.text = last.text.replace(/[ 　]+$/, "") + text;
     } else paras.push({ text });
@@ -345,8 +374,62 @@ function paragraphsOf(card) {
   return paras.map((p) => ({ text: p.text.replace(/^[ 　]+|[ 　]+$/g, "") })).filter((p) => p.text);
 }
 
-function splitByPunctuation(text) {
-  return text.split(/(?<=[、。])/).filter((t) => t.trim() !== "");
+// 「、」「。」の直後で区切る。ただし括弧（カッコ書き・条文番号）は崩さない（ユーザー指示、2026-11-17
+// 「。のあとに括弧がある時、これを。で区切られちゃうとこまる」）:
+//   - 括弧の中の「、」「。」では区切らない
+//   - 「、」「。」のすぐ後に括弧が始まるときは、その括弧を前のピースに含め、閉じた直後で区切る
+// 文字は1つも足し引きしない（つなげると元の文に戻る）。
+/** 文節の区切りでも括弧の中では切らない: 括弧が閉じきるまで、次の断片を前の断片につなげる。 */
+export function keepParenthesesWhole(pieces) {
+  const out = [];
+  let open = 0;
+  for (const piece of pieces) {
+    if (out.length && (open > 0 || /^[ 　]*[）)]/.test(piece))) out[out.length - 1] += piece;
+    else out.push(piece);
+    open = parenBalance(out[out.length - 1]);
+  }
+  return out;
+}
+
+export function splitByPunctuation(text) {
+  const OPEN = "（(";
+  const CLOSE = "）)";
+  const pieces = [];
+  let cur = "";
+  let depth = 0;
+  let deferred = false; // 区切りの直後に括弧が始まったので、括弧が閉じるまで区切りを待っている
+  const chars = [...text];
+  for (let i = 0; i < chars.length; i++) {
+    const ch = chars[i];
+    cur += ch;
+    if (OPEN.includes(ch)) depth += 1;
+    else if (CLOSE.includes(ch)) {
+      depth = Math.max(0, depth - 1);
+      if (depth === 0 && deferred) {
+        deferred = false;
+        const next = chars[i + 1];
+        if (next !== undefined && !"、。".includes(next) && !OPEN.includes(next)) {
+          pieces.push(cur);
+          cur = "";
+        }
+      }
+      continue;
+    }
+    if (depth === 0 && "、。".includes(ch)) {
+      let j = i + 1;
+      while (j < chars.length && /[ 　]/.test(chars[j])) j += 1;
+      if (j < chars.length && OPEN.includes(chars[j])) {
+        deferred = true;
+        continue;
+      }
+      // 「。」の直後に閉じ括弧が来る（括弧の外側で閉じている）ときも区切らない
+      if (j < chars.length && CLOSE.includes(chars[j])) continue;
+      pieces.push(cur);
+      cur = "";
+    }
+  }
+  if (cur) pieces.push(cur);
+  return pieces.filter((t) => t.trim() !== "");
 }
 
 function piecesOf(paragraphs, phraseSplit) {
@@ -354,7 +437,7 @@ function piecesOf(paragraphs, phraseSplit) {
   let pieces = paragraphs.flatMap((p) => splitByPunctuation(p.text).map((t) => ({ text: t, para: p })));
   let method = "punctuation";
   if (pieces.length < 2 && phraseSplit) {
-    pieces = paragraphs.flatMap((p) => phraseSplit(p.text).map((t) => ({ text: t, para: p })));
+    pieces = paragraphs.flatMap((p) => keepParenthesesWhole(phraseSplit(p.text)).map((t) => ({ text: t, para: p })));
     method = "phrase";
   }
   return { pieces, method };
