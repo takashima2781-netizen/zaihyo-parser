@@ -38,6 +38,13 @@ export function parseProblemHeading(text) {
   const m = text.trim().match(HEADING);
   if (!m) return null;
   let title = m[2].trim();
+  // 見出しの行に難度まで入っていることがある（「…（シートあり） 基礎」）
+  let levelInHeading = null;
+  const lv = title.match(new RegExp(`\\s+(${LEVELS.join("|")})$`));
+  if (lv) {
+    levelInHeading = lv[1];
+    title = title.slice(0, lv.index).trim();
+  }
   const hasSheet = /（シートあり）$/.test(title);
   if (hasSheet) title = title.replace(/（シートあり）$/, "").trim();
   const series = title.match(/・(その\s*[0-9０-９]+)$/);
@@ -46,6 +53,7 @@ export function parseProblemHeading(text) {
     titleRaw: title,
     seriesRaw: series ? series[1] : null,
     hasSheetMark: hasSheet,
+    levelInHeading,
   };
 }
 
@@ -57,17 +65,20 @@ export function parseLevel(text) {
 // 目安時間: 「１分」「－55分－」など
 const TIME = new RegExp(`^[－-]?\\s*(${D})\\s*分\\s*[－-]?$`);
 export function parseTime(text) {
-  const m = text.trim().match(TIME);
+  // 飾りの記号が私用領域の文字として入っていることがある（判定のときだけ除く。raw は原文のまま）
+  const m = text.trim().replace(/[\uE000-\uF8FF]/g, "").match(TIME);
   return m ? { raw: text.trim(), minutes: Number(toHalfWidthDigits(m[1])) } : null;
 }
 
 // 行頭の記号（候補）。どの階層かはここでは決めない。
 const MARKERS = [
-  ["paren-number", new RegExp(`^[（(]\\s*(${D})\\s*[）)]`)],
+  // 「(3)＞(4)」「(1)＋(2)」のように、すぐ後に比較・計算の記号が続くものは行頭記号ではない
+  ["paren-number", new RegExp(`^[（(]\\s*(${D})\\s*[）)](?![＞＜≧≦＋－×＝])`)],
   ["circled-number", /^([①-⑳])/],
   ["roman", /^([ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ])\s/],
   ["number", new RegExp(`^(${D})\\s`)],
   ["question", new RegExp(`^問\\s*(${D})`)],
+  ["sub-question", new RegExp(`^(〔\\s*問\\s*${D}\\s*〕)`)],
   ["bracket-heading", /^(【[^】]+】)/],
 ];
 export function parseMarker(text) {

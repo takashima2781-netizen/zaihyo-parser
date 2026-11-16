@@ -155,7 +155,7 @@ export function buildTraining({ bookId, problemDoc, answerDoc, sheetDoc = null }
         no: tocEntry.no,
         titleRaw: p ? p.heading.titleRaw : tocEntry.titleRaw,
         seriesRaw: p ? p.heading.seriesRaw : null,
-        levelRaw: p?.levelLine ? p.levelLine.text.trim() : "unknown",
+        levelRaw: p?.levelLine ? p.levelLine.text.trim() : p?.heading.levelInHeading ?? "unknown",
         timeRaw: p?.timeLine ? parseTime(p.timeLine.text).raw : "unknown",
         hasSheet: tocEntry.hasSheet,
         tocPages: { problem: tocEntry.problemPage, answer: tocEntry.answerPage },
@@ -186,13 +186,22 @@ export function buildTraining({ bookId, problemDoc, answerDoc, sheetDoc = null }
         headingRaw: p.headingLine.text,
         instructionRaw,
         formCandidates: instructionRaw ? questionFormCandidates(instructionRaw.replace(/\s*\n\s*/g, "")) : [],
+        formEvidenceScope: "instruction",
         lines: body,
       };
+      // 指示文に手がかりが無いとき（〔問１〕〔問２〕に分かれ、指示が小問ごとにある問題など）は、問題文全体から探す
+      if (node.question.formCandidates.length === 0) {
+        node.question.formCandidates = questionFormCandidates(body.map((b) => b.text).join("").replace(/\s+/g, ""));
+        node.question.formEvidenceScope = "whole-question";
+      }
       if (node.question.formCandidates.length === 0) node.question.formCandidates = [{ form: "unknown", evidence: null }];
-      if (p.heading.titleRaw !== tocEntry.titleRaw && p.heading.titleRaw.replace(/\s/g, "") !== tocEntry.titleRaw.replace(/\s/g, "")) {
+      // 空白と中黒の全角・半角（・／･）の違いは同じ題名とみなす
+      const sameTitle = (a, b) => a.replace(/\s/g, "").replace(/･/g, "・") === b.replace(/\s/g, "").replace(/･/g, "・");
+      if (!sameTitle(p.heading.titleRaw, tocEntry.titleRaw)) {
         node.unresolved.push({ reason: "title-differs-from-toc" });
       }
-      if (p.levelLine && p.levelLine.text.trim() !== tocEntry.levelRaw) node.unresolved.push({ reason: "level-differs-from-toc" });
+      const lvl = p.levelLine ? p.levelLine.text.trim() : p.heading.levelInHeading;
+      if (lvl && lvl !== tocEntry.levelRaw) node.unresolved.push({ reason: "level-differs-from-toc" });
       if (p.heading.hasSheetMark !== tocEntry.hasSheet) node.unresolved.push({ reason: "sheet-mark-differs-from-toc" });
     }
 

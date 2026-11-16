@@ -17,9 +17,14 @@ const out = (name) => path.join(root, "output", name);
 const read = (name) => JSON.parse(readFileSync(out(name), "utf8"));
 
 // 範囲の画面に出す本の名前（教材の名前の書き方そのものではなく、画面用の短い呼び名）。
-const BOOK_TITLES = { "training-basic-1": "トレーニング 基礎M・速修 No.1" };
+const BOOK_TITLES = {
+  "training-basic-1": "トレーニング 基礎M・速修 No.1",
+  "training-basic-2": "トレーニング 基礎M・速修 No.2",
+  "training-basic-3": "トレーニング 基礎M・速修 No.3",
+  "training-basic-4": "トレーニング 基礎M・速修 No.4",
+};
 
-const trainings = ["training-basic-1"].filter((b) => existsSync(out(`${b}.structure.json`))).map((b) => read(`${b}.structure.json`));
+const trainings = Object.keys(BOOK_TITLES).filter((b) => existsSync(out(`${b}.structure.json`))).map((b) => read(`${b}.structure.json`));
 // 理論マスターは、教材構造を作ったテーマを全部使う（テーマ1〜5。npm run theory -- <n> で作る）。
 const theories = [1, 2, 3, 4, 5, 6, 7, 8, 9].filter((n) => existsSync(out(`theory-master-theme${n}.structure.json`))).map((n) => read(`theory-master-theme${n}.structure.json`));
 if (trainings.length + theories.length === 0) {

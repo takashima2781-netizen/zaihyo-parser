@@ -145,7 +145,7 @@ EVv2.createRichBlock = function (lines, label, collapsible) {
         var frac = document.createElement("span");
         frac.className = "rich-fraction";
         frac.setAttribute("role", "img");
-        frac.setAttribute("aria-label", seg.numerator + "分の" + seg.denominator);
+        frac.setAttribute("aria-label", seg.denominator + "分の" + seg.numerator);
         var num = document.createElement("span");
         num.className = "rich-fraction-num";
         num.textContent = seg.numerator;

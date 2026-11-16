@@ -61,13 +61,23 @@ test("段階: 見出しの行に「＝答え」があるときは、「＝」よ
   assert.equal(steps[1].expected.value, 3);
 });
 
+test("解答の (n) が問題文の取引と対応しないときは、取引ごとの形とみなさない", () => {
+  const items = new Map([[1, "(1) 取引A"], [2, "(2) 取引B"], [3, "(3) 取引C"], [4, "(4) 取引D"], [5, "(5) 取引E"]]);
+  const steps = buildCalculationSteps([L("(1) 課税仕入れ", paren("(1)")), L("1＋1＝2"), L("(2) 課税貨物", paren("(2)")), L("3,000")], items);
+  assert.deepEqual(steps.map((s) => [s.labelRaw, s.expected.value]), [["(1) 課税仕入れ", 2], ["(2) 課税貨物", 3000]]);
+});
+
 test("取引ごとの形: 名前は問題文の (n)、答えが文のときは採点しない", () => {
   const items = new Map([
     [1, "(1) 取引その1"],
     [2, "(2) 取引その2"],
+    [3, "(3) 取引その3"],
   ]);
-  const steps = buildCalculationSteps([L("(1)  60,000", paren("(1)")), L("(2)  不課税売上げ", paren("(2)"))], items);
-  assert.deepEqual(steps.map((s) => s.labelRaw), ["(1) 取引その1", "(2) 取引その2"]);
+  const steps = buildCalculationSteps(
+    [L("(1)  60,000", paren("(1)")), L("(2)  不課税売上げ", paren("(2)")), L("(3)  1,000", paren("(3)"))],
+    items,
+  );
+  assert.deepEqual(steps.map((s) => s.labelRaw), ["(1) 取引その1", "(2) 取引その2", "(3) 取引その3"]);
   assert.equal(steps[0].expected.value, 60000);
   assert.equal(steps[1].expected, null);
   assert.equal(steps[1].answerTextRaw, "不課税売上げ");

@@ -43,7 +43,7 @@ function amountFromCalcLine(text) {
 
 function isHeading(line) {
   const k = line.marker?.kind;
-  return k === "number" || k === "roman" || k === "bracket-heading" || k === "paren-number";
+  return k === "number" || k === "roman" || k === "bracket-heading" || k === "paren-number" || k === "sub-question";
 }
 
 /** 見出しの行から、記号の後ろの文（見出し名、または「(1)  60,000」の金額部分）を取り出す。 */
@@ -59,8 +59,18 @@ export function buildCalculationSteps(answerLines, questionItems = new Map()) {
   // 取引ごとの形: 解答が (1)(2)… だけで並んでいる（Ⅰ・１・【 】の見出しが無い）。
   // このとき (n) の行の残り（金額や「不課税売上げ」）は答えなので、段階の名前には出さず、
   // 問題文の (n) の文を名前にする。
+  // さらに、解答の (n) の番号が問題文の (n) とほぼ一致すること（3つ以上、問題文の8割以上）。
+  // 「(1) 課税仕入れ」「(2) 課税貨物」のような解答の小見出しを取引と取り違えないため。
   const headingKinds = new Set(answerLines.filter(isHeading).map((l) => l.marker.kind));
-  const itemStyle = headingKinds.size === 1 && headingKinds.has("paren-number");
+  const answerNos = answerLines
+    .filter((l) => l.marker?.kind === "paren-number")
+    .map((l) => Number(toHalf(l.marker.raw).replace(/\D/g, "")));
+  const itemStyle =
+    headingKinds.size === 1 &&
+    headingKinds.has("paren-number") &&
+    answerNos.length >= 3 &&
+    answerNos.every((n) => questionItems.has(n)) &&
+    answerNos.length >= questionItems.size * 0.8;
 
   const sections = [];
   let cur = null;
@@ -85,12 +95,33 @@ export function buildCalculationSteps(answerLines, questionItems = new Map()) {
     const arrowLines = calcLines.filter((t) => t.includes("→"));
     let expectedRaw = null;
     let how = null;
+    // 結論の行（「(3)＞(4)  ∴  91,260,000」）の金額
+    const conclusion = texts
+      .map((t) => t.match(new RegExp(`∴\\s*(${AMOUNT.source})\\s*$`)))
+      .filter(Boolean)
+      .slice(-1)[0];
     if (box) {
       expectedRaw = box[1].replace(/\s/g, "");
       how = "box";
+    } else if (conclusion) {
+      expectedRaw = conclusion[1].replace(/\s/g, "");
+      how = "conclusion";
     } else if (calcLines.length) {
       expectedRaw = amountFromCalcLine((arrowLines.length ? arrowLines : calcLines).slice(-1)[0]);
       how = expectedRaw ? "calc" : null;
+    }
+    // 計算式も「金額」欄も無く、金額だけの行がある（「(2) 課税貨物」の次の行が「3,120,000」）
+    if (!expectedRaw) {
+      const bare = texts.filter((t) => new RegExp(`^${AMOUNT.source}$`).test(t));
+      if (bare.length) {
+        expectedRaw = bare[bare.length - 1].replace(/\s/g, "");
+        how = "bare";
+      }
+    }
+    // 見出しの記号が無い区切り（解答の先頭の「課税標準額」など）は、先頭の短い文の行を見出しとして扱う
+    let plainHeading = null;
+    if (!s.heading && texts.length && !texts[0].includes("＝") && texts[0].length <= 30 && !new RegExp(`^${AMOUNT.source}$`).test(texts[0])) {
+      plainHeading = texts[0];
     }
     const rest = s.heading ? headingRest(s.heading) : "";
     // 「(1)  60,000」「(13) 76,540,000－3,640,000＝72,900,000」のように見出しの行そのものに答えがある
@@ -111,13 +142,17 @@ export function buildCalculationSteps(answerLines, questionItems = new Map()) {
       expectedRaw = amountFromCalcLine(rest);
       how = expectedRaw ? "calc" : null;
     }
-    const work = s.lines.filter((l) => !FORM_NOISE.test(lineText(l)) && !BOX_AMOUNT.test(lineText(l)));
-    const hasContent = Boolean(expectedRaw) || work.length > 0 || (itemStyle && rest);
+    const work = s.lines.filter(
+      (l, idx) => !(plainHeading && idx === 0) && !FORM_NOISE.test(lineText(l)) && !BOX_AMOUNT.test(lineText(l)),
+    );
+    // 金額が無く、中身が「〔…〕」の小見出しだけの区切りは、子の段階の前置きとして扱う
+    const onlySubHeadings = !expectedRaw && work.length > 0 && work.every((l) => /^〔[^〕]*〕$/.test(lineText(l)));
+    const hasContent = !onlySubHeadings && (Boolean(expectedRaw) || work.length > 0 || (itemStyle && rest));
     // Ⅰ・１・【 】の見出しに入ったら、前の前置きはもう使わない
     if (s.heading && s.heading.marker.kind !== "paren-number") groupLabel = null;
     if (!hasContent) {
       // 子の見出しを持つだけの見出し（Ⅰ…の計算 など）
-      groupLabel = s.heading ? lineText(s.heading) : null;
+      groupLabel = [s.heading ? lineText(s.heading) : plainHeading, ...(onlySubHeadings ? work.map(lineText) : [])].filter(Boolean).join(" ");
       continue;
     }
     const value = parseAmount(expectedRaw);
@@ -129,8 +164,7 @@ export function buildCalculationSteps(answerLines, questionItems = new Map()) {
       labelRaw = labelRaw.slice(0, labelRaw.indexOf("＝")).trim();
       headingIsWork = true;
     }
-    // 見出しの記号が無い解答（例: いきなり「課税標準額」で始まる）は、先頭の短い文の行を名前にする
-    if (!s.heading && texts.length && !texts[0].includes("＝") && texts[0].length <= 30) labelRaw = texts[0];
+    if (plainHeading) labelRaw = plainHeading;
     if (itemStyle && s.heading) {
       const no = Number(toHalf(s.heading.marker.raw).replace(/\D/g, ""));
       labelRaw = questionItems.get(no) ?? s.heading.marker.raw;

@@ -8,7 +8,7 @@
 // 原文の行（text）は書き換えない。復元結果は segments（文字と分数の並び）として別に持つ。
 
 // 分子・分母になりうる文字列: 数字（と小数点・桁区切り）。分母が「７＋３」のような式のこともある。
-const NUMERIC = /^[0-9０-９.．,，]+(?:[＋+][0-9０-９.．,，]+)*$/;
+const NUMERIC = /^(?=.*[0-9０-９①-⑳])[0-9０-９①-⑳.．,，＋+－\-×()（）]+$/; // 数字のほか、「(1)＋(2)＋18,000,000」のような式も分子・分母になる
 const GAP = /[ 　]{2,}/g;
 
 function overlapRatio(a, b) {
@@ -26,7 +26,9 @@ export function findFractionCandidates(lines) {
   lines.forEach((l, i) => {
     if (l.role) return;
     const t = l.text.trim();
-    if (t.length > 0 && t.length <= 12 && NUMERIC.test(t)) numeric.push(i);
+    // 数字だけなら12文字まで、式（＋や(1)を含む）なら40文字まで。行頭記号だけの行（「(1)」）は除く
+    const isExpr = /[＋+()（）×－①-⑳]/.test(t);
+    if (t.length > 0 && t.length <= (isExpr ? 40 : 12) && NUMERIC.test(t) && !/^[（(][0-9０-９]+[）)]$/.test(t)) numeric.push(i);
   });
   numeric.sort((a, b) => lines[a].bbox[1] - lines[b].bbox[1]);
   const used = new Set();
@@ -115,7 +117,15 @@ export function restoreFractions(lines) {
       const [x0, y0, x1, y1] = l.bbox;
       if (cand.centerY < y0 - 1 || cand.centerY > y1 + 1) return;
       if (cand.centerX < x0 || cand.centerX > x1) return;
-      const runs = gapRuns(l).filter((r) => cand.centerX >= r.x0 - 3 && cand.centerX <= r.x1 + 3);
+      const all = gapRuns(l);
+      let runs = all.filter((r) => cand.centerX >= r.x0 - 3 && cand.centerX <= r.x1 + 3);
+      if (runs.length === 0 && all.length > 0) {
+        // 文字幅の見積もりがずれて、どの空白にも入らないことがある。いちばん近い空白が近く（20pt以内）、
+        // 2番目より明らかに近い（10pt以上の差）ときだけ、その空白に入れる。決めきれなければ入れない。
+        const dist = (r) => (cand.centerX < r.x0 ? r.x0 - cand.centerX : cand.centerX - r.x1);
+        const sorted = [...all].sort((a, b) => dist(a) - dist(b));
+        if (dist(sorted[0]) <= 20 && (sorted.length === 1 || dist(sorted[1]) - dist(sorted[0]) >= 10)) runs = [sorted[0]];
+      }
       if (runs.length > 0) hosts.push({ index: i, runs });
     });
     const sourceOf = (i) => out[i].source;
@@ -166,8 +176,14 @@ export function restoreFractions(lines) {
     out[index].segments = segments;
   }
 
-  // 分数の部品の行は、復元できたかどうかに関係なく本文の行としては扱わない
-  // （復元できなかったものは unresolved に分子・分母と出典が残る）。
-  for (const i of fractionLineIdx) out[i].role = "fractionPart";
+  // 復元できた分数の部品の行だけを本文から外す。復元できなかったものは本文の行として残す
+  // （表示から消えないように。unresolved にも分子・分母と出典が残る）。
+  for (const [, list] of placements) {
+    if (new Set(list.map((p) => p.run.start)).size !== list.length) continue;
+    for (const p of list) {
+      out[p.cand.numeratorIndex].role = "fractionPart";
+      out[p.cand.denominatorIndex].role = "fractionPart";
+    }
+  }
   return { lines: out, unresolved };
 }
