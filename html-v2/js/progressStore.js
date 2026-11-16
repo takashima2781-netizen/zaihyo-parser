@@ -8,7 +8,8 @@
 var EVv2 = window.EVv2 || {};
 window.EVv2 = EVv2;
 
-EVv2.STORAGE_KEY = "zaihyo-drill-v2-progress";
+// v2-54: 保存先は科目ごと（js/subject.js）。財表は従来の "zaihyo-drill-v2-progress" のまま。
+EVv2.STORAGE_KEY = EVv2.SUBJECT.storage.progress;
 EVv2.STORAGE_SCHEMA_VERSION = "zaihyo-drill-v2-progress-v1";
 EVv2.MASTERED_STREAK_THRESHOLD = 2;
 
@@ -236,7 +237,7 @@ EVv2.exportProgressData = function () {
   var records = Object.keys(map).map(function (k) {
     return map[k];
   });
-  return JSON.stringify({ version: EVv2.STORAGE_SCHEMA_VERSION, records: records }, null, 2);
+  return JSON.stringify({ version: EVv2.STORAGE_SCHEMA_VERSION, subject: EVv2.SUBJECT.id, records: records }, null, 2);
 };
 
 // 他端末からエクスポートされた学習履歴を読み込み、この端末の学習履歴を丸ごと置き換える
@@ -257,6 +258,8 @@ EVv2.importProgressData = function (jsonText) {
   if (parsed.version !== EVv2.STORAGE_SCHEMA_VERSION) {
     return { ok: false, error: "対応していない形式です（version: " + parsed.version + "）。" };
   }
+  var subjectError = EVv2.checkSubjectLabel(parsed.subject, "この学習履歴ファイル");
+  if (subjectError) return { ok: false, error: subjectError };
   var records = Array.isArray(parsed.records) ? parsed.records : [];
   var map = {};
   var skippedCount = 0;

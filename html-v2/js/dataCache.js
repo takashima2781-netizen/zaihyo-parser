@@ -16,7 +16,8 @@
 var EVv2 = window.EVv2 || {};
 window.EVv2 = EVv2;
 
-EVv2.DATA_CACHE_DB_NAME = "zaihyo-drill-v2-data-cache";
+// v2-54: キャッシュのDBは科目ごと（js/subject.js）。財表は従来の "zaihyo-drill-v2-data-cache" のまま。
+EVv2.DATA_CACHE_DB_NAME = EVv2.SUBJECT.storage.dataCacheDb;
 EVv2.DATA_CACHE_DB_VERSION = 1;
 EVv2.DATA_CACHE_STORE_NAME = "exerciseViewCache";
 EVv2.DATA_CACHE_RECORD_KEY = "current";

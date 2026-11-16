@@ -27,6 +27,10 @@ EVv2.parseExerciseView = function parseExerciseView(jsonText) {
     throw new Error("withheldExercises 配列が見つかりません");
   }
 
+  // v2-54: 今開いている科目の問題データか（meta.subject。無いものは財表のみ受け付ける）。
+  const subjectError = EVv2.checkSubjectLabel(data.meta.subject, "この問題データ");
+  if (subjectError) throw new Error(subjectError);
+
   const schemaWarning =
     data.meta.schemaVersion !== EVv2.EXPECTED_SCHEMA_VERSION
       ? "schemaVersionが想定と異なります（想定: " + EVv2.EXPECTED_SCHEMA_VERSION +

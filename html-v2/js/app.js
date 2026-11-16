@@ -1679,7 +1679,7 @@
     var a = document.createElement("a");
     var ts = new Date().toISOString().replace(/[:.]/g, "-");
     a.href = url;
-    a.download = "exercise_view_full.edited-" + ts + ".json";
+    a.download = (EVv2.SUBJECT.id === "zaihyo" ? "exercise_view_full" : EVv2.SUBJECT.id + "-exercise_view") + ".edited-" + ts + ".json";
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -1722,13 +1722,13 @@
   });
 
   function fetchSampleData(onFail) {
-    fetch("./data/exercise_view_full.json")
+    fetch(EVv2.SUBJECT.dataUrl)
       .then(function (r) {
         if (!r.ok) throw new Error("HTTP " + r.status);
         return r.text();
       })
       .then(function (text) {
-        onLoaded(text, "./data/exercise_view_full.json（自動読込）");
+        onLoaded(text, EVv2.SUBJECT.dataUrl + "（自動読込）");
       })
       .catch(function (e) {
         if (onFail) onFail(e);
@@ -1800,7 +1800,7 @@
     var a = document.createElement("a");
     var ts = new Date().toISOString().replace(/[:.]/g, "-");
     a.href = url;
-    a.download = "zaihyo-drill-progress." + ts + ".json";
+    a.download = EVv2.SUBJECT.filePrefix + "-progress." + ts + ".json";
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -2055,7 +2055,7 @@
   }
 
   // 制限時間の選択は次回も同じものを使えるよう、この端末に覚えておく（失敗しても動作には影響しない）。
-  var TIME_LIMIT_PREF_KEY = "zaihyoDrill.timeLimitSec";
+  var TIME_LIMIT_PREF_KEY = EVv2.SUBJECT.storage.timeLimit; // v2-54: 科目ごと
   function loadTimeLimitPref() {
     try {
       var v = window.localStorage.getItem(TIME_LIMIT_PREF_KEY);
@@ -2312,7 +2312,7 @@
     var a = document.createElement("a");
     var ts = new Date().toISOString().replace(/[:.]/g, "-");
     a.href = url;
-    a.download = "zaihyo-drill-memos." + ts + ".json";
+    a.download = EVv2.SUBJECT.filePrefix + "-memos." + ts + ".json";
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

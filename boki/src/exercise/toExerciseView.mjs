@@ -101,6 +101,9 @@ export function toExerciseView(exercisesData) {
   const document = {
     meta: {
       schemaVersion: SCHEMA_VERSION,
+      // 学習アプリ(../html-v2)の科目の目印(html-v2/js/subject.js)。これが無い問題データは
+      // 財表のものとして扱われ、簿記論として開いた画面では読み込めない。
+      subject: "boki",
       status: "boki-app-generated",
       generatedAt: new Date().toISOString(),
       sourceBookStructureMasterPath: null,

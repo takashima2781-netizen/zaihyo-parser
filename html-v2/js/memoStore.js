@@ -9,7 +9,8 @@
 var EVv2 = window.EVv2 || {};
 window.EVv2 = EVv2;
 
-EVv2.MEMO_STORAGE_KEY = "zaihyo-drill-v2-memos";
+// v2-54: 保存先は科目ごと（js/subject.js）。財表は従来の "zaihyo-drill-v2-memos" のまま。
+EVv2.MEMO_STORAGE_KEY = EVv2.SUBJECT.storage.memos;
 EVv2.MEMO_SCHEMA_VERSION = "zaihyo-drill-v2-memos-v1";
 
 (function () {
@@ -84,7 +85,7 @@ EVv2.MEMO_SCHEMA_VERSION = "zaihyo-drill-v2-memos-v1";
     var memos = Object.keys(map).map(function (k) {
       return map[k];
     });
-    return JSON.stringify({ version: EVv2.MEMO_SCHEMA_VERSION, memos: memos }, null, pretty ? 2 : 0);
+    return JSON.stringify({ version: EVv2.MEMO_SCHEMA_VERSION, subject: EVv2.SUBJECT.id, memos: memos }, null, pretty ? 2 : 0);
   }
 
   function persist() {
@@ -141,7 +142,16 @@ EVv2.MEMO_SCHEMA_VERSION = "zaihyo-drill-v2-memos-v1";
 
   // 学習履歴のインポートと同じく「置き換え」方式。確認ダイアログは呼び出し側で出す。
   EVv2.importMemoData = function (jsonText) {
+    var label;
+    try {
+      label = JSON.parse(jsonText).subject;
+    } catch (e) {
+      label = undefined; // JSONとして不正な場合はparsePayloadがエラーを返す
+    }
     var result = parsePayload(jsonText);
+    if (result.error) return { ok: false, error: result.error };
+    var subjectError = EVv2.checkSubjectLabel(label, "このメモファイル");
+    if (subjectError) return { ok: false, error: subjectError };
     if (result.error) return { ok: false, error: result.error };
     memoMap = result.map;
     persist();

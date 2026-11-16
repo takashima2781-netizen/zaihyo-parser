@@ -32,6 +32,7 @@ test("toExerciseView: journal_ordering/formula_orderingをExercise Viewのorderi
   const { document, diagnostics } = toExerciseView(source);
 
   assert.equal(document.meta.schemaVersion, "exercise-view-schema-v1.8.0");
+  assert.equal(document.meta.subject, "boki");
   assert.equal(document.exercises.length, 1);
   assert.deepEqual(document.withheldExercises, []);
 

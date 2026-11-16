@@ -26,7 +26,7 @@
           <path d="M21 5.5c-2.5-1-5-1-7 .5v13c2-1.5 4.5-1.5 7-.5z"/>
         </svg>
       </span>
-      <h1>財表ドリル</h1>
+      <h1 id="app-title">財表ドリル</h1>
     </div>
     <div class="theme-switch" id="theme-switch">
       <button type="button" data-mode="system">
@@ -58,9 +58,11 @@
   </div>
   <div id="onboarding-info">
     <p class="disclaimer">
-      財務諸表論ポイントチェックの問題を解いて学習履歴を記録します。学習履歴はこの端末のブラウザ内にのみ保存されます。
+      <span id="subject-source-label">財務諸表論ポイントチェック</span>の問題を解いて学習履歴を記録します。学習履歴はこの端末のブラウザ内にのみ保存されます。
       問題データも初回読み込み後はこの端末に保存されるため、次回からは自動的に学習を始められます。
     </p>
+    <!-- v2-54: 科目の切り替え（js/subject.jsが中身を作る。押すと ?subject=… で読み直す） -->
+    <nav class="subject-switch chip-grid fill" aria-label="科目"></nav>
     <p id="data-source-status" class="data-source-status"></p>
   </div>
 </header>
@@ -83,6 +85,7 @@
 
 <!-- v2-50(WISHLIST W-2): トップ → 範囲を選ぶ（進捗つき） → 出題設定 → 出題、の4段構成。 -->
 <section id="home-view">
+  <nav class="subject-switch chip-grid fill" aria-label="科目"></nav>
   <div class="home-grid">
     <button type="button" id="home-study-btn" class="home-tile home-tile-primary">
       <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M7.5 12.5l3 3 6-7"/></svg>
@@ -396,6 +399,7 @@
   </div>
 </div>
 
+<script src="js/subject.js"></script>
 <script src="js/themeStore.js"></script>
 <script src="js/chipGroup.js"></script>
 <script src="js/debugMode.js"></script>

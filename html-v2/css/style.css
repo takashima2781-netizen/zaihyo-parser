@@ -2266,3 +2266,13 @@ header h1 {
 .range-row:disabled .range-row-chevron {
   visibility: hidden;
 }
+
+/* ---- v2-54: 科目の切り替え（ヘッダー内。chip-grid fill の見た目を流用し、中身はリンク） ---- */
+.subject-switch {
+  margin: var(--sp-2) 0;
+}
+.subject-switch a.chip {
+  display: flex;
+  align-items: center;
+  text-decoration: none;
+}
