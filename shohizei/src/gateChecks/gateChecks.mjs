@@ -4,7 +4,8 @@
 // - id が重複していない
 // - id を持つノードは出典（source）を1つ以上持つ
 
-const WATERMARK = /会員番|氏\s*名\s*[：:]/;
+// 透かしは「会員番：」「氏名：」の形（コロン付き）。本文の「会員番号」「氏名又は名称」とは区別する
+const WATERMARK = /会員番\s*[：:]|氏\s*名\s*[：:]/;
 
 function walk(value, visit, pathParts = []) {
   if (Array.isArray(value)) {

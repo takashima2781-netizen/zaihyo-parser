@@ -32,7 +32,7 @@ const BOOK_TITLES = {
 const trainings = Object.keys(BOOK_TITLES).filter((b) => existsSync(out(`${b}.structure.json`))).map((b) => read(`${b}.structure.json`));
 // 理論マスターは、教材構造を作ったテーマを全部使う（テーマ1〜5。npm run theory -- <n> で作る）。
 const theories = [1, 2, 3, 4, 5, 6, 7, 8, 9].filter((n) => existsSync(out(`theory-master-theme${n}.structure.json`))).map((n) => read(`theory-master-theme${n}.structure.json`));
-if (trainings.length + theories.length === 0) {
+if (trainings.length + theories.length + (existsSync(out("theory-doctor.structure.json")) ? 1 : 0) === 0) {
   console.error("教材構造がありません。先に npm run training / npm run theory を実行してください。");
   process.exit(1);
 }
@@ -43,7 +43,8 @@ const sandbox = { window: {} };
 vm.runInNewContext(segmenterCode, sandbox);
 const phraseSplit = sandbox.window.EVv2.autoSplitPhraseText;
 
-const view = buildShohizeiExerciseView({ trainings, theories, bookTitles: BOOK_TITLES, phraseSplit });
+const doctors = ["theory-doctor"].filter((b) => existsSync(out(`${b}.structure.json`))).map((b) => read(`${b}.structure.json`));
+const view = buildShohizeiExerciseView({ trainings, theories, doctors, bookTitles: BOOK_TITLES, phraseSplit });
 const gate = runExerciseViewChecks(view);
 if (!gate.ok) {
   console.error("検査に失敗したため書き出しません:", gate.violations);

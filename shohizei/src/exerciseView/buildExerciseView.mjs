@@ -706,10 +706,57 @@ function orderingFromRecall(card, diag, phraseSplit) {
   return out;
 }
 
-export function buildShohizeiExerciseView({ trainings = [], theories = [], bookTitles = {}, phraseSplit = null, generatedAt = new Date().toISOString() }) {
+// ---- 理論ドクター ----
+// 第1章: 問い（述べなさい）→ 解答、解説は「解答への道」と同じ折りたたみで出す。
+// 第2・3章: 問い → 回答要旨。「参考」の囲み（問いが無い）は、題名を問いに、中身を答えにする。
+
+function doctorExercises(structure, diag) {
+  const bookId = structure.meta.bookId;
+  const exercises = [];
+  const provenance = { generator: "shohizei-exercise-view-0.1", sourceKind: "shohizei_doctor_structure", bookId };
+  const CHAPTER_TITLES = { 1: "テーマ別理論問題", 2: "国税庁質疑応答事例", 3: "軽減税率制度に関するＱ＆Ａ" };
+  for (const p of structure.children) {
+    const ch = p.parsed.chapter;
+    const themeTitle =
+      ch === 1 ? `理論ドクター テーマ${p.parsed.themeNo} ${p.parsed.themeTitleRaw}` : `理論ドクター 第${ch}章 ${CHAPTER_TITLES[ch] ?? ""}`.trim();
+    const themeNode = structureNode(ch === 1 ? `${bookId}:theme-${p.parsed.themeNo}` : `${bookId}:ch${ch}`, themeTitle);
+    const sectionNode = structureNode(`${themeNode.structureNodeId}:${p.parsed.subThemeRaw}`, p.parsed.subThemeRaw === "unknown" ? "（小見出しなし）" : p.parsed.subThemeRaw);
+    const titleText = [p.parsed.labelRaw, p.parsed.noRaw ? `${p.parsed.noRaw}．` : null, p.parsed.titleRaw].filter(Boolean).join(" ");
+    const topicNode = structureNode(p.stableId, titleText);
+    const isNote = p.parsed.labelRaw === "参考" && p.answer.length === 0;
+    const promptLines = isNote ? [] : p.question;
+    const answerLines = isNote ? p.question : p.answer;
+    if (answerLines.length === 0) {
+      diag.push({ reason: "doctor-without-answer", problem: p.stableId });
+      continue;
+    }
+    setRightEdgesFromLines([...p.question, ...p.answer, ...p.explanation]);
+    const ex = baseExercise({
+      id: `${p.stableId}:recall`,
+      type: "recall_text",
+      stableId: p.stableId,
+      structure: { theme: themeNode, section: sectionNode, topic: topicNode },
+      structurePath: [themeNode, sectionNode, topicNode].map((n) => n.structureNodeId),
+      prompt: rawSpan([titleText, ...promptLines.map((l) => l.text.trim())].join("\n"), p.source[0], p.id),
+      instructionRaw: null,
+      provenance,
+    });
+    ex.promptRich = promptLines.length ? richLines(promptLines) : null;
+    ex.answerRich = richLines(answerLines);
+    ex.expectedAnswer = [{ answerText: rawSpan(answerLines.map((l) => l.text.trim()).join("\n"), answerLines[0].source, p.id) }];
+    ex.guidanceRich = p.explanation.length ? richLines(p.explanation) : null;
+    ex.guidanceLabel = "解説";
+    ex.recallMeta = { doctorLabel: p.parsed.labelRaw, chapter: ch };
+    exercises.push(ex);
+  }
+  return exercises;
+}
+
+export function buildShohizeiExerciseView({ trainings = [], theories = [], doctors = [], bookTitles = {}, phraseSplit = null, generatedAt = new Date().toISOString() }) {
   const diagnostics = [];
   const base = [
     ...theories.flatMap((t) => theoryExercises(t, diagnostics)),
+    ...doctors.flatMap((d) => doctorExercises(d, diagnostics)),
     ...trainings.flatMap((t) => trainingExercises(t, diagnostics, bookTitles)),
   ];
   // 並べ替えは、元の暗記カードのすぐ後ろに置く（範囲の中で教材の順に並ぶように）。

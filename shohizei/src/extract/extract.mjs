@@ -23,7 +23,8 @@ export function resolvePythonBin() {
 
 // 透かしの行: 「会員番」「氏名：」を含む行。透かしは1つのかたまり（block）にまとまって出るので、
 // その行を含む block ごと取り除く（番号だけが別の行に出ても残らないようにする）。
-const WATERMARK_PATTERN = /会員番|氏\s*名\s*[：:]/;
+// 透かしは「会員番：」「氏名：」の形（コロン付き）。本文の「会員番号」「氏名又は名称」とは区別する
+const WATERMARK_PATTERN = /会員番\s*[：:]|氏\s*名\s*[：:]/;
 
 export function lineText(line) {
   return line.spans.map((s) => s.text).join("");
