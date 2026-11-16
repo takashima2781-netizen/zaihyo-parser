@@ -66,6 +66,30 @@ export const JUDGEMENT_PAIRS = [
   ["個別対応方式", "一括比例配分方式"],
 ];
 
+// 日付の答え（「令和８年４月１日から令和９年３月31日まで」「令和６年４月１日～令和７年３月31日」「令和８年４月１日」）
+const DATE = "令和\\s*([0-9０-９]+|元)\\s*年\\s*([0-9０-９]+)\\s*月\\s*([0-9０-９]+)\\s*日";
+const DATE_RANGE = new RegExp(`${DATE}\\s*(?:から|～|〜|－|-)\\s*${DATE}\\s*(?:まで)?`);
+const DATE_ONE = new RegExp(DATE);
+const num = (s) => (s === "元" ? 1 : Number(toHalf(s)));
+
+/**
+ * 1行の日付の答えを読む。行頭の「第33期：」「〔問１〕」などは名前（prefix）にする。「※」の行（途中の計算）は読まない。
+ * 戻り値: { prefix, raw, kind: "dateRange" | "date", values: [年,月,日(,年,月,日)] } | null
+ */
+export function dateAnswerFrom(text) {
+  const t = text.trim();
+  if (/^※/.test(t)) return null;
+  const r = t.match(DATE_RANGE);
+  const one = r ? null : t.match(DATE_ONE);
+  const m = r ?? one;
+  if (!m) return null;
+  const prefix = t.slice(0, m.index).replace(/[：:\s]+$/, "").trim();
+  const after = t.slice(m.index + m[0].length).trim();
+  if (after && !/^[。、）)]?$/.test(after)) return null; // 日付の後に文が続くもの（説明の中の日付）は答えにしない
+  const values = (r ? [r[1], r[2], r[3], r[4], r[5], r[6]] : [one[1], one[2], one[3]]).map(num);
+  return { prefix, raw: m[0].replace(/\s+/g, ""), kind: r ? "dateRange" : "date", values };
+}
+
 /** 行の並びから、最後の「∴ 結論」を読む。対の言い方に当てはまれば選択肢つきで返す。 */
 export function judgementFrom(texts) {
   for (let i = texts.length - 1; i >= 0; i--) {
@@ -182,6 +206,26 @@ export function buildCalculationSteps(answerLines, questionItems = new Map()) {
       groupLabel = [s.heading ? lineText(s.heading) : plainHeading, ...(onlySubHeadings ? work.map(lineText) : [])].filter(Boolean).join(" ");
       continue;
     }
+    // 金額が無い区切りでは、日付の答えを段階にする（1行に1つ。複数あれば行ごとに段階を分ける）
+    if (!expectedRaw) {
+      const headingDate = s.heading ? dateAnswerFrom(lineText(s.heading).slice(s.heading.marker.raw.length)) : null;
+      const dates = [...(headingDate ? [headingDate] : []), ...s.lines.map((l) => dateAnswerFrom(lineText(l))).filter(Boolean)];
+      if (dates.length > 0) {
+        const baseLabel = s.heading ? s.heading.marker.raw + (headingDate ? "" : " " + headingRest(s.heading)) : plainHeading;
+        for (const d of dates) {
+          steps.push({
+            groupLabel: s.heading?.marker.kind === "paren-number" ? groupLabel : null,
+            headingLine: s.heading,
+            labelRaw: [baseLabel, d.prefix].filter(Boolean).join(" ").trim() || "日付",
+            expected: { raw: d.raw, kind: d.kind, values: d.values, how: "date" },
+            judgement: null,
+            answerTextRaw: null,
+            workLines: s.lines.filter((l) => !dateAnswerFrom(lineText(l))),
+          });
+        }
+        continue;
+      }
+    }
     const value = parseAmount(expectedRaw);
     // 判定の結論（見出しの行に入っていることもある）
     const judgement = judgementFrom([...(s.heading ? [lineText(s.heading)] : []), ...texts]);
@@ -219,6 +263,16 @@ export function buildCalculationSteps(answerLines, questionItems = new Map()) {
       // 取引ごとの形では、見出しの行（答えと計算式）も解説として見せる
       workLines: (itemStyle || headingIsWork) && s.heading ? [s.heading, ...work] : work,
     });
+  }
+  // 同じ名前の段階が続く（「〔問２〕」の期間が3つ など）ときは、順番が分かるよう「（1つ目）」を付ける
+  const counts = new Map();
+  for (const st of steps) counts.set(st.labelRaw, (counts.get(st.labelRaw) ?? 0) + 1);
+  const seen = new Map();
+  for (const st of steps) {
+    if ((counts.get(st.labelRaw) ?? 0) < 2) continue;
+    const k = (seen.get(st.labelRaw) ?? 0) + 1;
+    seen.set(st.labelRaw, k);
+    st.labelRaw = `${st.labelRaw}（${k}つ目）`;
   }
   return steps;
 }

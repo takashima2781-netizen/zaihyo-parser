@@ -2429,3 +2429,27 @@ details.rich-block[open] > summary.rich-block-label {
 .calc-judge-btn {
   min-height: 36px;
 }
+
+/* v2-60: 日付の入力（令和 □年 □月 □日） */
+.calc-date-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.calc-date-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  font-size: .85rem;
+}
+.calc-date-input {
+  width: 3em;
+  font-size: 16px;
+  padding: 6px 4px;
+  text-align: center;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface-card);
+  color: var(--text);
+}

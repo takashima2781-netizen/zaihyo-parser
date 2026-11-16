@@ -104,3 +104,19 @@ test("判定: 「∴ 納税義務あり」は対の選択肢つき、決まっ�
   assert.equal(steps[1].labelRaw, "(2)", "名前に結論も、金額の入った式も入れない");
   assert.equal(steps[1].judgement.correct, "納税義務あり");
 });
+
+test("日付の答え: 期間・1日・名前つき（第33期：）を読み、「※」の途中計算は読まない。同じ名前には順番を付ける", async () => {
+  const { dateAnswerFrom } = await import("../src/exerciseView/calculation.mjs");
+  assert.deepEqual(dateAnswerFrom("第33期：令和６年４月１日～令和７年３月31日").values, [6, 4, 1, 7, 3, 31]);
+  assert.equal(dateAnswerFrom("第33期：令和６年４月１日～令和７年３月31日").prefix, "第33期");
+  assert.equal(dateAnswerFrom("令和元年５月１日").kind, "date");
+  assert.equal(dateAnswerFrom("※令和６年10月28日～令和８年９月25日"), null);
+  assert.equal(dateAnswerFrom("令和６年４月１日以後に開始する課税期間について述べる"), null, "日付の後に文が続くものは答えにしない");
+  const steps = buildCalculationSteps([
+    L("〔問１〕", { kind: "sub-question", raw: "〔問１〕" }),
+    L("令和８年４月１日から令和８年９月30日まで"),
+    L("令和８年10月１日から令和９年３月31日まで"),
+  ]);
+  assert.deepEqual(steps.map((s) => s.labelRaw), ["〔問１〕（1つ目）", "〔問１〕（2つ目）"]);
+  assert.deepEqual(steps[1].expected.values, [8, 10, 1, 9, 3, 31]);
+});

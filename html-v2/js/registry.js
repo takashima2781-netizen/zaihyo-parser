@@ -952,7 +952,33 @@ var calculationStepsHandler = {
       row.appendChild(label);
 
       var input = null;
-      if (st.expected) {
+      var dateInputs = null;
+      if (st.expected && st.expected.kind) {
+        // v2-60: 日付の答え（令和 □年 □月 □日 から 令和 □年 □月 □日 まで）
+        dateInputs = [];
+        var dateRow = document.createElement("div");
+        dateRow.className = "calc-date-row";
+        var parts = st.expected.kind === "dateRange" ? 2 : 1;
+        for (var k = 0; k < parts; k++) {
+          var grp = document.createElement("span");
+          grp.className = "calc-date-group";
+          grp.appendChild(document.createTextNode("令和"));
+          ["年", "月", "日"].forEach(function (unitText) {
+            var di = document.createElement("input");
+            di.type = "text";
+            di.inputMode = "numeric";
+            di.autocomplete = "off";
+            di.className = "calc-date-input";
+            di.setAttribute("aria-label", (st.labelRaw || "日付") + "の" + unitText);
+            dateInputs.push(di);
+            grp.appendChild(di);
+            grp.appendChild(document.createTextNode(unitText));
+          });
+          if (parts === 2) grp.appendChild(document.createTextNode(k === 0 ? "から" : "まで"));
+          dateRow.appendChild(grp);
+        }
+        row.appendChild(dateRow);
+      } else if (st.expected) {
         input = document.createElement("input");
         input.type = "text";
         input.inputMode = "decimal";
@@ -1003,7 +1029,7 @@ var calculationStepsHandler = {
       result.hidden = true;
       row.appendChild(result);
       list.appendChild(row);
-      rows.push({ step: st, input: input, result: result, row: row, judge: judgeState });
+      rows.push({ step: st, input: input, dateInputs: dateInputs, result: result, row: row, judge: judgeState });
     });
     zones.answer.appendChild(list);
 
@@ -1032,7 +1058,22 @@ var calculationStepsHandler = {
         var msgs = [];
         var stepOk = true;
         var stepGraded = false;
-        if (st.expected) {
+        if (st.expected && st.expected.kind) {
+          stepGraded = true;
+          var given = r.dateInputs.map(function (di) {
+            di.disabled = true;
+            var t = String(di.value).replace(/[０-９]/g, function (c) {
+              return String.fromCharCode(c.charCodeAt(0) - 0xfee0);
+            }).trim();
+            return t === "元" ? 1 : /^\d+$/.test(t) ? Number(t) : null;
+          });
+          var dOk = given.length === st.expected.values.length && given.every(function (g, gi) {
+            return g === st.expected.values[gi];
+          });
+          if (!dOk) stepOk = false;
+          msgs.push(dOk ? "○ 日付 正解" : "× 日付の正解は " + st.expected.raw);
+          yourAnswers.push((st.labelRaw || "") + " " + given.join("/"));
+        } else if (st.expected) {
           stepGraded = true;
           var v = EVv2.parseAmountInput(r.input.value);
           var ok = v !== null && v === st.expected.value;

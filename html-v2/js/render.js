@@ -260,7 +260,7 @@ function fillRevealBox(revealBox, ex, handler, isCorrect) {
   }
   // v2-55: 教材の「解答への道」など、問題全体に付く解説（小さい字・分数を含む行の並び）。
   if (ex.guidanceRich && ex.guidanceRich.length) {
-    revealBox.appendChild(EVv2.createRichBlock(ex.guidanceRich, "解答への道", true));
+    revealBox.appendChild(EVv2.createRichBlock(ex.guidanceRich, ex.guidanceLabel || "解答への道", true));
   }
   var sourceLine = EVv2.createSourceLine(handler.getSourceRefs(ex));
   if (sourceLine) revealBox.appendChild(sourceLine);
