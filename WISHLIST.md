@@ -70,7 +70,8 @@
 - 実施: boki-app を `boki/` へ履歴ごと取り込み（boki のテストは取り込み前と同じ 253件中252件成功）。最上位 CLAUDE.md に構成表を追加。簿記論の残課題をこの WISHLIST の「簿記論から引き継いだ項目」へ。Google Drive の古い Zaihyo Parser から docs/・input/・output/・work/・reference/current_csv を Mac の本体へコピー（いずれも git 対象外）
 - 済み: boki の Python 環境（`~/.venvs/study-drill`、Python 3.12・PyMuPDF 1.28.2。boki のテスト 253件すべて成功）、簿記論の教材データを本体の `boki/` へ、`~/Documents/GitHub/boki-app` の複製はゴミ箱へ
 - 学習アプリの3科目対応（v2-54、ブランチ `claude/subject-switch`）: `html-v2/js/subject.js` で科目を決め（URL `?subject=zaihyo|boki|shohizei` → 前回の科目 → 財表）、トップと初回画面に「財表／簿記論／消費税」の切り替え。科目ごとに問題データ（`data/exercise_view_full.json`／`data/boki/exercise_view.json`／`data/shohizei/exercise_view.json`）・データのキャッシュ・学習履歴・メモ・制限時間の記憶・書き出しファイル名を分ける。財表の保存先の名前は従来のまま。問題データと書き出しファイルに科目の目印（`meta.subject`／`subject`）を付け、違う科目のものは読み込まない（目印の無い古いものは財表だけが受け付ける）。boki の書き出しにも `meta.subject: "boki"` を追加
-- 残り: 消費税の変換部分。Google Drive の古いコピー（`Claude code/boki-app`・`Claude code/Zaihyo Parser`）は、GitHub へ送れるようになるまでバックアップとして残す
+- 消費税のパーサー（第0層・第1層、ブランチ `claude/shohizei-parser`）: `shohizei/`。トレーニング基礎M No.1 は35問すべてで問題・解答をつなげ、分数53か所を位置で復元（戻せなかった分数0）。問い方の候補は計算18・〇×5・3区分以上の振り分け5・選ぶ3・条文2・空欄1・不明1。理論マスター テーマ1 は理論19・項目73・条文231・補足（参考・プラスα）6。小さい文字を条文番号43・カッコ書き184・不明26に区分、点線枠の中の行132。重要度が読めない項目3。テスト9件
+- 残り: 消費税の Exercise View（第2層）と、アプリに足りない問題形式（数値入力・計算過程・暗記カード・分数の表示・3区分以上の振り分け）。Google Drive の古いコピー（`Claude code/boki-app`・`Claude code/Zaihyo Parser`）は、GitHub へ送れるようになるまでバックアップとして残す
 - 全体の整理メモ: `work/overview-2026-11-16.md`（git 対象外）
 
 ---

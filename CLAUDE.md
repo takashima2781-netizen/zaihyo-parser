@@ -10,12 +10,13 @@
 | `html-v2/` | 学習アプリ（3科目で共用。GitHub Pages で公開） | この下の変更だけが公開サイトへ出る |
 | `src/` | 財務諸表論のパーサー（v1.0.0 で凍結） | このファイルの以下の原則 |
 | `boki/` | 簿記論の変換エンジン（旧 boki-app リポジトリを履歴ごと取り込んだもの） | `boki/CLAUDE.md` |
-| `shohizei/` | 消費税法の変換エンジン（未着手。設計は WISHLIST W-5） | 作るときに `shohizei/CLAUDE.md` を置く |
+| `shohizei/` | 消費税法の変換エンジン（教材構造まで。設計は WISHLIST W-5） | `shohizei/CLAUDE.md` |
 
 - 科目のフォルダの中では、その科目の CLAUDE.md を優先する。ここより下の原則は、財務諸表論（`src/`）と、
   特に断りがなければリポジトリ全体に共通する。
 - 教材は有償。PDF、および教材から抽出・生成したデータは、どの科目でも git に入れない
-  （`/input/`・`/output/`・`/work/`・`/docs/`、`boki/input/`・`boki/output/` など）。
+  （`/input/`・`/output/`・`/work/`・`/docs/`、`boki/input/`・`boki/output/`、`shohizei/input/`・`shohizei/output/` など）。
+  科目のフォルダを足すときは、そのフォルダにも `.gitignore` を置く（最上位の `/input/` 等はそのフォルダの中には効かない）。
 - やりたいことは科目に関係なく `WISHLIST.md` 1つに書く。
 
 ## Mission

@@ -1,0 +1,12 @@
+{
+  "name": "shohizei",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "消費税法の教材PDFを教材構造（中間データ）へ解析する",
+  "scripts": {
+    "test": "node --test",
+    "training": "node src/cli/run-training.mjs",
+    "theory": "node src/cli/run-theory.mjs"
+  }
+}
