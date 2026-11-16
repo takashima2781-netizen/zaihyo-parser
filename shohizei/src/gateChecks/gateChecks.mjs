@@ -17,6 +17,22 @@ function walk(value, visit, pathParts = []) {
   }
 }
 
+/** 問題データ（Exercise View）用の検査: 透かしが無いことと、exerciseId・学習記録のキーが重複しないこと。 */
+export function runExerciseViewChecks(view) {
+  const violations = [];
+  if (WATERMARK.test(JSON.stringify(view))) violations.push("透かし（会員番号・氏名）の文字が出力に残っています");
+  const ids = new Set();
+  const keys = new Set();
+  for (const e of [...view.exercises, ...view.withheldExercises]) {
+    if (ids.has(e.exerciseId)) violations.push(`exerciseId が重複しています: ${e.exerciseId}`);
+    ids.add(e.exerciseId);
+    const key = JSON.stringify([e.stableItemIds?.[0], e.exerciseType]);
+    if (keys.has(key)) violations.push(`学習記録のキーが重複しています: ${key}`);
+    keys.add(key);
+  }
+  return { ok: violations.length === 0, violations };
+}
+
 export function runGateChecks(structure) {
   const violations = [];
   const text = JSON.stringify(structure);

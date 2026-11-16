@@ -118,8 +118,9 @@ test("暗記カード: (1) が1行だけの列挙なら、見出しごとに1枚
   const view = buildShohizeiExerciseView({
     theories: [theory([clause("(1)", [L("(1) 項目A", 1, 2)]), clause("(2)", [L("(2) 項目B", 1, 3)])])],
   });
-  assert.equal(view.exercises.length, 1);
-  assert.equal(view.exercises[0].answerRich.length, 2);
+  const cards = view.exercises.filter((e) => e.exerciseType === "recall_text");
+  assert.equal(cards.length, 1);
+  assert.equal(cards[0].answerRich.length, 2);
 });
 
 test("暗記カード: 右端まで届いた行の次だけを折り返しの続きにする", () => {
@@ -131,4 +132,42 @@ test("暗記カード: 右端まで届いた行の次だけを折り返しの続
     ],
   });
   assert.deepEqual(view.exercises[0].answerRich.map((l) => l.continues), [false, true, false, false]);
+});
+
+test("並べ替え: 暗記カードの本文を「、」「。」でピースにし、つなげると本文に戻る", () => {
+  const view = buildShohizeiExerciseView({
+    theories: [theory([clause("(1)", [L("(1) 小見出し", 1, 2, { x1: 120 }), L("Aは、Bにより行う。ただし、Cとする。", 1, 3, { x1: 200 })])])],
+  });
+  const ord = view.exercises.filter((e) => e.exerciseType === "ordering");
+  assert.equal(ord.length, 1);
+  assert.deepEqual(ord[0].orderingItems.map((i) => i.text), ["Aは、", "Bにより行う。", "ただし、", "Cとする。"]);
+  assert.deepEqual(ord[0].correctOrder, ["item-0", "item-1", "item-2", "item-3"]);
+  assert.equal(ord[0].assembledFromSource, true);
+  assert.equal(ord[0].sourceExerciseId, view.exercises[0].exerciseId, "元の暗記カードのすぐ後ろに置く");
+});
+
+test("並べ替え: 区切りが無い本文は文節で分け、それでも2つに満たなければ作らない", () => {
+  const split = (t) => (t.includes("と") ? [t.slice(0, t.indexOf("と")), t.slice(t.indexOf("と"))] : [t]);
+  const one = buildShohizeiExerciseView({
+    phraseSplit: split,
+    theories: [theory([clause("(1)", [L("(1) 見出し", 1, 2, { x1: 120 }), L("AとB", 1, 3, { x1: 100 })])])],
+  });
+  assert.deepEqual(one.exercises.find((e) => e.exerciseType === "ordering").orderingItems.map((i) => i.text), ["A", "とB"]);
+  const none = buildShohizeiExerciseView({
+    phraseSplit: split,
+    theories: [theory([clause("(1)", [L("(1) 見出し", 1, 2, { x1: 120 }), L("AB", 1, 3, { x1: 100 })])])],
+  });
+  assert.equal(none.exercises.filter((e) => e.exerciseType === "ordering").length, 0);
+  assert.ok(none.diagnostics.some((d) => d.reason === "ordering-skipped-too-few-pieces"));
+});
+
+test("並べ替え: ピースが12個を超えるカードは段落の切れ目で分ける", () => {
+  const para = (i) => L(`${"x、".repeat(6)}終わり${i}。`, 1, 3 + i, { x1: 100 }); // 1段落7ピース
+  const view = buildShohizeiExerciseView({
+    theories: [theory([clause("(1)", [L("(1) 見出し", 1, 2, { x1: 120 }), para(0), para(1), para(2)])])],
+  });
+  const ord = view.exercises.filter((e) => e.exerciseType === "ordering");
+  assert.equal(ord.length, 3);
+  assert.ok(ord.every((e) => e.orderingItems.length <= 12));
+  assert.match(ord[0].prompt.text, /（1／3）$/);
 });

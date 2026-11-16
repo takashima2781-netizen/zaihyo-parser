@@ -321,12 +321,118 @@ function theoryExercises(structure, diag) {
   return exercises;
 }
 
-export function buildShohizeiExerciseView({ trainings = [], theories = [], bookTitles = {}, generatedAt = new Date().toISOString() }) {
+// ---- 暗記カード → 並べ替え（ordering） ----
+//
+// ユーザーの選択（2026-11-16）: 暗記カードを並べ替え問題としても出す。
+//   - ピースの区切り:「、」「。」の直後。区切りが無く2ピースに満たない本文だけ、文節で分ける
+//     （財表の「並び替え問題に変換」と同じ html-v2/js/phraseSegmenter.js の autoSplitPhraseText）
+//   - ピースが MAX_PIECES を超えるカードは、段落（①・イ などの行頭記号の切れ目）で2問以上に分ける
+// ピースはつなげると必ず本文に戻る（文字を足したり消したりしない）。ただし表示と同じく、PDFの
+// 折り返しの直前の空白だけは詰める。分数を含むカードは文字列にできないので作らない。
+
+const MAX_PIECES = 12;
+
+function paragraphsOf(card) {
+  const paras = [];
+  for (const line of card.answerRich) {
+    if (line.segments.some((s) => s.kind === "fraction")) return null;
+    const text = line.segments.map((s) => s.text ?? "").join("");
+    if (line.continues && paras.length) {
+      const last = paras[paras.length - 1];
+      last.text = last.text.replace(/[ 　]+$/, "") + text;
+    } else paras.push({ text });
+  }
+  return paras.map((p) => ({ text: p.text.replace(/^[ 　]+|[ 　]+$/g, "") })).filter((p) => p.text);
+}
+
+function splitByPunctuation(text) {
+  return text.split(/(?<=[、。])/).filter((t) => t.trim() !== "");
+}
+
+function piecesOf(paragraphs, phraseSplit) {
+  // 段落の終わりもピースの切れ目にする（段落をまたいでピースをつなげない）
+  let pieces = paragraphs.flatMap((p) => splitByPunctuation(p.text).map((t) => ({ text: t, para: p })));
+  let method = "punctuation";
+  if (pieces.length < 2 && phraseSplit) {
+    pieces = paragraphs.flatMap((p) => phraseSplit(p.text).map((t) => ({ text: t, para: p })));
+    method = "phrase";
+  }
+  return { pieces, method };
+}
+
+/** 段落の並びを、ピースの数が MAX_PIECES 以下になるように順番どおり束ねる（1段落だけで超えるものはそのまま1束）。 */
+function groupParagraphs(paragraphs, countOf) {
+  const groups = [];
+  let cur = [];
+  let n = 0;
+  for (const p of paragraphs) {
+    const c = countOf(p);
+    if (cur.length && n + c > MAX_PIECES) {
+      groups.push(cur);
+      cur = [];
+      n = 0;
+    }
+    cur.push(p);
+    n += c;
+  }
+  if (cur.length) groups.push(cur);
+  return groups;
+}
+
+function orderingFromRecall(card, diag, phraseSplit) {
+  const paragraphs = paragraphsOf(card);
+  if (!paragraphs) {
+    diag.push({ reason: "ordering-skipped-fraction", card: card.exerciseId });
+    return [];
+  }
+  const total = piecesOf(paragraphs, phraseSplit);
+  if (total.pieces.length < 2) {
+    diag.push({ reason: "ordering-skipped-too-few-pieces", card: card.exerciseId });
+    return [];
+  }
+  const groups =
+    total.pieces.length > MAX_PIECES && total.method === "punctuation"
+      ? groupParagraphs(paragraphs, (p) => splitByPunctuation(p.text).length)
+      : [paragraphs];
+  const out = [];
+  groups.forEach((group, gi) => {
+    const { pieces, method } = piecesOf(group, phraseSplit);
+    if (pieces.length < 2) {
+      diag.push({ reason: "ordering-part-too-few-pieces", card: card.exerciseId, part: gi + 1 });
+      return;
+    }
+    const partLabel = groups.length > 1 ? `（${gi + 1}／${groups.length}）` : "";
+    const stableId = `${card.stableItemIds[0]}:order-${gi + 1}`;
+    const items = pieces.map((p, i) => ({ id: `item-${i}`, label: String(i + 1), text: p.text }));
+    const ex = baseExercise({
+      id: `${stableId}:ordering`,
+      type: "ordering",
+      stableId,
+      structure: card.structure,
+      structurePath: card.structurePath,
+      prompt: { ...card.prompt, text: card.prompt.text + partLabel },
+      instructionRaw: { text: "本文になるように、下のピースを正しい順番に並べ替えなさい。", source: null, bsmNodeId: null, inherited: false },
+      provenance: { ...card.provenance, derivedFrom: card.exerciseId },
+    });
+    ex.orderingItems = items;
+    ex.correctOrder = items.map((it) => it.id);
+    ex.assembledFromSource = true;
+    ex.sourceExerciseId = card.exerciseId;
+    ex.orderingMeta = { pieceSplit: method, part: gi + 1, parts: groups.length };
+    out.push(ex);
+    if (pieces.length > MAX_PIECES) diag.push({ reason: "ordering-part-over-max-pieces", card: card.exerciseId, part: gi + 1, pieces: pieces.length });
+  });
+  return out;
+}
+
+export function buildShohizeiExerciseView({ trainings = [], theories = [], bookTitles = {}, phraseSplit = null, generatedAt = new Date().toISOString() }) {
   const diagnostics = [];
-  const exercises = [
+  const base = [
     ...theories.flatMap((t) => theoryExercises(t, diagnostics)),
     ...trainings.flatMap((t) => trainingExercises(t, diagnostics, bookTitles)),
   ];
+  // 並べ替えは、元の暗記カードのすぐ後ろに置く（範囲の中で教材の順に並ぶように）。
+  const exercises = base.flatMap((ex) => (ex.exerciseType === "recall_text" ? [ex, ...orderingFromRecall(ex, diagnostics, phraseSplit)] : [ex]));
   return {
     meta: {
       schemaVersion: SCHEMA_VERSION,
@@ -335,7 +441,7 @@ export function buildShohizeiExerciseView({ trainings = [], theories = [], bookT
       generatedAt,
       sourceBookStructureMasterPath: null,
       targetCheckBlockIds: [],
-      generationRules: ["shohizei_true_false_v0.1", "shohizei_recall_text_v0.1"],
+      generationRules: ["shohizei_true_false_v0.1", "shohizei_recall_text_v0.1", "shohizei_recall_to_ordering_v0.1"],
       exerciseCount: exercises.length,
       withheldExerciseCount: 0,
     },

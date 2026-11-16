@@ -7,9 +7,10 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import vm from "node:vm";
 import { fileURLToPath } from "node:url";
 import { buildShohizeiExerciseView } from "../exerciseView/buildExerciseView.mjs";
-import { runGateChecks } from "../gateChecks/gateChecks.mjs";
+import { runExerciseViewChecks } from "../gateChecks/gateChecks.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const out = (name) => path.join(root, "output", name);
@@ -25,12 +26,16 @@ if (trainings.length + theories.length === 0) {
   process.exit(1);
 }
 
-const view = buildShohizeiExerciseView({ trainings, theories, bookTitles: BOOK_TITLES });
-const gate = runGateChecks(view);
-const ids = new Set();
-const dupKeys = view.exercises.filter((e) => (ids.has(e.stableItemIds[0] + e.exerciseType) ? true : (ids.add(e.stableItemIds[0] + e.exerciseType), false)));
-if (!gate.ok || dupKeys.length) {
-  console.error("検査に失敗したため書き出しません:", gate.violations, dupKeys.map((e) => e.exerciseId));
+// 文節の区切りは、学習アプリと同じもの（html-v2/js/phraseSegmenter.js）を使う。
+const segmenterCode = readFileSync(path.join(root, "..", "html-v2", "js", "phraseSegmenter.js"), "utf8");
+const sandbox = { window: {} };
+vm.runInNewContext(segmenterCode, sandbox);
+const phraseSplit = sandbox.window.EVv2.autoSplitPhraseText;
+
+const view = buildShohizeiExerciseView({ trainings, theories, bookTitles: BOOK_TITLES, phraseSplit });
+const gate = runExerciseViewChecks(view);
+if (!gate.ok) {
+  console.error("検査に失敗したため書き出しません:", gate.violations);
   process.exit(1);
 }
 const text = JSON.stringify(view);
