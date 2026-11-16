@@ -325,7 +325,37 @@ function theoryExercises(structure, diag) {
       const sectionNode = structureNode(theory.stableId, theoryTitle);
       theory.children.forEach((heading, hi) => {
         if (heading.kind === "supplement") {
-          diag.push({ reason: "supplement-not-converted", theory: theory.parsed.code });
+          // 参考・プラスα も暗記カードにする（ユーザー「全部進めていきましょう」、2026-11-17）。
+          // 題名が「⇒…」で始まるものは中身の続きなので答えに入れ、問いは「理論 › 参考」だけにする。
+          // 「重要度○」だけの行は答えに入れない。
+          const sup = heading;
+          const titleIsContent = sup.parsed.titleRaw && /^⇒/.test(sup.parsed.titleRaw);
+          const supLines = (sup.lines ?? []).filter((l) => !/^重要度\s*[◎○〇△]\s*$/.test(l.text.trim()));
+          const answerRich = [
+            ...(titleIsContent ? [richLine({ text: sup.parsed.titleRaw, source: sup.source[0] })] : []),
+            ...collectLines({ lines: supLines, children: sup.children }, 0, []),
+          ];
+          if (answerRich.length === 0) {
+            diag.push({ reason: "supplement-without-body", theory: theory.parsed.code });
+            return;
+          }
+          const label = `${sup.parsed.labelRaw}${sup.parsed.titleRaw && !titleIsContent ? " " + sup.parsed.titleRaw : ""}`;
+          const topicNode = structureNode(`${theory.stableId}:supplement-${hi + 1}`, sup.parsed.labelRaw);
+          const stableId = `${theory.stableId}:supplement-${hi + 1}`;
+          const ex = baseExercise({
+            id: `${stableId}:recall`,
+            type: "recall_text",
+            stableId,
+            structure: { theme: themeNode, section: sectionNode, topic: topicNode },
+            structurePath: [themeNode, sectionNode, topicNode].map((n) => n.structureNodeId),
+            prompt: rawSpan([theoryTitle, label].join("\n"), sup.source[0], sup.id),
+            instructionRaw: null,
+            provenance,
+          });
+          ex.expectedAnswer = [{ answerText: rawSpan(answerRich.map((l) => l.segments.map((g) => g.text ?? "").join("")).join("\n"), null, sup.id) }];
+          ex.answerRich = answerRich;
+          ex.recallMeta = { rankRaw: theory.parsed.rankRaw, importanceRaw: null, supplement: sup.parsed.labelRaw };
+          exercises.push(ex);
           return;
         }
         if (heading.kind !== "heading") return;
