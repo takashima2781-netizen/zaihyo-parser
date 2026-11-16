@@ -113,6 +113,60 @@ EVv2.createResultBanner = function (isCorrect) {
 // v2-9: 「正しい解答」表記は自動採点・自己採点を問わず「解答」に統一する（見出しの文言のみ。
 // 「正解」「不正解」という結果表示は対象外、EVv2.createResultBanner側は変更しない）。
 // labelは互換のため残すが、現状すべての呼び出し元がデフォルト値をそのまま使う。
+// v2-55: 教材構造の行（segments付き）をそのまま表示する。原文の文字は変えず、見た目だけを付ける:
+//   - style "small"（教材の小さい字。カッコ書き・条文番号）→ 小さく控えめに
+//   - kind "fraction" → 分子／分母を縦に重ねる
+//   - frame "dashed"（教材の点線枠＝施行令・施行規則の部分）→ 左に点線
+//   - depth → 字下げ
+// collapsible: 折りたたみ（details）で出す。長い解説向け。
+EVv2.createRichBlock = function (lines, label, collapsible) {
+  var wrap = document.createElement(collapsible ? "details" : "div");
+  wrap.className = "rich-block";
+  var head = document.createElement(collapsible ? "summary" : "div");
+  head.className = "rich-block-label";
+  head.textContent = label;
+  wrap.appendChild(head);
+  var prev = null;
+  lines.forEach(function (line) {
+    // PDFの折り返しの続きの行（continues）は、同じ枠の中なら前の行につなげて1段落にする。
+    var joinPrev = line.continues && prev && prev.frame === (line.frame || "none") && prev.depth === (line.depth || 0);
+    var p = joinPrev ? prev.el : document.createElement("div");
+    if (joinPrev && p.lastChild && p.lastChild.textContent) {
+      // 折り返しの直前に付いている空白は、つなげると不要な隙間になるので表示上だけ詰める
+      p.lastChild.textContent = p.lastChild.textContent.replace(/[ 　]+$/, "");
+    }
+    if (!joinPrev) {
+      p.className = "rich-line" + (line.frame === "dashed" ? " rich-line-framed" : "");
+      if (line.depth) p.style.paddingLeft = Math.min(line.depth, 6) * 0.9 + "em";
+      prev = { el: p, frame: line.frame || "none", depth: line.depth || 0 };
+    }
+    (line.segments || []).forEach(function (seg) {
+      if (seg.kind === "fraction") {
+        var frac = document.createElement("span");
+        frac.className = "rich-fraction";
+        frac.setAttribute("role", "img");
+        frac.setAttribute("aria-label", seg.numerator + "分の" + seg.denominator);
+        var num = document.createElement("span");
+        num.className = "rich-fraction-num";
+        num.textContent = seg.numerator;
+        var den = document.createElement("span");
+        den.className = "rich-fraction-den";
+        den.textContent = seg.denominator;
+        frac.appendChild(num);
+        frac.appendChild(den);
+        p.appendChild(frac);
+        return;
+      }
+      var span = document.createElement("span");
+      span.textContent = seg.text;
+      if (seg.style === "small") span.className = "rich-small" + (seg.role === "articleRef" ? " rich-article-ref" : "");
+      p.appendChild(span);
+    });
+    if (!joinPrev) wrap.appendChild(p);
+  });
+  return wrap;
+};
+
 EVv2.createCorrectAnswerLine = function (text, label) {
   var el = document.createElement("div");
   el.className = "correct-answer-line";
@@ -193,11 +247,21 @@ function fillRevealBox(revealBox, ex, handler, isCorrect) {
   var banner = EVv2.createResultBanner(isCorrect);
   if (banner) revealBox.appendChild(banner);
 
-  var answerBody = handler.getAnswerBodyText(ex);
-  var correctAnswerText = answerBody || handler.getCorrectLabel(ex);
-  revealBox.appendChild(EVv2.createCorrectAnswerLine(correctAnswerText));
+  var renderedRich = typeof handler.renderAnswer === "function" && handler.renderAnswer(revealBox, ex);
+  if (!renderedRich) {
+    var answerBody = handler.getAnswerBodyText(ex);
+    var correctAnswerText = answerBody || handler.getCorrectLabel(ex);
+    revealBox.appendChild(EVv2.createCorrectAnswerLine(correctAnswerText));
+  }
 
-  revealBox.appendChild(EVv2.createExplanationLine(handler.getExplanationText(ex)));
+  var explanationText = handler.getExplanationText(ex);
+  if (explanationText || !handler.hideEmptyExplanation) {
+    revealBox.appendChild(EVv2.createExplanationLine(explanationText));
+  }
+  // v2-55: 教材の「解答への道」など、問題全体に付く解説（小さい字・分数を含む行の並び）。
+  if (ex.guidanceRich && ex.guidanceRich.length) {
+    revealBox.appendChild(EVv2.createRichBlock(ex.guidanceRich, "解答への道", true));
+  }
   var sourceLine = EVv2.createSourceLine(handler.getSourceRefs(ex));
   if (sourceLine) revealBox.appendChild(sourceLine);
 }

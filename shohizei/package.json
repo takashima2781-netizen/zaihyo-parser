@@ -7,6 +7,7 @@
   "scripts": {
     "test": "node --test",
     "training": "node src/cli/run-training.mjs",
-    "theory": "node src/cli/run-theory.mjs"
+    "theory": "node src/cli/run-theory.mjs",
+    "view": "node src/cli/run-exercise-view.mjs"
   }
 }

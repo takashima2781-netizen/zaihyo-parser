@@ -827,8 +827,50 @@ var orderingHandler = {
   },
 };
 
+// ---- recall_text（暗記カード。v2-55、消費税の理論マスター・「述べなさい」の問題） ----
+//
+// 見出し（prompt）を見て本文を思い出し、「解答を表示」で教材の本文を出して自己採点する。
+// 本文は answerRich（教材構造の行と segments。小さい字・点線の枠・分数を含む）があればそれで、
+// 無ければ expectedAnswer[0].answerText の文字列で表示する。原文は書き換えない。
+var recallTextHandler = {
+  label: "暗記",
+  getInteractionMode: function () {
+    return "reveal";
+  },
+  getChoices: function () {
+    return [];
+  },
+  isCorrect: function () {
+    return false;
+  },
+  getCorrectLabel: function (ex) {
+    var item = ex.expectedAnswer && ex.expectedAnswer[0];
+    return item ? item.answerText.text : "(expectedAnswerなし)";
+  },
+  getAnswerBodyText: function () {
+    return null;
+  },
+  getExplanationText: function (ex) {
+    return ex.explanation ? ex.explanation.raw.text : null;
+  },
+  getSourceRefs: function (ex) {
+    var refs = [];
+    if (ex.prompt) refs.push(ex.prompt);
+    return refs;
+  },
+  // 解答欄の描画を差し替える（render.jsのfillRevealBoxが、あればこちらを使う）。
+  renderAnswer: function (box, ex) {
+    if (!ex.answerRich || !ex.answerRich.length) return false;
+    box.appendChild(EVv2.createRichBlock(ex.answerRich, "本文"));
+    return true;
+  },
+  // 解説が無いのが普通の形式なので、「教材原文に解説なし」の行は出さない。
+  hideEmptyExplanation: true,
+};
+
 EVv2.registry = {
   true_false: trueFalseHandler,
+  recall_text: recallTextHandler,
   single_blank: singleBlankHandler,
   multi_blank: multiBlankHandler,
   ordering: orderingHandler,

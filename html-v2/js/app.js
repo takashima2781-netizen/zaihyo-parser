@@ -1025,6 +1025,7 @@
   var TYPE_ITEMS = [
     { value: "all", label: "全て" },
     { value: "true_false", label: "〇×" },
+    { value: "recall_text", label: "暗記" },
     { value: "single_blank", label: "穴埋め" },
     { value: "multi_blank", label: "多重穴埋め" },
     { value: "ordering", label: "並び替え" },
