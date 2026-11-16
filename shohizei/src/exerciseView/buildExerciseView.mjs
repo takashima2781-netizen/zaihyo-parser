@@ -9,6 +9,8 @@
 // 原文は書き換えない。表示用の飾り（小さい字・点線枠・分数）は answerRich / guidanceRich に
 // 教材構造の segments をそのまま渡す。プレーンな文字列（answerText 等）は行の text をつないだもの。
 
+import { buildCalculationSteps } from "./calculation.mjs";
+
 const SCHEMA_VERSION = "exercise-view-schema-v1.8.0";
 const SUBJECT = "shohizei";
 
@@ -207,6 +209,39 @@ function trainingExercises(structure, diag, bookTitles) {
         ex.expectedAnswer = [{ answerText: rawSpan(answerText, p.answer.lines[0]?.source, p.id) }];
         ex.answerRich = richLines(p.answer.lines);
         ex.guidanceRich = guidanceRich;
+        exercises.push(ex);
+        continue;
+      }
+
+      if (forms.includes("calculation") && p.answer) {
+        const itemTexts = new Map([...questionItems(p)].map(([no, it]) => [no, it.lines.map((l) => l.text.trim()).join("")]));
+        const steps = buildCalculationSteps(p.answer.lines, itemTexts);
+        const graded = steps.filter((st) => st.expected);
+        if (graded.length === 0) {
+          diag.push({ reason: "calculation-no-gradable-step", problem: p.parsed.no });
+          continue;
+        }
+        for (const st of steps) if (!st.expected) diag.push({ reason: "calculation-step-not-graded", problem: p.parsed.no, step: st.labelRaw });
+        const ex = baseExercise({
+          id: `${p.stableId}:calc`,
+          type: "calculation_steps",
+          stableId: p.stableId,
+          structure: structureRef,
+          structurePath: path,
+          prompt: rawSpan(p.question.lines.map((l) => l.text.trim()).join("\n"), p.question.lines[0]?.source, p.id),
+          instructionRaw: null,
+          provenance,
+        });
+        ex.promptRich = richLines(p.question.lines);
+        ex.calculationSteps = steps.map((st) => ({
+          groupLabel: st.groupLabel,
+          labelRaw: st.labelRaw,
+          expected: st.expected,
+          answerTextRaw: st.answerTextRaw,
+          workRich: richLines(st.workLines),
+        }));
+        ex.guidanceRich = guidanceRich;
+        ex.calculationMeta = { timeRaw: p.parsed.timeRaw, levelRaw: p.parsed.levelRaw, hasSheet: p.parsed.hasSheet };
         exercises.push(ex);
         continue;
       }
@@ -530,7 +565,7 @@ export function buildShohizeiExerciseView({ trainings = [], theories = [], bookT
       generatedAt,
       sourceBookStructureMasterPath: null,
       targetCheckBlockIds: [],
-      generationRules: ["shohizei_true_false_v0.1", "shohizei_recall_text_v0.1", "shohizei_recall_to_ordering_v0.1"],
+      generationRules: ["shohizei_true_false_v0.1", "shohizei_recall_text_v0.1", "shohizei_recall_to_ordering_v0.1", "shohizei_calculation_steps_v0.1"],
       exerciseCount: exercises.length,
       withheldExerciseCount: 0,
     },

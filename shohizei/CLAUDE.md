@@ -10,7 +10,7 @@
 |---|---|---|
 | 第0層 抽出 | ページの行・文字のかたまり（位置・大きさ・書体）・図形（点線の枠） | `src/extract/`（PyMuPDF） |
 | 第1層 教材構造 | トレーニング: 回 → 問題（問題文・解答・解答への道・シート参照）<br>理論マスター: テーマ → 理論 → 項目 → (1) → ① → イ → (ｲ) | `src/training/`、`src/theory/` |
-| 第2層 Exercise View | 学習アプリ（`../html-v2/`）用の問題データ。`meta.subject: "shohizei"` を付ける。<br>今は〇×（`true_false`）と暗記カード（`recall_text`）。ほかの問い方は `diagnostics` に件数だけ残す | `src/exerciseView/` |
+| 第2層 Exercise View | 学習アプリ（`../html-v2/`）用の問題データ。`meta.subject: "shohizei"` を付ける。<br>今は〇×（`true_false`）・暗記カード（`recall_text`）・並べ替え（`ordering`）・計算（`calculation_steps`、`src/exerciseView/calculation.mjs`）。ほかの問い方は `diagnostics` に件数だけ残す | `src/exerciseView/` |
 
 共通の部品は `src/common/`（行の整理・分数の復元）、書き出し前の検査は `src/gateChecks/`。
 

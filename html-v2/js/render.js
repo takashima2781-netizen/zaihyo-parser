@@ -471,7 +471,8 @@ EVv2.createExerciseCard = function (ex, context, onNext) {
   // v2-8/v2-10: multi_blankは本文の描画をhandler.renderInteractive側(registry.js)へ完全に委譲する。
   // 独立した中問(subQuestions)を持つ大問は共有本文を持たず(ex.body===null)、各中問の本文を
   // 個別に表示する必要があるため。
-  if (ex.exerciseType !== "multi_blank") {
+  // v2-57: 問題文を自分で描くハンドラ（計算問題の資料の表示など）も同じく委譲する。
+  if (ex.exerciseType !== "multi_blank" && !(handler && handler.rendersOwnQuestion)) {
     questionZone.appendChild(qText);
   }
 

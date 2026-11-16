@@ -868,8 +868,185 @@ var recallTextHandler = {
   hideEmptyExplanation: true,
 };
 
+// ---- calculation_steps（計算問題。v2-57、消費税のトレーニング） ----
+//
+// ユーザーの選択（2026-11-17）: 段階ごとに金額を入力して自動で答え合わせ。全部合って正解。
+// ex.calculationSteps: [{ groupLabel, labelRaw, expected: {raw, value} | null, answerTextRaw, workRich }]
+// expected が null の段階は採点せず、答え合わせの後に answerTextRaw と計算式を見せるだけ。
+
+// 入力された金額を数にする。カンマ・空白・「円」・全角数字を許し、先頭の△か-はマイナス。読めなければnull。
+EVv2.parseAmountInput = function (raw) {
+  if (raw == null) return null;
+  var t = String(raw)
+    .replace(/[０-９]/g, function (c) {
+      return String.fromCharCode(c.charCodeAt(0) - 0xfee0);
+    })
+    .replace(/[,，\s円]/g, "")
+    .replace(/．/g, ".");
+  var m = t.match(/^(△|-|－|−)?(\d+(?:\.\d+)?)$/);
+  if (!m) return null;
+  var v = Number(m[2]);
+  return m[1] ? -v : v;
+};
+
+var calculationStepsHandler = {
+  label: "計算",
+  rendersOwnQuestion: true,
+  getInteractionMode: function () {
+    return "steps";
+  },
+  getChoices: function () {
+    return [];
+  },
+  isCorrect: function () {
+    return false;
+  },
+  getCorrectLabel: function (ex) {
+    return (ex.calculationSteps || [])
+      .filter(function (st) {
+        return st.expected;
+      })
+      .map(function (st) {
+        return st.labelRaw + " " + st.expected.raw;
+      })
+      .join(" / ");
+  },
+  getAnswerBodyText: function () {
+    return null;
+  },
+  getExplanationText: function () {
+    return null;
+  },
+  getSourceRefs: function (ex) {
+    return ex.prompt ? [ex.prompt] : [];
+  },
+  renderInteractive: function (ex, context, card, progressPanel, exerciseKey, onNext, zones) {
+    // 問題文（資料）。分数・表の行をそのまま出す。
+    if (ex.promptRich && ex.promptRich.length) {
+      zones.question.appendChild(EVv2.createRichBlock(ex.promptRich, "問題"));
+    } else {
+      var q = document.createElement("p");
+      q.className = "question-text";
+      q.textContent = ex.prompt ? ex.prompt.text : "(問題文なし)";
+      zones.question.appendChild(q);
+    }
+
+    var list = document.createElement("div");
+    list.className = "calc-steps";
+    var rows = [];
+    var lastGroup = null;
+    (ex.calculationSteps || []).forEach(function (st, i) {
+      if (st.groupLabel && st.groupLabel !== lastGroup) {
+        var g = document.createElement("div");
+        g.className = "calc-step-group";
+        g.textContent = st.groupLabel;
+        list.appendChild(g);
+      }
+      lastGroup = st.groupLabel || null;
+
+      var row = document.createElement("div");
+      row.className = "calc-step";
+      var label = document.createElement("label");
+      label.className = "calc-step-label";
+      label.textContent = st.labelRaw || "（見出しなし）";
+      row.appendChild(label);
+
+      var input = null;
+      if (st.expected) {
+        input = document.createElement("input");
+        input.type = "text";
+        input.inputMode = "decimal";
+        input.autocomplete = "off";
+        input.className = "calc-step-input";
+        input.id = "calc-" + (exerciseKey || ex.exerciseId).replace(/[^a-zA-Z0-9_-]/g, "_") + "-" + i;
+        input.setAttribute("aria-label", (st.labelRaw || "金額") + "の金額");
+        label.htmlFor = input.id;
+        var wrap = document.createElement("div");
+        wrap.className = "calc-step-input-row";
+        wrap.appendChild(input);
+        var unit = document.createElement("span");
+        unit.className = "calc-step-unit";
+        unit.textContent = "円";
+        wrap.appendChild(unit);
+        row.appendChild(wrap);
+      } else {
+        var note = document.createElement("span");
+        note.className = "calc-step-ungraded";
+        note.textContent = "（この段階は採点しません）";
+        row.appendChild(note);
+      }
+      var result = document.createElement("div");
+      result.className = "calc-step-result";
+      result.hidden = true;
+      row.appendChild(result);
+      list.appendChild(row);
+      rows.push({ step: st, input: input, result: result, row: row });
+    });
+    zones.answer.appendChild(list);
+
+    var checkBtn = document.createElement("button");
+    checkBtn.type = "button";
+    checkBtn.className = "choice-btn calc-check-btn";
+    checkBtn.textContent = "答え合わせ";
+    zones.answer.appendChild(checkBtn);
+
+    var revealBox = document.createElement("div");
+    revealBox.className = "reveal-box";
+    revealBox.hidden = true;
+    zones.answer.appendChild(revealBox);
+
+    var answered = false;
+    checkBtn.addEventListener("click", function () {
+      if (answered) return;
+      answered = true;
+      checkBtn.disabled = true;
+      var allCorrect = true;
+      var graded = 0;
+      var yourAnswers = [];
+      rows.forEach(function (r) {
+        var st = r.step;
+        r.result.hidden = false;
+        if (st.expected) {
+          graded += 1;
+          var v = EVv2.parseAmountInput(r.input.value);
+          var ok = v !== null && v === st.expected.value;
+          if (!ok) allCorrect = false;
+          r.input.disabled = true;
+          r.row.classList.add(ok ? "calc-step-correct" : "calc-step-wrong");
+          r.result.textContent = ok ? "○ 正解" : "× 正解は " + st.expected.raw + " 円";
+          yourAnswers.push((st.labelRaw || "") + " " + (r.input.value || "（空欄）"));
+        } else {
+          r.result.textContent = st.answerTextRaw ? "解答: " + st.answerTextRaw : "";
+        }
+        if (st.workRich && st.workRich.length) r.result.appendChild(EVv2.createRichBlock(st.workRich, "計算式"));
+      });
+      if (graded === 0) allCorrect = false;
+
+      revealBox.hidden = false;
+      var banner = EVv2.createResultBanner(allCorrect);
+      if (banner) revealBox.appendChild(banner);
+      if (ex.guidanceRich && ex.guidanceRich.length) {
+        revealBox.appendChild(EVv2.createRichBlock(ex.guidanceRich, "解答への道", true));
+      }
+
+      if (typeof EVv2.onExerciseAnswered === "function") {
+        EVv2.onExerciseAnswered({
+          ex: ex,
+          exerciseKey: exerciseKey,
+          yourAnswerText: yourAnswers.join(" / "),
+          resultKind: "auto",
+          isCorrect: allCorrect,
+        });
+      }
+      var rec = exerciseKey ? EVv2.recordAnswer(exerciseKey, ex.exerciseType, allCorrect) : null;
+      EVv2.finalizeAnsweredCard(zones.footer, progressPanel, rec, onNext);
+    });
+  },
+};
+
 EVv2.registry = {
   true_false: trueFalseHandler,
+  calculation_steps: calculationStepsHandler,
   recall_text: recallTextHandler,
   single_blank: singleBlankHandler,
   multi_blank: multiBlankHandler,

@@ -2301,7 +2301,8 @@ details.rich-block[open] > summary.rich-block-label {
   margin-bottom: 4px;
 }
 .rich-line {
-  white-space: pre-wrap;
+  /* 教材の位置合わせ用の空白の連なりは、スマホの幅では折り返しを崩すので1つに詰めて表示する */
+  white-space: normal;
   overflow-wrap: anywhere;
 }
 /* 教材の点線枠（施行令・施行規則の部分） */
@@ -2345,4 +2346,75 @@ details.rich-block[open] > summary.rich-block-label {
   font-size: .85rem;
   line-height: 1.7;
   white-space: pre-wrap;
+}
+
+/* ---- v2-57: 計算問題（段階ごとに金額を入力） ---- */
+.calc-steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
+}
+.calc-step-group {
+  margin-top: var(--sp-2);
+  font-size: .78rem;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+.calc-step {
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--surface-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.calc-step-label {
+  display: block;
+  font-size: .85rem;
+  line-height: 1.5;
+  margin-bottom: 6px;
+}
+.calc-step-input-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.calc-step-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 16px; /* iPhone で入力時に拡大されない大きさ */
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface-card);
+  color: var(--text);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.calc-step-unit {
+  font-size: .85rem;
+  color: var(--text-muted);
+}
+.calc-step-ungraded {
+  font-size: .78rem;
+  color: var(--text-muted);
+}
+.calc-step-result {
+  margin-top: 6px;
+  font-size: .85rem;
+  font-weight: 600;
+}
+.calc-step-correct {
+  border-color: var(--accent-soft-border);
+}
+.calc-step-wrong {
+  border-color: #d9534f;
+}
+.calc-step-wrong .calc-step-result {
+  color: #d9534f;
+}
+.calc-step-result .rich-block {
+  font-weight: 400;
+}
+.calc-check-btn {
+  width: 100%;
 }
