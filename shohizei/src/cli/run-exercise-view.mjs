@@ -22,6 +22,11 @@ const BOOK_TITLES = {
   "training-basic-2": "トレーニング 基礎M・速修 No.2",
   "training-basic-3": "トレーニング 基礎M・速修 No.3",
   "training-basic-4": "トレーニング 基礎M・速修 No.4",
+  // 上級の問題PDFは速修コースと共通（上級 No.n ＝ 速修 No.n+4、PDFの2つ目の目次による）
+  "training-advanced-1": "トレーニング 上級 No.1（速修 No.5）",
+  "training-advanced-2": "トレーニング 上級 No.2（速修 No.6）",
+  "training-advanced-3": "トレーニング 上級 No.3（速修 No.7）",
+  "training-advanced-4": "トレーニング 上級 No.4（速修 No.8）",
 };
 
 const trainings = Object.keys(BOOK_TITLES).filter((b) => existsSync(out(`${b}.structure.json`))).map((b) => read(`${b}.structure.json`));

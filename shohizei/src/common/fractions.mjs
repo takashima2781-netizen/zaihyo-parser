@@ -21,7 +21,28 @@ function overlapRatio(a, b) {
  * 分子の真下（間隔 -2〜6pt、横の重なり5割以上）に分母があるものだけ。1つの行が2つの候補に
  * 使われることはない（上から順に、いちばん近い相手と組む）。
  */
-export function findFractionCandidates(lines) {
+/**
+ * 分子と分母のあいだに横線（分数の線）があるか。drawings が渡されないときは確かめない（null）。
+ * 表の列で金額が上下に並んでいるだけのもの（例: 5,000,000 の下に 0）を分数と取り違えないため。
+ */
+function hasFractionBar(a, b, drawings) {
+  if (!drawings) return null;
+  const yTop = a.bbox[3] - 3;
+  const yBottom = b.bbox[1] + 3;
+  const x0 = Math.min(a.bbox[0], b.bbox[0]);
+  const x1 = Math.max(a.bbox[2], b.bbox[2]);
+  return drawings.some((d) => {
+    const [dx0, dy0, dx1, dy1] = d.rect;
+    if (dy1 - dy0 > 2) return false; // 横線だけ
+    if (dx1 - dx0 > (x1 - x0) * 1.6 + 6) return false; // 表の罫線のような長い線は分数の線ではない
+    const cy = (dy0 + dy1) / 2;
+    if (cy < yTop || cy > yBottom) return false;
+    const overlap = Math.min(dx1, x1) - Math.max(dx0, x0);
+    return overlap > 0.5 * Math.min(dx1 - dx0, x1 - x0);
+  });
+}
+
+export function findFractionCandidates(lines, drawings = null) {
   const numeric = [];
   lines.forEach((l, i) => {
     if (l.role) return;
@@ -47,6 +68,7 @@ export function findFractionCandidates(lines) {
     }
     if (!best) continue;
     const b = lines[best.bi];
+    if (hasFractionBar(a, b, drawings) === false) continue;
     used.add(ai);
     used.add(best.bi);
     candidates.push({
@@ -103,10 +125,10 @@ export function gapRuns(line) {
  * ページの行に分数を当てはめる。
  * 戻り値: { lines（分数の部品になった行は role="fractionPart"、入った行は segments 付き）, unresolved }
  */
-export function restoreFractions(lines) {
+export function restoreFractions(lines, drawings = null) {
   const out = lines.map((l) => ({ ...l }));
   const unresolved = [];
-  const candidates = findFractionCandidates(out);
+  const candidates = findFractionCandidates(out, drawings);
   const fractionLineIdx = new Set(candidates.flatMap((c) => [c.numeratorIndex, c.denominatorIndex]));
   const placements = new Map(); // hostIndex -> [{run, cand}]
 
@@ -129,6 +151,41 @@ export function restoreFractions(lines) {
       if (runs.length > 0) hosts.push({ index: i, runs });
     });
     const sourceOf = (i) => out[i].source;
+    // 空白の入った行が無いとき: 分数の左右で行が分かれている（「7,104×」｜分数｜「＝646」）。
+    // 同じ高さで、分数のすぐ左で終わる行がちょうど1つあれば、その行に分数と右の行をつなげる。
+    if (hosts.length === 0) {
+      const sameRow = (l) => !l.role && cand.centerY >= l.bbox[1] - 1 && cand.centerY <= l.bbox[3] + 1;
+      const fracX0 = Math.min(out[cand.numeratorIndex].bbox[0], out[cand.denominatorIndex].bbox[0]);
+      const fracX1 = Math.max(out[cand.numeratorIndex].bbox[2], out[cand.denominatorIndex].bbox[2]);
+      const lefts = [];
+      const rights = [];
+      out.forEach((l, i) => {
+        if (fractionLineIdx.has(i) || !sameRow(l)) return;
+        if (l.bbox[2] <= fracX0 + 3 && fracX0 - l.bbox[2] < 15) lefts.push(i);
+        else if (l.bbox[0] >= fracX1 - 3 && l.bbox[0] - fracX1 < 15) rights.push(i);
+      });
+      if (lefts.length === 1 && rights.length <= 1 && !out[lefts[0]].segments && (rights.length === 0 || !out[rights[0]].segments)) {
+        const left = out[lefts[0]];
+        const segs = [
+          { kind: "text", text: left.text },
+          {
+            kind: "fraction",
+            numerator: cand.numerator,
+            denominator: cand.denominator,
+            placeholder: "",
+            source: [sourceOf(cand.numeratorIndex), sourceOf(cand.denominatorIndex)],
+          },
+        ];
+        if (rights.length === 1) {
+          segs.push({ kind: "text", text: out[rights[0]].text, source: out[rights[0]].source });
+          out[rights[0]].role = "fractionJoined";
+        }
+        left.segments = segs;
+        out[cand.numeratorIndex].role = "fractionPart";
+        out[cand.denominatorIndex].role = "fractionPart";
+        continue;
+      }
+    }
     if (hosts.length !== 1 || hosts[0].runs.length !== 1) {
       unresolved.push({
         reason: hosts.length === 0 ? "fraction-host-not-found" : "fraction-host-ambiguous",

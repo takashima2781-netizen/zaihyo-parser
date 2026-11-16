@@ -33,11 +33,12 @@ export function parseTocLine(text) {
 }
 
 // 問題・解答の見出し: 「問題N タイトル・そのK（シートあり）」
-const HEADING = new RegExp(`^問題\\s*(${D})\\s+(.*)$`);
+// 題名が同じ行に無い（上級: 「問題１」の次の行に題名）こともある
+const HEADING = new RegExp(`^問題\\s*(${D})(?:\\s+(.*))?$`);
 export function parseProblemHeading(text) {
   const m = text.trim().match(HEADING);
   if (!m) return null;
-  let title = m[2].trim();
+  let title = (m[2] ?? "").trim().replace(/[\uE000-\uF8FF]/g, "");
   // 見出しの行に難度まで入っていることがある（「…（シートあり） 基礎」）
   let levelInHeading = null;
   const lv = title.match(new RegExp(`\\s+(${LEVELS.join("|")})$`));
@@ -45,8 +46,15 @@ export function parseProblemHeading(text) {
     levelInHeading = lv[1];
     title = title.slice(0, lv.index).trim();
   }
-  const hasSheet = /（シートあり）$/.test(title);
-  if (hasSheet) title = title.replace(/（シートあり）$/, "").trim();
+  // 題名の後ろに目安時間が続いている（上級: 「…（シートあり）－10分－」）
+  let timeInHeading = null;
+  const tm = title.match(new RegExp(`\\s*[－-]\\s*(${D})\\s*分\\s*[－-]?\\s*$`));
+  if (tm) {
+    timeInHeading = tm[0].trim();
+    title = title.slice(0, tm.index).trim();
+  }
+  const hasSheet = /[（(]シートあり[）)]$/.test(title);
+  if (hasSheet) title = title.replace(/\s*[（(]シートあり[）)]$/, "").trim();
   const series = title.match(/・(その\s*[0-9０-９]+)$/);
   return {
     no: Number(toHalfWidthDigits(m[1])),
@@ -54,6 +62,7 @@ export function parseProblemHeading(text) {
     seriesRaw: series ? series[1] : null,
     hasSheetMark: hasSheet,
     levelInHeading,
+    timeInHeading,
   };
 }
 
@@ -66,8 +75,11 @@ export function parseLevel(text) {
 const TIME = new RegExp(`^[－-]?\\s*(${D})\\s*分\\s*[－-]?$`);
 export function parseTime(text) {
   // 飾りの記号が私用領域の文字として入っていることがある（判定のときだけ除く。raw は原文のまま）
-  const m = text.trim().replace(/[\uE000-\uF8FF]/g, "").match(TIME);
-  return m ? { raw: text.trim(), minutes: Number(toHalfWidthDigits(m[1])) } : null;
+  // 上級では「－３分－ 基礎」のように難度が同じ行に続く
+  const t = text.trim().replace(/[\uE000-\uF8FF]/g, "");
+  const lv = t.match(new RegExp(`^(.*?)\\s*(${LEVELS.join("|")})$`));
+  const m = (lv ? lv[1] : t).trim().match(TIME);
+  return m ? { raw: text.trim(), minutes: Number(toHalfWidthDigits(m[1])), levelRaw: lv ? lv[2] : null } : null;
 }
 
 // 行頭の記号（候補）。どの階層かはここでは決めない。

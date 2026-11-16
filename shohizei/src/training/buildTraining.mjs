@@ -33,7 +33,7 @@ function collectLines(doc, runningHead) {
   for (const page of doc.pages) {
     let lines = pageLines(doc, page, { runningHeads: [runningHead] });
     const isBodyPage = lines.some((l) => l.role === "runningHead");
-    const restored = restoreFractions(lines);
+    const restored = restoreFractions(lines, page.drawings);
     lines = restored.lines;
     fractionsUnresolved.push(...restored.unresolved);
     for (const l of lines) out.push({ ...l, bodyPage: isBodyPage });
@@ -51,8 +51,23 @@ function splitByHeading(lines) {
     if (!l.bodyPage || l.role) continue;
     const heading = maxSpanSize(l) >= HEADING_MIN_SIZE ? parseProblemHeading(l.text) : null;
     if (heading) {
-      current = { heading, headingLine: l, levelLine: null, timeLine: null, body: [] };
+      current = { heading, headingLine: l, levelLine: null, timeLine: null, body: [], titleLines: [] };
       sections.push(current);
+      continue;
+    }
+    // 題名が見出しの次の行にある形（上級）: 見出しと同じかたまりの大きい文字の行を題名にする
+    if (
+      current &&
+      current.body.length === 0 &&
+      l.block === current.headingLine.block &&
+      maxSpanSize(l) >= HEADING_MIN_SIZE - 1 &&
+      !parseTime(l.text) &&
+      !parseLevel(l.text) &&
+      current.heading.titleRaw === ""
+    ) {
+      current.titleLines.push(l);
+      const reparsed = parseProblemHeading(`問題${current.heading.no} ${l.text.trim()}`);
+      current.heading = { ...reparsed, no: current.heading.no };
       continue;
     }
     if (!current) {
@@ -67,6 +82,8 @@ function splitByHeading(lines) {
     // 見出し直後の目安時間（例: 「１分」）
     if (!current.timeLine && current.body.length === 0 && parseTime(l.text)) {
       current.timeLine = l;
+      const lv = parseTime(l.text).levelRaw;
+      if (lv && !current.heading.levelInHeading) current.heading = { ...current.heading, levelInHeading: lv };
       continue;
     }
     current.body.push(l);
@@ -74,22 +91,43 @@ function splitByHeading(lines) {
   return { sections, preface };
 }
 
+// 目次の表題（「上級コース トレーニングNo.１」「速修コース トレーニングNo.５」）。
+// 上級の問題PDFには、同じ中身の目次が上級用と速修用の2つある。1つ目だけを使い、2つ目は別名（editions）として記録する。
+const TOC_TITLE = /^(.*コース)\s*トレーニング\s*No\.?\s*([0-9０-９]+)/;
+
 function parseToc(doc) {
   const entries = [];
   const unparsed = [];
+  const editions = [];
+  let collecting = true;
   for (const page of doc.pages) {
     const lines = pageLines(doc, page, { runningHeads: ["問題編"] });
     if (lines.some((l) => l.role === "runningHead")) break; // 問題編に入ったら目次は終わり
     for (const l of lines) {
       if (l.role) continue;
+      const title = l.text.trim().replace(/\s+/g, " ").match(TOC_TITLE);
+      if (title && !/学習記録/.test(l.text)) {
+        const edition = { courseRaw: title[1].replace(/\s/g, ""), noRaw: title[2] };
+        if (!editions.some((e) => e.courseRaw === edition.courseRaw && e.noRaw === edition.noRaw)) {
+          editions.push(edition);
+          if (editions.length > 1 && entries.length > 0) collecting = false;
+        }
+        continue;
+      }
+      if (!collecting) continue;
       const parsed = parseTocLine(l.text);
+      // 同じ問題番号がもう一度出たら、2つ目の目次（別コース用）に入ったとみなして集めるのをやめる
+      if (parsed?.kind === "problem" && entries.some((e) => e.kind === "problem" && e.no === parsed.no)) {
+        collecting = false;
+        continue;
+      }
       if (parsed) entries.push({ ...parsed, source: l.source });
       // 目次の行らしい（問題番号で始まり、点線のリーダーがある）のに読めなかったものだけを記録する。
       // 学習記録シートの「問題N」の欄などは目次ではないので対象にしない。
       else if (/^問題\s*[0-9０-９]/.test(l.text.trim()) && /[·･…‥]{3,}/.test(l.text)) unparsed.push({ text: l.text, source: l.source });
     }
   }
-  return { entries, unparsed };
+  return { entries, unparsed, editions };
 }
 
 export function buildTraining({ bookId, problemDoc, answerDoc, sheetDoc = null }) {
@@ -137,6 +175,8 @@ export function buildTraining({ bookId, problemDoc, answerDoc, sheetDoc = null }
     }
     session.children.push(buildProblemNode(e));
   }
+  // 2つ目の目次の回の見出しだけが入って問題を持たない回は除く
+  for (let i = sessions.length - 1; i >= 0; i--) if (sessions[i].children.length === 0) sessions.splice(i, 1);
   for (const no of problemByNo.keys()) {
     if (!tocProblemNos.has(no)) unresolved.push({ reason: "problem-not-in-toc", problemNo: no, source: [problemByNo.get(no).headingLine.source] });
   }
@@ -156,7 +196,7 @@ export function buildTraining({ bookId, problemDoc, answerDoc, sheetDoc = null }
         titleRaw: p ? p.heading.titleRaw : tocEntry.titleRaw,
         seriesRaw: p ? p.heading.seriesRaw : null,
         levelRaw: p?.levelLine ? p.levelLine.text.trim() : p?.heading.levelInHeading ?? "unknown",
-        timeRaw: p?.timeLine ? parseTime(p.timeLine.text).raw : "unknown",
+        timeRaw: p?.timeLine ? parseTime(p.timeLine.text).raw : p?.heading.timeInHeading ?? "unknown",
         hasSheet: tocEntry.hasSheet,
         tocPages: { problem: tocEntry.problemPage, answer: tocEntry.answerPage },
         tocTitleRaw: tocEntry.titleRaw,
@@ -196,7 +236,8 @@ export function buildTraining({ bookId, problemDoc, answerDoc, sheetDoc = null }
       }
       if (node.question.formCandidates.length === 0) node.question.formCandidates = [{ form: "unknown", evidence: null }];
       // 空白と中黒の全角・半角（・／･）の違いは同じ題名とみなす
-      const sameTitle = (a, b) => a.replace(/\s/g, "").replace(/･/g, "・") === b.replace(/\s/g, "").replace(/･/g, "・");
+      // 空白・中黒（・／･）の有無と全角・半角の違いは同じ題名とみなす
+      const sameTitle = (a, b) => a.replace(/[\s・･]/g, "") === b.replace(/[\s・･]/g, "");
       if (!sameTitle(p.heading.titleRaw, tocEntry.titleRaw)) {
         node.unresolved.push({ reason: "title-differs-from-toc" });
       }
@@ -246,6 +287,7 @@ export function buildTraining({ bookId, problemDoc, answerDoc, sheetDoc = null }
       })),
     },
     kind: "trainingBook",
+    editions: toc.editions,
     children: sessions,
     unplaced: { problemPreface: prefaceText, answerPreface: answers.preface.map((l) => ({ text: l.text, source: l.source })) },
     unresolved,

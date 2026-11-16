@@ -125,3 +125,22 @@ test("検査: 透かしの文字・id の重複・出典なしを見つける", 
   assert.equal(runGateChecks({ children: [{ id: "a", source: [{}] }, { id: "a", source: [{}] }] }).ok, false);
   assert.equal(runGateChecks({ children: [{ id: "b", source: [] }] }).ok, false);
 });
+
+test("分数: 左右に分かれた行のあいだの分数は、左の行に分数と右の行をつなげる", () => {
+  const left = line("7,000×", [90, 108, 130, 117]);
+  const right = line("＝700", [150, 108, 180, 117], { lineNo: 3 });
+  const num = line("10", [134, 102, 144, 111], { lineNo: 1 });
+  const den = line("100", [132, 114, 146, 123], { lineNo: 2 });
+  const { lines, unresolved } = restoreFractions([left, num, den, right]);
+  assert.equal(unresolved.length, 0);
+  assert.deepEqual(lines[0].segments.map((s) => s.text ?? `${s.numerator}/${s.denominator}`), ["7,000×", "10/100", "＝700"]);
+  assert.equal(lines[3].role, "fractionJoined");
+});
+
+test("分数: 分子と分母のあいだに横線が無ければ分数とみなさない（表の数字の上下）", () => {
+  const num = line("5,000", [100, 100, 130, 109], { lineNo: 0 });
+  const den = line("0", [100, 112, 130, 121], { lineNo: 1 });
+  assert.equal(findFractionCandidates([num, den], []).length, 0);
+  assert.equal(findFractionCandidates([num, den], [{ rect: [99, 110, 131, 110.5] }]).length, 1);
+  assert.equal(findFractionCandidates([num, den], [{ rect: [20, 110, 400, 110.5] }]).length, 0, "表の罫線のような長い線は数えない");
+});

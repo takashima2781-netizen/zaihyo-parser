@@ -82,3 +82,15 @@ test("取引ごとの形: 名前は問題文の (n)、答えが文のときは�
   assert.equal(steps[1].expected, null);
   assert.equal(steps[1].answerTextRaw, "不課税売上げ");
 });
+
+test("段階: 「（続き）」の見出しは前の段階につなげ、最後の「金額」欄を正解にする", () => {
+  const steps = buildCalculationSteps([
+    L("【控除対象仕入税額】", bracket("【控除対象仕入税額】")),
+    L("100＋200＝300"),
+    L("【控除対象仕入税額】（続き）", bracket("【控除対象仕入税額】")),
+    L("300×1/2＝150"),
+    L("150円"),
+  ]);
+  assert.equal(steps.length, 1);
+  assert.equal(steps[0].expected.value, 150);
+});

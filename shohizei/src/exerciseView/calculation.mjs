@@ -75,6 +75,8 @@ export function buildCalculationSteps(answerLines, questionItems = new Map()) {
   const sections = [];
   let cur = null;
   for (const l of answerLines) {
+    // ページをまたいだ「【控除対象仕入税額】（続き）」は、前の区切りの続き
+    if (isHeading(l) && cur && /（続き）\s*$/.test(lineText(l))) continue;
     if (isHeading(l)) {
       cur = { heading: l, lines: [] };
       sections.push(cur);
@@ -89,7 +91,8 @@ export function buildCalculationSteps(answerLines, questionItems = new Map()) {
   let groupLabel = null;
   for (const s of sections) {
     const texts = s.lines.map(lineText);
-    const box = texts.map((t) => t.match(BOX_AMOUNT)).find(Boolean);
+    // 「金額」欄が複数あるとき（ページをまたいだ続きなど）は最後のもの
+    const box = texts.map((t) => t.match(BOX_AMOUNT)).filter(Boolean).slice(-1)[0];
     // 正解の候補にする計算式: 「※１ …」のような注記の検算は除き、「→」（端数処理の後）がある行を優先する
     const calcLines = texts.filter((t) => t.includes("＝") && !/^※/.test(t));
     const arrowLines = calcLines.filter((t) => t.includes("→"));
