@@ -10,13 +10,15 @@
 // 教材構造の segments をそのまま渡す。プレーンな文字列（answerText 等）は行の text をつないだもの。
 
 import { buildCalculationSteps } from "./calculation.mjs";
+import { removeAlignmentSpaces, removeAlignmentSpacesMultiline, removeAlignmentSpacesInSegments } from "./displayText.mjs";
 
 const SCHEMA_VERSION = "exercise-view-schema-v1.8.0";
 const SUBJECT = "shohizei";
 
+// 問題データの文字は、位置合わせの空白を消したもの（displayText.mjs）。原文は教材構造に残っている。
 function rawSpan(text, source, nodeId) {
   return {
-    text,
+    text: removeAlignmentSpacesMultiline(text),
     source: source ? { documentId: source.doc, locator: `p.${source.page} line ${source.line}` } : null,
     bsmNodeId: nodeId ?? null,
     inherited: false,
@@ -29,7 +31,7 @@ function structureNode(id, title) {
 
 function richLine(line, depth = 0) {
   return {
-    segments: line.segments ?? [{ kind: "text", text: line.text }],
+    segments: removeAlignmentSpacesInSegments(line.segments ?? [{ kind: "text", text: line.text }]),
     frame: line.visual?.frame ?? "none",
     depth,
   };
@@ -234,10 +236,10 @@ function trainingExercises(structure, diag, bookTitles) {
         });
         ex.promptRich = richLines(p.question.lines);
         ex.calculationSteps = steps.map((st) => ({
-          groupLabel: st.groupLabel,
-          labelRaw: st.labelRaw,
+          groupLabel: st.groupLabel ? removeAlignmentSpaces(st.groupLabel) : null,
+          labelRaw: st.labelRaw ? removeAlignmentSpaces(st.labelRaw) : null,
           expected: st.expected,
-          answerTextRaw: st.answerTextRaw,
+          answerTextRaw: st.answerTextRaw ? removeAlignmentSpaces(st.answerTextRaw) : null,
           workRich: richLines(st.workLines),
         }));
         ex.guidanceRich = guidanceRich;
@@ -565,6 +567,7 @@ export function buildShohizeiExerciseView({ trainings = [], theories = [], bookT
       generatedAt,
       sourceBookStructureMasterPath: null,
       targetCheckBlockIds: [],
+      displayText: "alignment-spaces-removed",
       generationRules: ["shohizei_true_false_v0.1", "shohizei_recall_text_v0.1", "shohizei_recall_to_ordering_v0.1", "shohizei_calculation_steps_v0.1"],
       exerciseCount: exercises.length,
       withheldExerciseCount: 0,
