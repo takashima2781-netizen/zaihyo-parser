@@ -1160,8 +1160,83 @@ var choiceItemHandler = {
   },
 };
 
+// ---- reading（テキストを読む。v2-61、消費税の基本テキスト・速修テキスト） ----
+// ex.readingContent: [{ kind: "lines", lines: [...] } | { kind: "figure", src, width, height, page }]
+// 採点はせず、「読んだ」で記録する（学習状況のバーで、どこまで読んだかが分かる）。
+var readingHandler = {
+  label: "読む",
+  rendersOwnQuestion: true,
+  getInteractionMode: function () {
+    return "reading";
+  },
+  getChoices: function () {
+    return [];
+  },
+  isCorrect: function () {
+    return true;
+  },
+  getCorrectLabel: function () {
+    return "";
+  },
+  getAnswerBodyText: function () {
+    return null;
+  },
+  getExplanationText: function () {
+    return null;
+  },
+  getSourceRefs: function (ex) {
+    return ex.prompt ? [ex.prompt] : [];
+  },
+  renderInteractive: function (ex, context, card, progressPanel, exerciseKey, onNext, zones) {
+    var title = document.createElement("h3");
+    title.className = "reading-title";
+    title.textContent = ex.prompt ? ex.prompt.text : "";
+    zones.question.appendChild(title);
+    (ex.readingContent || []).forEach(function (part) {
+      if (part.kind === "figure") {
+        var fig = document.createElement("figure");
+        fig.className = "reading-figure";
+        var img = document.createElement("img");
+        img.src = part.src;
+        img.alt = "図（" + part.page + "ページ）";
+        img.loading = "lazy";
+        if (part.width && part.height) {
+          img.width = part.width;
+          img.height = part.height;
+        }
+        fig.appendChild(img);
+        zones.question.appendChild(fig);
+        return;
+      }
+      var block = EVv2.createRichBlock(part.lines || [], "");
+      block.classList.add("reading-text");
+      Array.prototype.forEach.call(block.querySelectorAll(".rich-block-label"), function (el) {
+        el.remove();
+      });
+      zones.question.appendChild(block);
+    });
+
+    var doneBtn = document.createElement("button");
+    doneBtn.type = "button";
+    doneBtn.className = "choice-btn reading-done-btn";
+    doneBtn.textContent = "読んだ";
+    doneBtn.addEventListener("click", function () {
+      if (doneBtn.disabled) return;
+      doneBtn.disabled = true;
+      doneBtn.textContent = "読んだ（記録しました）";
+      if (typeof EVv2.onExerciseAnswered === "function") {
+        EVv2.onExerciseAnswered({ ex: ex, exerciseKey: exerciseKey, yourAnswerText: "読んだ", resultKind: "self", isCorrect: true });
+      }
+      var rec = exerciseKey ? EVv2.recordAnswer(exerciseKey, ex.exerciseType, true) : null;
+      EVv2.finalizeAnsweredCard(zones.footer, progressPanel, rec, onNext);
+    });
+    zones.answer.appendChild(doneBtn);
+  },
+};
+
 EVv2.registry = {
   true_false: trueFalseHandler,
+  reading: readingHandler,
   choice_item: choiceItemHandler,
   calculation_steps: calculationStepsHandler,
   recall_text: recallTextHandler,

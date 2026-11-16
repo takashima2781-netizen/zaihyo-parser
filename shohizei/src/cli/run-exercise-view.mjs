@@ -27,9 +27,17 @@ const BOOK_TITLES = {
   "training-advanced-2": "トレーニング 上級 No.2（速修 No.6）",
   "training-advanced-3": "トレーニング 上級 No.3（速修 No.7）",
   "training-advanced-4": "トレーニング 上級 No.4（速修 No.8）",
+  "text-basic-1": "基本テキスト No.1",
+  "text-basic-2": "基本テキスト No.2",
+  "text-basic-3": "基本テキスト No.3",
+  "text-basic-4": "基本テキスト No.4",
+  "text-speed-5": "速修テキスト No.5",
+  "text-speed-6": "速修テキスト No.6",
+  "text-speed-7": "速修テキスト No.7",
+  "text-speed-8": "速修テキスト No.8",
 };
 
-const trainings = Object.keys(BOOK_TITLES).filter((b) => existsSync(out(`${b}.structure.json`))).map((b) => read(`${b}.structure.json`));
+const trainings = Object.keys(BOOK_TITLES).filter((b) => b.startsWith("training-")).filter((b) => existsSync(out(`${b}.structure.json`))).map((b) => read(`${b}.structure.json`));
 // 理論マスターは、教材構造を作ったテーマを全部使う（テーマ1〜5。npm run theory -- <n> で作る）。
 const theories = [1, 2, 3, 4, 5, 6, 7, 8, 9].filter((n) => existsSync(out(`theory-master-theme${n}.structure.json`))).map((n) => read(`theory-master-theme${n}.structure.json`));
 if (trainings.length + theories.length + (existsSync(out("theory-doctor.structure.json")) ? 1 : 0) === 0) {
@@ -44,7 +52,10 @@ vm.runInNewContext(segmenterCode, sandbox);
 const phraseSplit = sandbox.window.EVv2.autoSplitPhraseText;
 
 const doctors = ["theory-doctor"].filter((b) => existsSync(out(`${b}.structure.json`))).map((b) => read(`${b}.structure.json`));
-const view = buildShohizeiExerciseView({ trainings, theories, doctors, bookTitles: BOOK_TITLES, phraseSplit });
+const texts = Object.keys(BOOK_TITLES)
+  .filter((b) => b.startsWith("text-") && existsSync(out(`${b}.structure.json`)) && existsSync(out(`${b}.figures.json`)))
+  .map((b) => ({ structure: read(`${b}.structure.json`), figuresById: new Map(read(`${b}.figures.json`).map((f) => [f.id, f])) }));
+const view = buildShohizeiExerciseView({ trainings, theories, doctors, texts, bookTitles: BOOK_TITLES, phraseSplit });
 const gate = runExerciseViewChecks(view);
 if (!gate.ok) {
   console.error("検査に失敗したため書き出しません:", gate.violations);

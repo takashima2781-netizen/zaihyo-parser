@@ -32,6 +32,7 @@
 npm run training -- training-basic-1   # → output/training-basic-1.structure.json と .summary.json
 npm run theory -- 1                    # → output/theory-master-theme1.structure.json と .summary.json（テーマ1〜5 をそれぞれ実行）
 npm run doctor                         # → output/theory-doctor.structure.json と .summary.json
+npm run text                           # → output/text-*.structure.json と .figures.json（図の画像）
 npm run view                           # → output/shohizei-exercise-view.json と ../html-v2/data/shohizei/exercise_view.json
 npm test
 ```

@@ -2453,3 +2453,34 @@ details.rich-block[open] > summary.rich-block-label {
   background: var(--surface-card);
   color: var(--text);
 }
+
+/* v2-61: テキストを読む */
+.reading-title {
+  font-size: 1rem;
+  margin: 0 0 var(--sp-2);
+}
+.reading-text {
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin: 0 0 var(--sp-2);
+}
+.reading-heading {
+  font-weight: 700;
+  margin-top: var(--sp-2);
+}
+.reading-figure {
+  margin: var(--sp-2) 0;
+  padding: 6px;
+  background: #ffffff; /* 図は紙の白のまま（ダークでも読めるように） */
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+.reading-figure img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.reading-done-btn {
+  width: 100%;
+}

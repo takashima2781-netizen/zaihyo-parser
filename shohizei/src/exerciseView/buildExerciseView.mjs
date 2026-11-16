@@ -752,12 +752,69 @@ function doctorExercises(structure, diag) {
   return exercises;
 }
 
-export function buildShohizeiExerciseView({ trainings = [], theories = [], doctors = [], bookTitles = {}, phraseSplit = null, generatedAt = new Date().toISOString() }) {
+// ---- テキスト（読む用。exerciseType: reading） ----
+// ユーザーの選択（2026-11-17）: テキストは読む用に表示する。本文は文字、図・表は画像（figures）。
+// 節（N-N）ごとに1つ。採点はせず、「読んだ」を記録する。
+
+function textExercises(structure, figuresById, bookTitle, diag) {
+  const bookId = structure.meta.bookId;
+  const exercises = [];
+  const provenance = { generator: "shohizei-exercise-view-0.1", sourceKind: "shohizei_text_structure", bookId };
+  const themeNode = structureNode(bookId, bookTitle);
+  for (const session of structure.children) {
+    for (const theme of session.children) {
+      const themeTitle = theme.parsed.no === "unknown" ? `${session.parsed.raw}（はじめ）` : `テーマ${theme.parsed.no} ${theme.parsed.titleRaw}`;
+      const sectionNode = structureNode(`${bookId}:${session.parsed.no}:${theme.parsed.no}`, `${session.parsed.raw} ${themeTitle}`);
+      for (const sec of theme.children) {
+        const title = [sec.parsed.codeRaw, sec.parsed.titleRaw].filter(Boolean).join(" ");
+        const lines = sec.blocks.filter((b) => b.kind === "line");
+        setRightEdgesFromLines(lines);
+        const content = [];
+        let run = [];
+        const flush = () => {
+          if (run.length) content.push({ kind: "lines", lines: richLines(run).map((l, i) => ({ ...l, heading: run[i].style === "heading" })) });
+          run = [];
+        };
+        for (const b of sec.blocks) {
+          if (b.kind === "line") run.push(b);
+          else {
+            flush();
+            const img = figuresById.get(b.id);
+            if (!img) {
+              diag.push({ reason: "text-figure-missing", figure: b.id });
+              continue;
+            }
+            content.push({ kind: "figure", src: `data:image/jpeg;base64,${img.jpegBase64}`, width: img.width, height: img.height, page: b.page });
+          }
+        }
+        flush();
+        if (content.length === 0) continue;
+        const topicNode = structureNode(sec.stableId, title);
+        const ex = baseExercise({
+          id: `${sec.stableId}:reading`,
+          type: "reading",
+          stableId: sec.stableId,
+          structure: { theme: themeNode, section: sectionNode, topic: topicNode },
+          structurePath: [themeNode, sectionNode, topicNode].map((n) => n.structureNodeId),
+          prompt: rawSpan(title, sec.source[0], sec.id),
+          instructionRaw: null,
+          provenance,
+        });
+        ex.readingContent = content;
+        exercises.push(ex);
+      }
+    }
+  }
+  return exercises;
+}
+
+export function buildShohizeiExerciseView({ trainings = [], theories = [], doctors = [], texts = [], bookTitles = {}, phraseSplit = null, generatedAt = new Date().toISOString() }) {
   const diagnostics = [];
   const base = [
     ...theories.flatMap((t) => theoryExercises(t, diagnostics)),
     ...doctors.flatMap((d) => doctorExercises(d, diagnostics)),
     ...trainings.flatMap((t) => trainingExercises(t, diagnostics, bookTitles)),
+    ...texts.flatMap((t) => textExercises(t.structure, t.figuresById, bookTitles[t.structure.meta.bookId] ?? t.structure.meta.bookId, diagnostics)),
   ];
   // 並べ替えは、元の暗記カードのすぐ後ろに置く（範囲の中で教材の順に並ぶように）。
   const exercises = base.flatMap((ex) => (ex.exerciseType === "recall_text" && !ex.recallMeta?.noOrdering ? [ex, ...orderingFromRecall(ex, diagnostics, phraseSplit)] : [ex]));

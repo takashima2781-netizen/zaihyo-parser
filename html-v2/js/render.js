@@ -129,7 +129,8 @@ EVv2.createRichBlock = function (lines, label, collapsible) {
   var prev = null;
   lines.forEach(function (line) {
     // PDFの折り返しの続きの行（continues）は、同じ枠の中なら前の行につなげて1段落にする。
-    var joinPrev = line.continues && prev && prev.frame === (line.frame || "none") && prev.depth === (line.depth || 0);
+    // 見出しの行（line.heading）は前の行につなげず、太字の段落にする
+    var joinPrev = !line.heading && line.continues && prev && !prev.heading && prev.frame === (line.frame || "none") && prev.depth === (line.depth || 0);
     var p = joinPrev ? prev.el : document.createElement("div");
     if (joinPrev && p.lastChild && p.lastChild.textContent) {
       // 折り返しの直前に付いている空白は、つなげると不要な隙間になるので表示上だけ詰める
@@ -138,7 +139,8 @@ EVv2.createRichBlock = function (lines, label, collapsible) {
     if (!joinPrev) {
       p.className = "rich-line" + (line.frame === "dashed" ? " rich-line-framed" : "");
       if (line.depth) p.style.paddingLeft = Math.min(line.depth, 6) * 0.9 + "em";
-      prev = { el: p, frame: line.frame || "none", depth: line.depth || 0 };
+      if (line.heading) p.classList.add("reading-heading");
+      prev = { el: p, frame: line.frame || "none", depth: line.depth || 0, heading: !!line.heading };
     }
     (line.segments || []).forEach(function (seg) {
       if (seg.kind === "fraction") {

@@ -1029,6 +1029,7 @@
     { value: "recall_text", label: "暗記" },
     { value: "calculation_steps", label: "計算" },
     { value: "choice_item", label: "選択" },
+    { value: "reading", label: "読む" },
     { value: "single_blank", label: "穴埋め" },
     { value: "multi_blank", label: "多重穴埋め" },
     { value: "ordering", label: "並び替え" },
