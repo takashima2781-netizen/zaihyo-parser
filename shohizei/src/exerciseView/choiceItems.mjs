@@ -31,14 +31,22 @@ export function parseGroupedAnswer(lines) {
   const bySymbol = new Map();
   const conflicts = new Set();
   const seen = new Map();
+  const legend = new Map(); // 解答に書かれた記号の意味（「○〔標準税率〕」）
   let symbol = null;
   for (const l of lines) {
     const t = l.text.trim();
-    const head = t.match(/^([○〇△×]|[^\s…‥・.()（）0-9０-９]{1,2})\s*[…‥・.]{2,}\s*(.*)$/);
+    // 「○ ………… (1)、…」または「○〔標準税率〕 (1)、…」
+    const head =
+      t.match(/^([○〇△×]|[^\s…‥・.()（）〔〕0-9０-９]{1,2})\s*[…‥・.]{2,}\s*(.*)$/) ||
+      t.match(/^([○〇△×])\s*〔([^〕]+)〕\s*(.*)$/) ||
+      t.match(/^([○〇△×])\s+(?=[（(][0-9０-９])(.*)$/); // 「○   (1)、(3)…」（点線なし）
     let listText;
     if (head) {
       symbol = head[1] === "〇" ? "○" : head[1];
-      listText = head[2];
+      if (head.length === 4) {
+        legend.set(symbol, head[2]);
+        listText = head[3];
+      } else listText = head[2];
     } else if (symbol && /^[（(][0-9０-９]+[）)]/.test(t)) listText = t;
     else {
       symbol = null;
@@ -51,7 +59,24 @@ export function parseGroupedAnswer(lines) {
       bySymbol.get(symbol).push(no);
     }
   }
-  return { answerOf: seen, conflicts, symbols: [...bySymbol.keys()] };
+  return { answerOf: seen, conflicts, symbols: [...bySymbol.keys()], legend };
+}
+
+/**
+ * 取引ごとに文で答える解答（「(１) 第一種事業    (８) 第三種事業」のように1行に複数並ぶ）。
+ * 答えが金額でない短い文のときだけ読む。戻り値: 番号 → 答えの文
+ */
+export function parseInlineValueAnswers(lines) {
+  const out = new Map();
+  for (const l of lines) {
+    const t = l.text.trim();
+    for (const m of t.matchAll(/[（(]\s*([0-9０-９]+)\s*[）)]\s*([^\s（(]+(?:\s[^\s（(]+)?)/g)) {
+      const value = m[2].trim();
+      if (/^[0-9０-９,，.．△－-]+$/.test(value) || value.length > 12) continue;
+      out.set(Number(toHalf(m[1])), value);
+    }
+  }
+  return out;
 }
 
 /** 選ぶ問題の解答: 選ぶ番号（解答の先頭から、番号だけが並ぶ行が続く間）。 */

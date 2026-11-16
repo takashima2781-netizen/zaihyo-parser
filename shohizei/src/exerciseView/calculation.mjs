@@ -55,6 +55,30 @@ function headingRest(line) {
  * @param answerLines 解答の行
  * @param questionItems 問題文の (n) の行（番号 → 行の文）。取引ごとに金額を答える形のとき、段階の名前に使う
  */
+// 判定の結論（「∴ 納税義務あり」など）。対になる言い方が決まっているものだけを選択で採点する。
+export const JUDGEMENT_PAIRS = [
+  ["納税義務あり", "納税義務なし"],
+  ["該当する", "該当しない"],
+  ["適用あり", "適用なし"],
+  ["少額特例適用あり", "少額特例適用なし"],
+  ["按分必要", "全額控除"],
+  ["満たす", "満たさない"],
+  ["個別対応方式", "一括比例配分方式"],
+];
+
+/** 行の並びから、最後の「∴ 結論」を読む。対の言い方に当てはまれば選択肢つきで返す。 */
+export function judgementFrom(texts) {
+  for (let i = texts.length - 1; i >= 0; i--) {
+    const m = texts[i].match(/∴\s*(.+?)\s*[。]?\s*$/);
+    if (!m) continue;
+    const said = m[1].trim();
+    if (new RegExp(`^${AMOUNT.source}$`).test(said)) return null; // 結論が金額のものは金額の段階として扱う
+    const pair = JUDGEMENT_PAIRS.find((p) => p.includes(said));
+    return pair ? { raw: said, options: pair, correct: said } : { raw: said, options: null, correct: null };
+  }
+  return null;
+}
+
 export function buildCalculationSteps(answerLines, questionItems = new Map()) {
   // 取引ごとの形: 解答が (1)(2)… だけで並んでいる（Ⅰ・１・【 】の見出しが無い）。
   // このとき (n) の行の残り（金額や「不課税売上げ」）は答えなので、段階の名前には出さず、
@@ -150,7 +174,7 @@ export function buildCalculationSteps(answerLines, questionItems = new Map()) {
     );
     // 金額が無く、中身が「〔…〕」の小見出しだけの区切りは、子の段階の前置きとして扱う
     const onlySubHeadings = !expectedRaw && work.length > 0 && work.every((l) => /^〔[^〕]*〕$/.test(lineText(l)));
-    const hasContent = !onlySubHeadings && (Boolean(expectedRaw) || work.length > 0 || (itemStyle && rest));
+    const hasContent = !onlySubHeadings && (Boolean(expectedRaw) || work.length > 0 || (itemStyle && rest) || Boolean(s.heading && rest.includes("∴")));
     // Ⅰ・１・【 】の見出しに入ったら、前の前置きはもう使わない
     if (s.heading && s.heading.marker.kind !== "paren-number") groupLabel = null;
     if (!hasContent) {
@@ -159,13 +183,24 @@ export function buildCalculationSteps(answerLines, questionItems = new Map()) {
       continue;
     }
     const value = parseAmount(expectedRaw);
+    // 判定の結論（見出しの行に入っていることもある）
+    const judgement = judgementFrom([...(s.heading ? [lineText(s.heading)] : []), ...texts]);
     let labelRaw = s.heading ? lineText(s.heading) : null;
     // 見出しの行に計算式と答えが入っている（「(3) (1)＋(2)＝79,850,000」）ときは、「＝」より前だけを名前にし、
     // 見出しの行そのものは計算式として解説に回す
     let headingIsWork = false;
+    // 名前に結論（「∴ …」）が入っていたら、答えになるので外す
+    if (labelRaw && labelRaw.includes("∴")) {
+      labelRaw = labelRaw.slice(0, labelRaw.indexOf("∴")).trim();
+      headingIsWork = true;
+    }
     if (labelRaw && labelRaw.includes("＝")) {
       labelRaw = labelRaw.slice(0, labelRaw.indexOf("＝")).trim();
       headingIsWork = true;
+    }
+    // 名前に残ったのが計算式そのもの（金額を含む）なら、計算の仕方を明かしてしまうので記号だけにする
+    if (headingIsWork && s.heading && /[0-9０-９]{2,}/.test(labelRaw.slice(s.heading.marker.raw.length))) {
+      labelRaw = s.heading.marker.raw;
     }
     if (plainHeading) labelRaw = plainHeading;
     if (itemStyle && s.heading) {
@@ -177,6 +212,8 @@ export function buildCalculationSteps(answerLines, questionItems = new Map()) {
       headingLine: s.heading,
       labelRaw,
       expected: value == null ? null : { raw: expectedRaw, value, how },
+      // 判定の結論。options があるものは選択で採点、無いものは表示だけ
+      judgement,
       // 金額が決まらないときの答えの文（取引ごとの形の「不課税売上げ」など）。採点はしない
       answerTextRaw: value == null && itemStyle ? rest || null : null,
       // 取引ごとの形では、見出しの行（答えと計算式）も解説として見せる

@@ -30,3 +30,14 @@ test("選ぶ問題の解答: 番号だけが並ぶ行（続きの行も）。文
   const s = parseSelectedAnswer([L("(1)、(5)、"), L("(7)、（10）"), L("【解答への道】の前置き(9)")]);
   assert.deepEqual([...s].sort((a, b) => a - b), [1, 5, 7, 10]);
 });
+
+test("取引ごとの短い文の答え（事業区分）と、解答側の記号の意味（○〔標準税率〕）", async () => {
+  const { parseInlineValueAnswers } = await import("../src/exerciseView/choiceItems.mjs");
+  const m = parseInlineValueAnswers([L("(１) 第一種事業    (８) 第三種事業"), L("(２) 非課税取引    (９) 1,000")]);
+  assert.deepEqual([...m], [[1, "第一種事業"], [8, "第三種事業"], [2, "非課税取引"]]);
+  const g = parseGroupedAnswer([L("○〔標準税率〕 (１)、(３)"), L("△〔軽減税率〕 (２)")]);
+  assert.equal(g.legend.get("○"), "標準税率");
+  assert.equal(g.answerOf.get(2), "△");
+  const h = parseGroupedAnswer([L("○   (1)、(3)"), L("×   (2)")]);
+  assert.equal(h.answerOf.get(3), "○", "点線の無い書き方も読む");
+});

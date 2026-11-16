@@ -2418,3 +2418,14 @@ details.rich-block[open] > summary.rich-block-label {
 .calc-check-btn {
   width: 100%;
 }
+
+/* v2-59: 計算問題の判定の選択 */
+.calc-judge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.calc-judge-btn {
+  min-height: 36px;
+}

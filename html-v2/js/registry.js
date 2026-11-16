@@ -969,18 +969,41 @@ var calculationStepsHandler = {
         unit.textContent = "円";
         wrap.appendChild(unit);
         row.appendChild(wrap);
-      } else {
+      } else if (!(st.judgement && st.judgement.options)) {
         var note = document.createElement("span");
         note.className = "calc-step-ungraded";
         note.textContent = "（この段階は採点しません）";
         row.appendChild(note);
+      }
+      // v2-59: 判定の結論（「納税義務あり／なし」など）を選ぶ
+      var judgeState = null;
+      if (st.judgement && st.judgement.options) {
+        judgeState = { value: null, buttons: [] };
+        var judgeRow = document.createElement("div");
+        judgeRow.className = "calc-judge-row";
+        st.judgement.options.forEach(function (opt) {
+          var b = document.createElement("button");
+          b.type = "button";
+          b.className = "chip calc-judge-btn";
+          b.textContent = opt;
+          b.addEventListener("click", function () {
+            if (b.disabled) return;
+            judgeState.value = opt;
+            judgeState.buttons.forEach(function (x) {
+              x.classList.toggle("active", x === b);
+            });
+          });
+          judgeState.buttons.push(b);
+          judgeRow.appendChild(b);
+        });
+        row.appendChild(judgeRow);
       }
       var result = document.createElement("div");
       result.className = "calc-step-result";
       result.hidden = true;
       row.appendChild(result);
       list.appendChild(row);
-      rows.push({ step: st, input: input, result: result, row: row });
+      rows.push({ step: st, input: input, result: result, row: row, judge: judgeState });
     });
     zones.answer.appendChild(list);
 
@@ -1006,18 +1029,37 @@ var calculationStepsHandler = {
       rows.forEach(function (r) {
         var st = r.step;
         r.result.hidden = false;
+        var msgs = [];
+        var stepOk = true;
+        var stepGraded = false;
         if (st.expected) {
-          graded += 1;
+          stepGraded = true;
           var v = EVv2.parseAmountInput(r.input.value);
           var ok = v !== null && v === st.expected.value;
-          if (!ok) allCorrect = false;
+          if (!ok) stepOk = false;
           r.input.disabled = true;
-          r.row.classList.add(ok ? "calc-step-correct" : "calc-step-wrong");
-          r.result.textContent = ok ? "○ 正解" : "× 正解は " + st.expected.raw + " 円";
+          msgs.push(ok ? "○ 金額 正解" : "× 金額の正解は " + st.expected.raw + " 円");
           yourAnswers.push((st.labelRaw || "") + " " + (r.input.value || "（空欄）"));
-        } else {
-          r.result.textContent = st.answerTextRaw ? "解答: " + st.answerTextRaw : "";
         }
+        if (r.judge) {
+          stepGraded = true;
+          var jOk = r.judge.value === st.judgement.correct;
+          if (!jOk) stepOk = false;
+          r.judge.buttons.forEach(function (b) {
+            b.disabled = true;
+          });
+          msgs.push(jOk ? "○ 判定 正解（" + st.judgement.correct + "）" : "× 判定の正解は「" + st.judgement.correct + "」");
+          yourAnswers.push((st.labelRaw || "") + " " + (r.judge.value || "（未選択）"));
+        } else if (st.judgement && st.judgement.raw) {
+          msgs.push("結論: " + st.judgement.raw);
+        }
+        if (!st.expected && !r.judge && st.answerTextRaw) msgs.push("解答: " + st.answerTextRaw);
+        if (stepGraded) {
+          graded += 1;
+          if (!stepOk) allCorrect = false;
+          r.row.classList.add(stepOk ? "calc-step-correct" : "calc-step-wrong");
+        }
+        r.result.textContent = msgs.join(" ／ ");
         if (st.workRich && st.workRich.length) r.result.appendChild(EVv2.createRichBlock(st.workRich, "計算式"));
       });
       if (graded === 0) allCorrect = false;

@@ -10,7 +10,7 @@
 // 教材構造の segments をそのまま渡す。プレーンな文字列（answerText 等）は行の text をつないだもの。
 
 import { buildCalculationSteps } from "./calculation.mjs";
-import { categoryLegend, parseGroupedAnswer, parseSelectedAnswer } from "./choiceItems.mjs";
+import { categoryLegend, parseGroupedAnswer, parseSelectedAnswer, parseInlineValueAnswers } from "./choiceItems.mjs";
 import { removeAlignmentSpaces, removeAlignmentSpacesMultiline, removeAlignmentSpacesInSegments } from "./displayText.mjs";
 
 const SCHEMA_VERSION = "exercise-view-schema-v1.8.0";
@@ -154,6 +154,10 @@ function trainingExercises(structure, diag, bookTitles) {
     const sessionTitle = session.raw ?? "（回の見出しなし）";
     for (const p of session.children) {
       const forms = p.question?.formCandidates.map((f) => f.form) ?? [];
+      // 〇×の指示でも、解答に3つ目の記号（△ など）が出てくるものは振り分けとして扱う
+      if (forms.includes("true_false_set") && p.answer && parseGroupedAnswer(p.answer.lines).symbols.length >= 3) {
+        forms.splice(forms.indexOf("true_false_set"), 1, "classify_items");
+      }
       const theme = structureNode(`${bookId}`, bookTitle);
       const section = structureNode(`${bookId}:session-${session.parsed.no}`, sessionTitle);
       const topic = structureNode(p.stableId, `問題${p.parsed.no} ${p.parsed.titleRaw}`);
@@ -197,14 +201,58 @@ function trainingExercises(structure, diag, bookTitles) {
         continue;
       }
 
-      if ((forms.includes("classify_items") || forms.includes("select_applicable")) && p.answer) {
-        const isClassify = forms.includes("classify_items");
-        const items = questionItems(p);
+      // 問い方が分からない（指示文の言い回しで決まらない）問題は、解答の形から順に当てはめる:
+      // 記号ごとの番号の並び → 取引ごとの短い文（事業区分など） → 計算・判定の段階 → 自己採点の暗記カード
+      const HANDLED = ["true_false_set", "classify_items", "select_applicable", "statement_recall", "calculation"];
+      const isFallback = !forms.some((f) => HANDLED.includes(f));
+      const items = questionItems(p);
+      const groupedFallback = isFallback && p.answer ? parseGroupedAnswer(p.answer.lines) : null;
+      const groupedCovers = groupedFallback && items.size > 0 && [...items.keys()].filter((no) => groupedFallback.answerOf.has(no)).length >= items.size * 0.8;
+      const inlineFallback = isFallback && p.answer && !groupedCovers ? parseInlineValueAnswers(p.answer.lines) : null;
+      const inlineCovers =
+        inlineFallback && items.size >= 3 && [...items.keys()].filter((no) => inlineFallback.has(no)).length >= items.size * 0.8 && new Set(inlineFallback.values()).size <= 8;
+
+      if (inlineCovers) {
+        // 事業区分など: 解答に出てくる答えの文を選択肢にする（第一種〜第六種は番号の順）
+        const order = (v) => {
+          const k = "一二三四五六".indexOf((v.match(/第([一二三四五六])種/) ?? [])[1]);
+          return k === -1 ? 99 : k;
+        };
+        const values = [...new Set([...items.keys()].map((no) => inlineFallback.get(no)).filter(Boolean))].sort((a, b) => order(a) - order(b));
+        let made = 0;
+        for (const [no, item] of items) {
+          const correct = inlineFallback.get(no);
+          if (!correct) {
+            diag.push({ reason: "choice-item-answer-not-found", problem: p.parsed.no, item: no });
+            continue;
+          }
+          const ex = baseExercise({
+            id: `${p.stableId}:choice-${no}`,
+            type: "choice_item",
+            stableId: `${p.stableId}:item-${no}`,
+            structure: structureRef,
+            structurePath: path,
+            prompt: rawSpan((item.groupHeading ? item.groupHeading.text.trim() + "\n" : "") + item.lines.map((l) => l.text.trim()).join(""), item.lines[0].source, p.id),
+            instructionRaw,
+            provenance,
+          });
+          ex.choiceOptions = values.map((v) => ({ value: v, label: v }));
+          ex.correctChoice = correct;
+          ex.guidanceRich = guidanceRich;
+          ex.choiceMeta = { kind: "inline-answer" };
+          exercises.push(ex);
+          made += 1;
+        }
+        if (made > 0) continue;
+      }
+
+      if (((forms.includes("classify_items") || forms.includes("select_applicable")) || groupedCovers) && p.answer) {
+        const isClassify = forms.includes("classify_items") || groupedCovers;
         let choices;
         let answerOf;
         if (isClassify) {
-          const legend = categoryLegend(p.question.instructionRaw ?? "");
           const parsed = parseGroupedAnswer(p.answer.lines);
+          const legend = new Map([...categoryLegend(p.question.instructionRaw ?? ""), ...parsed.legend]);
           for (const no of parsed.conflicts) diag.push({ reason: "choice-item-conflict", problem: p.parsed.no, item: no });
           const symbols = [...new Set([...legend.keys(), ...parsed.symbols])];
           choices = symbols.map((sym) => ({ value: sym, label: legend.has(sym) ? `${sym} ${legend.get(sym)}` : sym }));
@@ -268,15 +316,16 @@ function trainingExercises(structure, diag, bookTitles) {
         continue;
       }
 
-      if (forms.includes("calculation") && p.answer) {
+      if ((forms.includes("calculation") || isFallback) && p.answer) {
         const itemTexts = new Map([...questionItems(p)].map(([no, it]) => [no, it.lines.map((l) => l.text.trim()).join("")]));
         const steps = buildCalculationSteps(p.answer.lines, itemTexts);
-        const graded = steps.filter((st) => st.expected);
-        if (graded.length === 0) {
+        const graded = steps.filter((st) => st.expected || st.judgement?.options);
+        if (graded.length === 0 && !isFallback) {
           diag.push({ reason: "calculation-no-gradable-step", problem: p.parsed.no });
           continue;
         }
-        for (const st of steps) if (!st.expected) diag.push({ reason: "calculation-step-not-graded", problem: p.parsed.no, step: st.labelRaw });
+        if (graded.length > 0) {
+        for (const st of steps) if (!st.expected && !st.judgement?.options) diag.push({ reason: "calculation-step-not-graded", problem: p.parsed.no, step: st.labelRaw });
         const ex = baseExercise({
           id: `${p.stableId}:calc`,
           type: "calculation_steps",
@@ -293,10 +342,33 @@ function trainingExercises(structure, diag, bookTitles) {
           labelRaw: st.labelRaw ? removeAlignmentSpaces(st.labelRaw) : null,
           expected: st.expected,
           answerTextRaw: st.answerTextRaw ? removeAlignmentSpaces(st.answerTextRaw) : null,
+          judgement: st.judgement,
           workRich: richLines(st.workLines),
         }));
         ex.guidanceRich = guidanceRich;
-        ex.calculationMeta = { timeRaw: p.parsed.timeRaw, levelRaw: p.parsed.levelRaw, hasSheet: p.parsed.hasSheet };
+        ex.calculationMeta = { timeRaw: p.parsed.timeRaw, levelRaw: p.parsed.levelRaw, hasSheet: p.parsed.hasSheet, fromForm: isFallback ? "fallback" : "calculation" };
+        exercises.push(ex);
+        continue;
+        }
+      }
+
+      // 最後の受け皿: 問題文を見て解答を思い出す自己採点の暗記カード（日付で答える・文で答える など）
+      if (isFallback && p.answer && p.answer.lines.length) {
+        const ex = baseExercise({
+          id: `${p.stableId}:recall`,
+          type: "recall_text",
+          stableId: p.stableId,
+          structure: structureRef,
+          structurePath: path,
+          prompt: rawSpan(p.question.lines.map((l) => l.text.trim()).join("\n"), p.question.lines[0]?.source, p.id),
+          instructionRaw: null,
+          provenance,
+        });
+        ex.promptRich = richLines(p.question.lines);
+        ex.expectedAnswer = [{ answerText: rawSpan(p.answer.lines.map((l) => l.text.trim()).join("\n"), p.answer.lines[0]?.source, p.id) }];
+        ex.answerRich = richLines(p.answer.lines);
+        ex.guidanceRich = guidanceRich;
+        ex.recallMeta = { fromForm: "fallback", noOrdering: true };
         exercises.push(ex);
         continue;
       }
@@ -641,7 +713,7 @@ export function buildShohizeiExerciseView({ trainings = [], theories = [], bookT
     ...trainings.flatMap((t) => trainingExercises(t, diagnostics, bookTitles)),
   ];
   // 並べ替えは、元の暗記カードのすぐ後ろに置く（範囲の中で教材の順に並ぶように）。
-  const exercises = base.flatMap((ex) => (ex.exerciseType === "recall_text" ? [ex, ...orderingFromRecall(ex, diagnostics, phraseSplit)] : [ex]));
+  const exercises = base.flatMap((ex) => (ex.exerciseType === "recall_text" && !ex.recallMeta?.noOrdering ? [ex, ...orderingFromRecall(ex, diagnostics, phraseSplit)] : [ex]));
   return {
     meta: {
       schemaVersion: SCHEMA_VERSION,

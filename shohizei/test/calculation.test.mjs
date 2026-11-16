@@ -94,3 +94,13 @@ test("段階: 「（続き）」の見出しは前の段階につなげ、最後
   assert.equal(steps.length, 1);
   assert.equal(steps[0].expected.value, 150);
 });
+
+test("判定: 「∴ 納税義務あり」は対の選択肢つき、決まった対が無い結論は表示だけ", async () => {
+  const { judgementFrom } = await import("../src/exerciseView/calculation.mjs");
+  assert.deepEqual(judgementFrom(["(3) A＞B  ∴  納税義務あり"]), { raw: "納税義務あり", options: ["納税義務あり", "納税義務なし"], correct: "納税義務あり" });
+  assert.deepEqual(judgementFrom(["∴ 特別な結論"]), { raw: "特別な結論", options: null, correct: null });
+  assert.equal(judgementFrom(["(3)＞(4)  ∴  91,260,000"]), null, "結論が金額なら判定ではない");
+  const steps = buildCalculationSteps([L("(1) 基準期間", paren("(1)")), L("1,100×100/110＝1,000"), L("(2) (1)＞500  ∴  納税義務あり", paren("(2)"))]);
+  assert.equal(steps[1].labelRaw, "(2)", "名前に結論も、金額の入った式も入れない");
+  assert.equal(steps[1].judgement.correct, "納税義務あり");
+});
