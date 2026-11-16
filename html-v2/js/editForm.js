@@ -720,7 +720,21 @@ window.EVv2 = EVv2;
     var answerTextarea = null;
     var reconstructionLine = null;
 
+    // v2-56(消費税): 暗記カード(recall_text)から作った並べ替えは、元の本文を編集画面で直さない
+    // （暗記カードは編集に未対応）。基準の文は生成時に orderingMeta.referenceText に記録した
+    // 「ピースをつなげると必ずなる文」で、多重穴埋め由来と同じく完全一致しないと保存できない。
+    var fixedReference =
+      isSentenceMode && sourceEx && !subQuestion && sourceEx.exerciseType === "recall_text" &&
+      ex.orderingMeta && typeof ex.orderingMeta.referenceText === "string"
+        ? ex.orderingMeta.referenceText
+        : null;
+    var referenceLabel = fixedReference != null ? "元の本文" : "本文＋正解";
+    var hasReference = function () {
+      return !!subQuestion || fixedReference != null;
+    };
+
     function currentReferenceText() {
+      if (fixedReference != null) return fixedReference;
       return bodyTextarea.value + " " + answerTextarea.value;
     }
 
@@ -758,15 +772,15 @@ window.EVv2 = EVv2;
       var matches = joined === reference;
       reconstructionLine.className = "phrase-reorder-reconstruction-line" + (matches ? " phrase-reorder-match" : " phrase-reorder-mismatch");
       if (matches) {
-        reconstructionLine.textContent = "✓ 本文＋正解の連結と一致しています: " + joined;
+        reconstructionLine.textContent = "✓ " + referenceLabel + "と一致しています: " + joined;
         return;
       }
       var prefixLen = commonPrefixLength(joined, reference);
       reconstructionLine.innerHTML =
-        "⚠ 本文＋正解の連結と一致しません（この状態では保存できません）。一致している範囲を緑、ズレている範囲を赤で表示します。" +
+        "⚠ " + referenceLabel + "と一致しません（この状態では保存できません）。一致している範囲を緑、ズレている範囲を赤で表示します。" +
         '<br><span class="phrase-reorder-diff-row-label">文節を連結: </span>' +
         highlightPrefixHtml(joined, prefixLen) +
-        '<br><span class="phrase-reorder-diff-row-label">本文＋正解: </span>' +
+        '<br><span class="phrase-reorder-diff-row-label">' + referenceLabel + ': </span>' +
         highlightPrefixHtml(reference, prefixLen);
     }
 
@@ -806,6 +820,29 @@ window.EVv2 = EVv2;
         answerTextarea.addEventListener("input", updateReconstructionLine);
         answerGroup.appendChild(answerTextarea);
         mountEl.appendChild(answerGroup);
+
+        reconstructionLine = document.createElement("p");
+        reconstructionLine.className = "phrase-reorder-reconstruction-line";
+        mountEl.appendChild(reconstructionLine);
+      } else if (fixedReference != null) {
+        var recallNote = document.createElement("p");
+        recallNote.className = "edit-note";
+        recallNote.textContent =
+          "この問題は暗記カードの本文を区切ったものです。ピースの区切り・並び・文言を直せますが、" +
+          "ピースをつなげた文が元の本文と完全に一致していないと保存できません。";
+        mountEl.appendChild(recallNote);
+
+        var refGroup = document.createElement("div");
+        refGroup.className = "field-group edit-field";
+        var refLabel = document.createElement("span");
+        refLabel.className = "eyebrow";
+        refLabel.textContent = "元の本文（ここでは変更できません）";
+        refGroup.appendChild(refLabel);
+        var refText = document.createElement("p");
+        refText.className = "edit-reference-text";
+        refText.textContent = fixedReference;
+        refGroup.appendChild(refText);
+        mountEl.appendChild(refGroup);
 
         reconstructionLine = document.createElement("p");
         reconstructionLine.className = "phrase-reorder-reconstruction-line";
@@ -964,14 +1001,19 @@ window.EVv2 = EVv2;
       validate: function () {
         var base = EVv2.ExerciseEditor.validateOrderingDraft(draft);
         if (!base.ok) return base;
-        if (subQuestion) {
+        if (hasReference()) {
           var joined = draft
             .map(function (item) {
               return item.text;
             })
             .join("");
           if (joined !== currentReferenceText()) {
-            return { ok: false, error: "文節を連結した結果が本文＋正解と一致しません。区切り・並び・本文/正解の文言を確認してください。" };
+            return {
+              ok: false,
+              error: subQuestion
+                ? "文節を連結した結果が本文＋正解と一致しません。区切り・並び・本文/正解の文言を確認してください。"
+                : "ピースを連結した結果が元の本文と一致しません。区切り・並び・文言を確認してください。",
+            };
           }
         }
         return { ok: true, error: null };

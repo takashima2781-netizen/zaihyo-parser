@@ -401,6 +401,12 @@ function orderingFromRecall(card, diag, phraseSplit) {
       diag.push({ reason: "ordering-part-too-few-pieces", card: card.exerciseId, part: gi + 1 });
       return;
     }
+    // ピースをつなげると必ずこの文になる（アプリの編集画面が、保存前に完全一致を確かめる基準）。
+    const referenceText = group.map((p) => p.text).join("");
+    if (pieces.map((p) => p.text).join("") !== referenceText) {
+      diag.push({ reason: "ordering-pieces-do-not-rejoin", card: card.exerciseId, part: gi + 1 });
+      return;
+    }
     const partLabel = groups.length > 1 ? `（${gi + 1}／${groups.length}）` : "";
     const stableId = `${card.stableItemIds[0]}:order-${gi + 1}`;
     const items = pieces.map((p, i) => ({ id: `item-${i}`, label: String(i + 1), text: p.text }));
@@ -418,7 +424,7 @@ function orderingFromRecall(card, diag, phraseSplit) {
     ex.correctOrder = items.map((it) => it.id);
     ex.assembledFromSource = true;
     ex.sourceExerciseId = card.exerciseId;
-    ex.orderingMeta = { pieceSplit: method, part: gi + 1, parts: groups.length };
+    ex.orderingMeta = { pieceSplit: method, part: gi + 1, parts: groups.length, referenceText };
     out.push(ex);
     if (pieces.length > MAX_PIECES) diag.push({ reason: "ordering-part-over-max-pieces", card: card.exerciseId, part: gi + 1, pieces: pieces.length });
   });

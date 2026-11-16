@@ -144,6 +144,7 @@ test("並べ替え: 暗記カードの本文を「、」「。」でピースに
   assert.deepEqual(ord[0].correctOrder, ["item-0", "item-1", "item-2", "item-3"]);
   assert.equal(ord[0].assembledFromSource, true);
   assert.equal(ord[0].sourceExerciseId, view.exercises[0].exerciseId, "元の暗記カードのすぐ後ろに置く");
+  assert.equal(ord[0].orderingMeta.referenceText, "Aは、Bにより行う。ただし、Cとする。", "編集画面の完全一致の基準");
 });
 
 test("並べ替え: 区切りが無い本文は文節で分け、それでも2つに満たなければ作らない", () => {

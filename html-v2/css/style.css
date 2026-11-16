@@ -2334,3 +2334,15 @@ details.rich-block[open] > summary.rich-block-label {
 .rich-fraction-den {
   padding: 0 3px;
 }
+
+/* v2-56: 並べ替えの編集画面で、基準になる元の本文（読み取り専用） */
+.edit-reference-text {
+  margin: 4px 0 0;
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--surface-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: .85rem;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
