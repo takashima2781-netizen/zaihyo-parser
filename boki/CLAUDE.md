@@ -1,5 +1,12 @@
 # Boki App (簿記論アプリ)
 
+> **移転（2026-11-16）**: このフォルダは、独立していた boki-app リポジトリを zaihyo-parser
+> リポジトリの `boki/` へ履歴ごと取り込んだもの。以下の本文で「Zaihyo Parser」「財表ドリル
+> (`Zaihyo Parser/html-v2`)」と書かれているのは、同じリポジトリの `../html-v2/` を指す。
+> 「独立したリポジトリとして構築する」「財表ドリル側はこのリポジトリの権限外」という記述は
+> 移転前のもの。今後は最上位の `CLAUDE.md`（構成表）と `../WISHLIST.md` も参照する。
+> テストは `boki/` で `npm test`。PDF 抽出には PyMuPDF 入りの Python を `BOKI_PYTHON_BIN` で指定する。
+
 ## Mission
 
 boki-app は、簿記論教材(教科書)を解析し、
