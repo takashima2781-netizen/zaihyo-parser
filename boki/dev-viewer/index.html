@@ -1,0 +1,1207 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<title>boki-app 開発用確認UI(閲覧のみ)</title>
+<style>
+  /* 開発用。デザインの作り込みはしない(vertical_slice_mvp_roadmap.md 5-1節)。 */
+  body {
+    font-family: -apple-system, "Yu Gothic", "Meiryo", sans-serif;
+    background: #f5f5f5;
+    color: #111;
+    margin: 0;
+    padding: 24px;
+  }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .meta { color: #666; font-size: 13px; margin-bottom: 24px; }
+  .case-block {
+    padding-top: 20px;
+    margin-top: 20px;
+    border-top: 4px solid #333;
+  }
+  .case-block:first-child {
+    padding-top: 0;
+    margin-top: 0;
+    border-top: none;
+  }
+  section {
+    background: #fff;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  section h2 {
+    font-size: 14px;
+    margin: 0 0 10px;
+    color: #333;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  section h2 .step {
+    display: inline-block;
+    background: #333;
+    color: #fff;
+    border-radius: 3px;
+    padding: 1px 7px;
+    font-size: 12px;
+  }
+  .field { margin: 6px 0; }
+  .field .label { color: #888; font-size: 12px; }
+  pre {
+    background: #f0f0f0;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    padding: 10px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 13px;
+    margin: 4px 0;
+  }
+  .formula {
+    font-size: 16px;
+    padding: 10px;
+    background: #eef7ee;
+    border: 1px solid #bcdcbc;
+    border-radius: 3px;
+  }
+  .arrow { text-align: center; color: #999; margin: -8px 0 8px; }
+  .badge {
+    display: inline-block;
+    border-radius: 3px;
+    padding: 1px 6px;
+    font-size: 12px;
+    font-weight: bold;
+  }
+  .badge.ok { background: #d9f2d9; color: #256029; }
+  .badge.warn { background: #f9e9c0; color: #7a5b00; }
+  .scope-out { color: #888; font-size: 13px; }
+  #error { color: #b00020; white-space: pre-wrap; }
+  table { border-collapse: collapse; font-size: 13px; }
+  td, th { border: 1px solid #ddd; padding: 4px 8px; text-align: left; }
+  .action-panel {
+    border: 1px solid #ddd;
+    background: #fafafa;
+    border-radius: 3px;
+    padding: 10px;
+    margin: 8px 0;
+  }
+  .action-panel .field { display: flex; flex-direction: column; gap: 2px; }
+  .action-panel input[type="text"], .action-panel textarea {
+    font-family: inherit;
+    font-size: 13px;
+    padding: 4px;
+    width: 100%;
+    max-width: 480px;
+    box-sizing: border-box;
+  }
+  .action-panel textarea { min-height: 3em; }
+  button { cursor: pointer; }
+  .action-error { color: #b00020; font-size: 13px; margin-top: 4px; }
+  .m5-ready {
+    font-size: 13px;
+    padding: 8px 10px;
+    background: #eef7ee;
+    border: 1px solid #bcdcbc;
+    border-radius: 3px;
+    margin-top: 6px;
+  }
+  /* Source追加候補(要判断): M4のKnowledge承認(緑基調)とは明確に色系統を
+     変え、「Sourceとして確定するか」ではなく「Knowledgeの根拠として追加
+     するか」を判断する操作であることが見た目でも分かるようにする
+     (青系統)。独立したセクションではなく、Derived Knowledge候補
+     セクションの内側に置く
+     (`knowledge_integration_review_scope_design.md`6節)。 */
+  .evidence-integration-block {
+    border-top: 1px dashed #3a6ea8;
+    margin-top: 12px;
+    padding-top: 12px;
+  }
+  .candidate-card {
+    border: 1px solid #9fb9d6;
+    background: #eef4fb;
+    border-radius: 4px;
+    padding: 12px;
+    margin: 10px 0;
+  }
+  .candidate-card.readonly { background: #f5f9fd; }
+  .candidate-action-panel {
+    border: 1px solid #9fb9d6;
+    background: #fff;
+    border-radius: 3px;
+    padding: 10px;
+    margin: 8px 0;
+  }
+  .candidate-action-panel textarea {
+    font-family: inherit;
+    font-size: 13px;
+    padding: 4px;
+    width: 100%;
+    max-width: 480px;
+    box-sizing: border-box;
+    min-height: 3em;
+  }
+  .evidence-prompt {
+    font-size: 14px;
+    font-weight: bold;
+    color: #1e4b7a;
+    margin-bottom: 6px;
+  }
+  /* 専門家レビュー領域(平易な言葉で判断ポイントを示す)と、開発者向け詳細
+     (内部設計の用語、折りたたみ)を明確に分ける。人間は「教材・会計として
+     意味が正しいか」だけを判断し、構造・参照・状態遷移の正しさはシステム
+     (gateChecks等)の責務とする。 */
+  .expert-block { font-size: 14px; }
+  .expert-formula {
+    font-size: 16px;
+    padding: 10px;
+    background: #fff;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    margin: 4px 0 10px;
+  }
+  .expert-note {
+    font-size: 13px;
+    color: #444;
+    margin: 4px 0 10px;
+  }
+  .expert-note.warn-note {
+    background: #fdf3e0;
+    border: 1px solid #e8c273;
+    border-radius: 3px;
+    padding: 8px 10px;
+  }
+  details.dev-detail {
+    margin-top: 12px;
+    border-top: 1px dashed #ccc;
+    padding-top: 8px;
+  }
+  details.dev-detail summary {
+    cursor: pointer;
+    color: #888;
+    font-size: 12px;
+  }
+</style>
+</head>
+<body>
+  <h1>boki-app 開発用確認UI(閲覧のみ)</h1>
+  <div class="meta">
+    このUIは開発用の確認画面です。1〜5の各段階は表示専用です。「6. 学習対象
+    として採用するか」「7. この知識が使われている他の例」は、実際に判断・
+    操作ができます。各カードの上半分(判断ポイント)は内部用語を使わずに
+    表示し、内部設計の詳細は「▼ 開発者向け詳細」に折りたたんであります。
+  </div>
+
+  <div id="error"></div>
+  <div id="app"></div>
+
+  <script type="module">
+    // 往復整合性の検証には、生成処理(src/knowledge/deriveKnowledgeCandidate.mjs)
+    // と全く同じrenderTokensをサーバ経由でそのままimportする(重複実装による
+    // 意図しないロジックの食い違いを避けるため。/lib/配下は許可リスト制、
+    // src/devViewer/server.mjs参照)。
+    import { renderTokens } from "/lib/formulaTokenizer.mjs";
+
+    // 表示するケースの一覧は、`/api/cases`(`output/cases/`配下の実ファイル
+    // 走査)から動的に取得する(第7ケース以降、ケース追加のたびにこの
+    // 配列を手動編集する必要が無いようにするため、`planning/phase_c_
+    // readiness_assessment.md`2節で対応)。「定義ケース+その適用例ケース」
+    // というペアは、適用例ケース自身が持つ`definitionCaseName`から動的に
+    // 組み立てる。
+    async function fetchDefinitionCases() {
+      const res = await fetch("/api/cases");
+      if (!res.ok) {
+        throw new Error(`/api/cases の取得に失敗しました: HTTPエラー ${res.status}`);
+      }
+      const { cases } = await res.json();
+      const definitionCases = cases.filter((c) => c.kind === "definition");
+      const applicationCases = cases.filter((c) => c.kind === "application");
+      return definitionCases.map(({ caseName }) => {
+        const applicationCase = applicationCases.find((a) => a.definitionCaseName === caseName);
+        return { caseName, applicationCaseName: applicationCase?.caseName ?? null };
+      });
+    }
+
+    // M5: /api/exercisesの取得結果をキャッシュしておく。M4の承認/修正/除外は
+    // ケースデータだけを再取得してrender()を呼び直すため(既存の実装)、
+    // Exercise一覧はページ読み込み時に一度だけ取得し、再描画のたびに
+    // 使い回す(Exercise生成はM4の操作とは独立したCLIステップのため、
+    // 毎回再取得する必要が無い)。
+    let latestExercisesData = null;
+
+    // M4: 承認/修正/除外のPOSTを呼ぶ共通関数。caseNameは呼び出し側
+    // (render()内、data.caseから取得)が渡す。複数ケースを並べて表示できる
+    // ようにするため、モジュール直下の定数ではなくケースごとに指定する。
+    async function postReview(caseName, action, body) {
+      const res = await fetch(`/api/case/${caseName}/${action}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body ?? {}),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || `HTTPエラー: ${res.status}`);
+      }
+      return data;
+    }
+
+    // Sourceの追加(要判断)候補に対する、承認/却下のPOSTを呼ぶ共通関数。
+    // M4のpostReviewとはエンドポイントが別だが、「このSourceをKnowledgeの
+    // 根拠として追加してよいか」という1回の操作でSource確定+Knowledge統合
+    // まで行う(`server.mjs`のapproveEvidenceMatchルート)。
+    // applicationCaseNameは呼び出し側(renderPendingEvidenceCard)が、
+    // 描画中のapplicationData.caseから渡す(複数の適用例ケースを同時に
+    // 表示できるようにするため、モジュール直下の固定定数にはしない。
+    // 第5ケースで2件目の適用例ケースが増えたことに伴う一般化)。
+    async function postCandidateAction(applicationCaseName, candidateId, action, body) {
+      const res = await fetch(
+        `/api/case/${applicationCaseName}/candidates/${candidateId}/${action}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body ?? {}),
+        },
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || `HTTPエラー: ${res.status}`);
+      }
+      return data;
+    }
+
+    function textareaEl(initialValue) {
+      const t = document.createElement("textarea");
+      t.value = initialValue ?? "";
+      return t;
+    }
+
+    function el(tag, attrs = {}, children = []) {
+      const node = document.createElement(tag);
+      for (const [k, v] of Object.entries(attrs)) {
+        if (k === "class") node.className = v;
+        else if (k === "html") node.innerHTML = v;
+        else node.setAttribute(k, v);
+      }
+      for (const child of [].concat(children)) {
+        if (child == null) continue;
+        node.append(child instanceof Node ? child : document.createTextNode(String(child)));
+      }
+      return node;
+    }
+
+    function field(label, value) {
+      return el("div", { class: "field" }, [
+        el("div", { class: "label" }, label),
+        el("div", {}, value),
+      ]);
+    }
+
+    // 専門家レビュー領域(平易な言葉、内部用語を使わない)と、開発者向け詳細
+    // (折りたたみ、内部設計の用語をそのまま表示)を分離する共通ラッパー。
+    // 人間は「教材・会計として意味が正しいか」だけを判断し、構造・参照・
+    // 状態遷移の正しさはシステム(gateChecks等)の責務とする、という
+    // 責務分離をUI構造として表現する。
+    function expertReviewCard(expertContent, devDetailContent, extraClass = "") {
+      const details = el("details", { class: "dev-detail" }, []);
+      details.append(el("summary", {}, "▼ 開発者向け詳細"));
+      // 素のElement.append()はnull/undefinedを文字列"null"として描画して
+      // しまうため(el()ヘルパーと異なりフィルタしない)、ここで明示的に除く。
+      details.append(...[].concat(devDetailContent).filter((c) => c != null));
+      return el("div", { class: `candidate-card ${extraClass}`.trim() }, [
+        el("div", { class: "expert-block" }, [].concat(expertContent)),
+        details,
+      ]);
+    }
+
+    function pre(text) {
+      return el("pre", {}, text ?? "(なし)");
+    }
+
+    function badge(text, kind) {
+      return el("span", { class: `badge ${kind}` }, text);
+    }
+
+    // structure.tokensを人間が読める入れ子リストとして表示する(折りたたみの
+    // 生JSONとは別に、パッと見て分解結果が分かるようにするための補助表示)。
+    function renderStructureTree(node) {
+      if (node.kind === "sequence" || node.kind === "group") {
+        return el("ul", {}, [
+          el("li", {}, `${node.kind}`),
+          el(
+            "ul",
+            {},
+            node.tokens.map((child) => el("li", {}, renderStructureTree(child))),
+          ),
+        ]);
+      }
+      if (node.kind === "fraction") {
+        return el("ul", {}, [
+          el("li", {}, "fraction"),
+          el("li", {}, ["分子: ", ...node.numerator.map((t) => el("span", {}, `${t.value} `))]),
+          el("li", {}, ["分母: ", ...node.denominator.map((t) => el("span", {}, `${t.value} `))]),
+        ]);
+      }
+      return `${node.kind}: "${node.value}"`;
+    }
+
+    const STATUS_LABEL = { candidate: "候補(未レビュー)", approved: "承認済み", rejected: "除外済み" };
+    const STATUS_KIND = { candidate: "warn", approved: "ok", rejected: "warn" };
+
+    // M4: 承認/修正/除外の操作パネル。candidateのときのみ操作でき、
+    // approved/rejectedになった後は結果を表示するだけの読み取り専用になる
+    // (`m4_review_workflow_design.md`1-1節、一方向の状態遷移)。
+    // 専門家レビュー領域: 「教材・会計として意味が正しいか」だけを問う。
+    // 内部用語(reviewStatus/approved-knowledge.json等)は開発者向け詳細へ
+    // 移し、主画面には出さない
+    // (`knowledge_integration_review_scope_design.md`をUI表示層へ適用)。
+    function renderReviewPanel(dkc, caseName) {
+      const rawFormula = dkc.knowledge.content.rawFormula;
+      const devStatusLine = el("div", { class: "field" }, [
+        el("span", { class: "label" }, "内部状態(reviewStatus): "),
+        badge(STATUS_LABEL[dkc.reviewStatus], STATUS_KIND[dkc.reviewStatus]),
+      ]);
+
+      if (dkc.reviewStatus === "approved") {
+        return expertReviewCard(
+          [
+            el("div", { class: "expert-note" }, "✓ この内容は学習対象として採用されています。問題として出題できます。"),
+          ],
+          [
+            devStatusLine,
+            field("承認日時", dkc.reviewedAt),
+            dkc.reviewNote ? field("メモ", dkc.reviewNote) : null,
+            el(
+              "div",
+              { class: "m5-ready" },
+              "output/knowledge/approved-knowledge.json に反映済み。M5(Exercise生成)から利用可能。",
+            ),
+          ],
+        );
+      }
+
+      if (dkc.reviewStatus === "rejected") {
+        return expertReviewCard(
+          [
+            el("div", { class: "expert-note" }, "この内容は学習対象として採用しないことにしました。"),
+          ],
+          [
+            devStatusLine,
+            field("除外日時", dkc.reviewedAt),
+            field("除外理由", dkc.reviewNote || "(未記入)"),
+            el(
+              "div",
+              { class: "scope-out" },
+              "この記録は監査証跡として残り、approved-knowledge.jsonには含まれません。",
+            ),
+          ],
+        );
+      }
+
+      // --- candidate: 操作可能 ---
+      const errorBox = el("div", { class: "action-error" });
+
+      const approvePanel = el("div", { class: "action-panel" });
+      approvePanel.style.display = "none";
+      approvePanel.append(
+        el(
+          "div",
+          {},
+          "採用すると、この内容をもとに問題が出題できるようになります。取り消しはできません。よろしいですか?",
+        ),
+      );
+      const approveConfirmBtn = el("button", {}, "はい、採用する");
+      const approveCancelBtn = el("button", {}, "キャンセル");
+      approvePanel.append(el("div", {}, [approveConfirmBtn, " ", approveCancelBtn]));
+
+      const levelInput = el("input", { type: "text", value: dkc.knowledge.contentConfidence.level });
+      const confNoteInput = textareaEl(dkc.knowledge.contentConfidence.note ?? "");
+      const scopeNoteInput = textareaEl(dkc.knowledge.scopeNote ?? "");
+      const editNoteInput = textareaEl("");
+      const editPanel = el("div", { class: "action-panel" });
+      editPanel.style.display = "none";
+      editPanel.append(
+        el("div", { class: "field" }, [
+          el("span", { class: "label" }, "この内容の確からしさ(内部名: contentConfidence.level)"),
+          levelInput,
+        ]),
+        el("div", { class: "field" }, [
+          el("span", { class: "label" }, "確からしさの根拠メモ(内部名: contentConfidence.note)"),
+          confNoteInput,
+        ]),
+        el("div", { class: "field" }, [
+          el("span", { class: "label" }, "どこまで確認できているかのメモ(内部名: scopeNote)"),
+          scopeNoteInput,
+        ]),
+        el("div", { class: "field" }, [el("span", { class: "label" }, "修正理由メモ(任意)"), editNoteInput]),
+      );
+      const editSaveBtn = el("button", {}, "保存");
+      const editCancelBtn = el("button", {}, "キャンセル");
+      editPanel.append(el("div", {}, [editSaveBtn, " ", editCancelBtn]));
+
+      const rejectNoteInput = textareaEl("");
+      const rejectPanel = el("div", { class: "action-panel" });
+      rejectPanel.style.display = "none";
+      rejectPanel.append(
+        el("div", { class: "field" }, [el("span", { class: "label" }, "不採用にする理由(任意)"), rejectNoteInput]),
+      );
+      const rejectConfirmBtn = el("button", {}, "不採用にする");
+      const rejectCancelBtn = el("button", {}, "キャンセル");
+      rejectPanel.append(el("div", {}, [rejectConfirmBtn, " ", rejectCancelBtn]));
+
+      function hideAllPanels() {
+        approvePanel.style.display = "none";
+        editPanel.style.display = "none";
+        rejectPanel.style.display = "none";
+        errorBox.textContent = "";
+      }
+
+      const approveBtn = el("button", {}, "採用する");
+      const editBtn = el("button", {}, "内容を修正する");
+      const rejectBtn = el("button", {}, "不採用にする");
+      approveBtn.addEventListener("click", () => { hideAllPanels(); approvePanel.style.display = "block"; });
+      editBtn.addEventListener("click", () => { hideAllPanels(); editPanel.style.display = "block"; });
+      rejectBtn.addEventListener("click", () => { hideAllPanels(); rejectPanel.style.display = "block"; });
+      approveCancelBtn.addEventListener("click", hideAllPanels);
+      editCancelBtn.addEventListener("click", hideAllPanels);
+      rejectCancelBtn.addEventListener("click", hideAllPanels);
+
+      approveConfirmBtn.addEventListener("click", async () => {
+        try {
+          await postReview(caseName, "approve", {});
+          await refreshAndRenderAll();
+        } catch (err) {
+          errorBox.textContent = `エラー: ${err.message}`;
+        }
+      });
+
+      editSaveBtn.addEventListener("click", async () => {
+        try {
+          await postReview(caseName, "edit", {
+            contentConfidence: { level: levelInput.value, note: confNoteInput.value },
+            scopeNote: scopeNoteInput.value,
+            note: editNoteInput.value || undefined,
+          });
+          await refreshAndRenderAll();
+        } catch (err) {
+          errorBox.textContent = `エラー: ${err.message}`;
+        }
+      });
+
+      rejectConfirmBtn.addEventListener("click", async () => {
+        try {
+          await postReview(caseName, "reject", { note: rejectNoteInput.value || undefined });
+          await refreshAndRenderAll();
+        } catch (err) {
+          errorBox.textContent = `エラー: ${err.message}`;
+        }
+      });
+
+      return expertReviewCard(
+        [
+          el("div", { class: "evidence-prompt" }, "この内容を学習対象として採用しますか?"),
+          el("div", { class: "expert-formula" }, rawFormula),
+          el(
+            "div",
+            { class: "expert-note" },
+            "上の内容が、教材の記述として正しいと確認できれば「採用する」を選んでください。" +
+              "内容に誤りがある場合は「内容を修正する」、教材として扱うべきでない場合は" +
+              "「不採用にする」を選んでください。",
+          ),
+          el("div", { class: "field" }, [approveBtn, " ", editBtn, " ", rejectBtn]),
+          approvePanel,
+          editPanel,
+          rejectPanel,
+          errorBox,
+        ],
+        [devStatusLine],
+      );
+    }
+
+    function render(data, applicationData) {
+      const container = el("div", { class: "case-block" }, []);
+
+      const { structureContext, block, candidateReport, outOfScopeDetections } = data;
+
+      // 0. ケース概要
+      container.append(
+        el("section", {}, [
+          el("h2", {}, `ケース: ${data.case}`),
+          field("生成日時", data.generatedAt),
+        ]),
+      );
+
+      // 1. 教材上の位置情報
+      container.append(
+        el("section", {}, [
+          el("h2", {}, [el("span", { class: "step" }, "1"), "教材上の位置情報"]),
+          field(
+            "テーマ",
+            `${structureContext.theme.label.number}　${structureContext.theme.label.titleRaw}`,
+          ),
+          field(
+            "論点",
+            `${structureContext.topic.label.number}　${structureContext.topic.label.titleRaw}`,
+          ),
+          field(
+            "ページ(PDF内通し番号 / 教材印字ページ番号)",
+            `${block.location.page}ページ目 / 印字ページ "${block.location.printedPageLabel}"`,
+          ),
+          field("ブロック種別(blockKind)", block.blockKind),
+          field("検出根拠", `${block.detection.detectorId}(直前見出し: ${block.detection.precedingHeading ?? "(検出できず)"})`),
+        ]),
+      );
+      container.append(el("div", { class: "arrow" }, "↓ [1] Extraction"));
+
+      // 2. extractionRaw
+      container.append(
+        el("section", {}, [
+          el("h2", {}, [el("span", { class: "step" }, "2"), "抽出結果(extractionRaw) — PDFから何が抽出されたか"]),
+          field(
+            "抽出ツール",
+            `${block.extractionRaw.tool} ${block.extractionRaw.toolVersion}(${block.extractionRaw.invocation})`,
+          ),
+          field("生テキスト", pre(block.extractionRaw.text)),
+        ]),
+      );
+      container.append(el("div", { class: "arrow" }, "↓ [5] Faithful Restoration"));
+
+      // 3. Faithful Restoration
+      const fr = block.diag.faithfulReconstruction;
+      const artifacts = block.diag.extraction.artifacts ?? [];
+      container.append(
+        el("section", {}, [
+          el("h2", {}, [el("span", { class: "step" }, "3"), "Faithful Restoration — どこがどう補正されたか"]),
+          field(
+            "抽出ステータス(diag.extraction.status)",
+            badge(
+              block.diag.extraction.status,
+              block.diag.extraction.status === "captured_matches_sourceFaithful" ? "ok" : "warn",
+            ),
+          ),
+          field(
+            "検出されたアーティファクト",
+            artifacts.length
+              ? el(
+                  "table",
+                  {},
+                  [
+                    el("tr", {}, [el("th", {}, "kind"), el("th", {}, "resolved"), el("th", {}, "note")]),
+                    ...artifacts.map((a) =>
+                      el("tr", {}, [el("td", {}, a.kind), el("td", {}, String(a.resolved)), el("td", {}, a.note)]),
+                    ),
+                  ],
+                )
+              : "(なし。抽出結果はそのままsourceFaithfulとして扱われた)",
+          ),
+          field(
+            "復元方法",
+            fr?.performed
+              ? `${fr.method}(確信度: ${fr.confidence})`
+              : "(復元は行われていない)",
+          ),
+        ]),
+      );
+      container.append(el("div", { class: "arrow" }, "↓"));
+
+      // 4. sourceFaithful
+      container.append(
+        el("section", {}, [
+          el("h2", {}, [el("span", { class: "step" }, "4"), "sourceFaithful — 教材上の忠実な表現(正本)"]),
+          el("div", { class: "formula" }, block.sourceFaithful),
+        ]),
+      );
+      container.append(el("div", { class: "arrow" }, "↓ [4] Source Segmentation"));
+
+      // 5. Source Segmentation判定
+      container.append(
+        el("section", {}, [
+          el("h2", {}, [el("span", { class: "step" }, "5"), "Source Segmentation判定 — なぜ確定Sourceになったか"]),
+          field(
+            "判定",
+            badge(
+              block.segmentationDecision.confirmed ? "確定Source" : "未確定(候補)",
+              block.segmentationDecision.confirmed ? "ok" : "warn",
+            ),
+          ),
+          field("適用ルール", block.segmentationDecision.rule),
+          field("根拠", block.segmentationDecision.note),
+        ]),
+      );
+      container.append(el("div", { class: "arrow" }, "↓"));
+
+      // 6. 確定Source(まとめ)
+      container.append(
+        el("section", {}, [
+          el("h2", {}, [el("span", { class: "step" }, "6"), "確定Source(ContentBlock) — 全体像"]),
+          field("id", block.id),
+          field("structureRef", block.structureRef),
+          field("生データ(参考、折りたたみ)", (() => {
+            const details = el("details", {}, []);
+            details.append(el("summary", {}, "JSON全体を表示"));
+            details.append(pre(JSON.stringify(block, null, 2)));
+            return details;
+          })()),
+        ]),
+      );
+
+      container.append(el("div", { class: "arrow" }, "↓ M2: Derived Knowledge候補生成"));
+
+      // 7. Derived Knowledge候補
+      const dkc = data.derivedKnowledgeCandidate;
+      if (!dkc) {
+        container.append(
+          el("section", {}, [
+            el("h2", {}, [el("span", { class: "step" }, "7"), "Derived Knowledge候補"]),
+            el("div", { class: "scope-out" }, "まだ生成されていません(M2未実行。node scripts/run-teigakuho-knowledge-candidate.mjs を実行してください)。"),
+          ]),
+        );
+      } else {
+        const k = dkc.knowledge;
+        const rendered = renderTokens(k.content.structure);
+        const roundTripOk = rendered === k.content.rawFormula;
+
+        container.append(
+          el("section", {}, [
+            el("h2", {}, [el("span", { class: "step" }, "7"), "Derived Knowledge候補 — Sourceから何が生成されたか"]),
+
+            field("reviewStatus(本体の外側で管理)", badge(STATUS_LABEL[dkc.reviewStatus], STATUS_KIND[dkc.reviewStatus])),
+
+            field(
+              "1. どのSourceから生成されたか(sourceRefs)",
+              k.sourceRefs
+                .map((r) => `${r.sourceBlockId}(role: ${r.role})`)
+                .join(", "),
+            ),
+
+            field("2. knowledgeKind", k.knowledgeKind),
+
+            field("3. rawFormula(sourceFaithfulと同一であることを確認)", [
+              el("div", { class: "formula" }, k.content.rawFormula),
+              el("div", { class: "field" }, [
+                el("span", { class: "label" }, "sourceFaithful(6の再掲)との一致: "),
+                badge(k.content.rawFormula === block.sourceFaithful ? "一致" : "不一致", k.content.rawFormula === block.sourceFaithful ? "ok" : "warn"),
+              ]),
+            ]),
+
+            field("4. structureへの分解", [
+              renderStructureTree(k.content.structure),
+              el("div", { class: "field" }, [
+                el("span", { class: "label" }, "往復整合性(tokensから復元した文字列とrawFormulaの一致、この場でブラウザが再計算): "),
+                badge(roundTripOk ? "一致(OK)" : "不一致(要確認)", roundTripOk ? "ok" : "warn"),
+              ]),
+              (() => {
+                const details = el("details", {}, []);
+                details.append(el("summary", {}, "structure JSON全体を表示"));
+                details.append(pre(JSON.stringify(k.content.structure, null, 2)));
+                return details;
+              })(),
+            ]),
+
+            field("5. 3軸状態", (() => {
+              const details = el("details", { open: "" }, []);
+              details.append(el("summary", {}, "contentConfidence / evidence / consolidation"));
+              details.append(pre(JSON.stringify(
+                {
+                  contentConfidence: k.contentConfidence,
+                  evidence: k.evidence,
+                  consolidation: k.consolidation,
+                  scopeNote: k.scopeNote,
+                },
+                null,
+                2,
+              )));
+              return details;
+            })()),
+
+            field("6. 学習対象として採用するか", renderReviewPanel(dkc, data.case)),
+
+            field(
+              "7. この知識が使われている他の例",
+              renderSourceIntegrationSection(applicationData, k),
+            ),
+          ]),
+        );
+      }
+
+      container.append(el("div", { class: "arrow" }, "↓ M5: Exercise生成"));
+
+      // 8. Exercise(閲覧のみ。問題を解くUIはM6で作る)
+      const exercise = latestExercisesData?.exercises?.find(
+        (ex) => ex.knowledgeRef.knowledgeId === (dkc?.knowledge?.id ?? null),
+      );
+      if (!dkc || dkc.reviewStatus !== "approved") {
+        container.append(
+          el("section", {}, [
+            el("h2", {}, [el("span", { class: "step" }, "8"), "Exercise"]),
+            el(
+              "div",
+              { class: "scope-out" },
+              "承認済みKnowledgeが無いため、まだExerciseは生成されていません(M4で承認してください)。",
+            ),
+          ]),
+        );
+      } else if (!exercise) {
+        container.append(
+          el("section", {}, [
+            el("h2", {}, [el("span", { class: "step" }, "8"), "Exercise"]),
+            el(
+              "div",
+              { class: "scope-out" },
+              "このKnowledgeに対応するExerciseはまだ生成されていません" +
+                "(node scripts/run-teigakuho-exercise.mjs を実行してください)。",
+            ),
+          ]),
+        );
+      } else {
+        container.append(
+          el("section", {}, [
+            el("h2", {}, [el("span", { class: "step" }, "8"), "Exercise — Knowledgeから何が生成されたか"]),
+
+            field("Exercise ID", exercise.id),
+            field(
+              "元Knowledge ID(7のknowledge.idと一致することを確認)",
+              badge(
+                exercise.knowledgeRef.knowledgeId,
+                exercise.knowledgeRef.knowledgeId === dkc.knowledge.id ? "ok" : "warn",
+              ),
+            ),
+            field("問題形式(exerciseKind)", exercise.exerciseKind),
+            field("instruction", [
+              el("div", {}, exercise.prompt.instruction),
+              el("div", { class: "field" }, [
+                el("span", { class: "label" }, "instructionOrigin: "),
+                badge(exercise.prompt.instructionOrigin, "warn"),
+                " (教材由来のデータではないことを示す)",
+              ]),
+            ]),
+            field(
+              "出題時に提示されるチャンク / 正解順序(このUIでは正解の順序のまま表示。シャッフルはM6の責務)",
+              el(
+                "ol",
+                {},
+                exercise.answer.correctOrder.map((chunk) => el("li", {}, chunk)),
+              ),
+            ),
+            field("判定規則(answer.grading.method)", exercise.answer.grading.method),
+            field("解説として利用する情報(reveal)", (() => {
+              const details = el("details", { open: "" }, []);
+              details.append(el("summary", {}, "reveal.rawFormula / reveal.sourceRefs"));
+              details.append(pre(JSON.stringify(exercise.reveal, null, 2)));
+              return details;
+            })()),
+            field(
+              "Knowledgeからどのように変換されたか",
+              "content.structure.tokens(トップレベル5要素)の各要素をrenderTokens()でレンダリングし、" +
+                "そのままanswer.correctOrderにした(順序は変更していない、シャッフルはM6が表示時に行う)。",
+            ),
+          ]),
+        );
+      }
+
+      // 参考: 候補一覧・スコープ外検出
+      container.append(
+        el("section", {}, [
+          el("h2", {}, "(参考) Source候補一覧レポート / このケースの対象外だった検出"),
+          field(
+            "Source候補一覧レポート",
+            candidateReport.candidates.length
+              ? JSON.stringify(candidateReport.candidates)
+              : "候補0件(このケースはF3で即時確定したため候補化されていない)",
+          ),
+          field(
+            "対象外だった検出(同じページ内の他の計算式)",
+            outOfScopeDetections.length
+              ? el(
+                  "ul",
+                  {},
+                  outOfScopeDetections.map((d) =>
+                    el("li", { class: "scope-out" }, `${d.precedingHeading ?? "(見出し不明)"} — ${d.reason}`),
+                  ),
+                )
+              : "(なし)",
+          ),
+        ]),
+      );
+
+      return container;
+    }
+
+    // F群の事実(共通表示)を折りたたみで見せる補助関数。自動統合済み・
+    // 追加候補(要判断)のどちらの表示でも同じ情報を使い回す。
+    function renderCandidateFactsDetails(candidate) {
+      const details = el("details", {}, []);
+      details.append(el("summary", {}, "F群の事実(検出根拠)を表示"));
+      details.append(
+        field(
+          "教材上の位置",
+          `${candidate.location.page}ページ目 / 印字ページ "${candidate.location.printedPageLabel}"` +
+            `(ページ内${candidate.location.sequenceOnPage}番目の検出)`,
+        ),
+        field("structureRef(所属する論点)", candidate.structureRef),
+        field(
+          "親Sourceとの関係(parentContext)",
+          candidate.parentContext
+            ? `ラベル: "${candidate.parentContext.label}"(${candidate.parentContext.note})`
+            : "(親文脈は検出されなかった)",
+        ),
+        field("boundaryType", candidate.boundaryType),
+        field(
+          "sameTypePatterns(同一ページ内の同種パターン数)",
+          candidate.sameTypePatterns
+            ? `${candidate.sameTypePatterns.count}件(${candidate.sameTypePatterns.note})`
+            : "(検出なし)",
+        ),
+        field(
+          "abstractDefinitionCandidate(抽象定義の存在)",
+          candidate.abstractDefinitionCandidate?.exists
+            ? `あり(参照Source: ${candidate.abstractDefinitionCandidate.sourceBlockId})`
+            : "なし",
+        ),
+        field(
+          "検出根拠(detection)",
+          `${candidate.detection.detectorId}(直前見出し: ${candidate.detection.precedingHeading ?? "(検出できず)"})`,
+        ),
+        field("抽出結果(extractionRaw)", pre(candidate.extractionRaw.text)),
+        candidate.autoConfirmEvaluation
+          ? field(
+              "自動確定条件の判定結果(evaluateAutoConfirmation)",
+              pre(JSON.stringify(candidate.autoConfirmEvaluation, null, 2)),
+            )
+          : null,
+      );
+      return details;
+    }
+
+    // 自動で記録された例(読み取り専用)。人間の操作は不要——構造的事実
+    // (同一topic内の適用等)だけで安全と判定されたため、既にこの知識が
+    // 使われている例として自動的に記録済みであることを示すだけの表示
+    // (`knowledge_integration_review_scope_design.md`6-1節)。
+    function renderAutoIntegratedItem(candidate) {
+      return expertReviewCard(
+        [
+          el("div", { class: "expert-note" }, "✓ 次の例が、この知識が使われている例として自動的に記録されました。"),
+          el("div", { class: "expert-formula" }, candidate.sourceFaithful),
+        ],
+        [
+          el("div", { class: "field" }, [
+            el("span", { class: "label" }, "candidateId: "),
+            candidate.candidateId,
+            " ",
+            badge("自動統合済み(confirmationMethod: auto)", "ok"),
+          ]),
+          el(
+            "div",
+            {},
+            "構造的事実(同一topic内の適用・定義候補が一意・Faithful Restoration解決済み)" +
+              "のみで、人間の確認を経ずにsourceRefsへ自動的に追加された。",
+          ),
+          field("統合日時", candidate.reviewedAt),
+          renderCandidateFactsDetails(candidate),
+        ],
+        "readonly",
+      );
+    }
+
+    // 人間が承認して記録された例(読み取り専用)。renderAutoIntegratedItem
+    // とほぼ同じ見た目だが、承認主体が異なることを文言で明示するため
+    // あえて別関数にする(DOM使い回しによる暗黙の依存を避ける)。
+    function renderHumanIntegratedItem(candidate) {
+      return expertReviewCard(
+        [
+          el("div", { class: "expert-note" }, "✓ 次の例が、あなたの確認を経て、この知識が使われている例として記録されました。"),
+          el("div", { class: "expert-formula" }, candidate.sourceFaithful),
+        ],
+        [
+          el("div", { class: "field" }, [
+            el("span", { class: "label" }, "candidateId: "),
+            candidate.candidateId,
+            " ",
+            badge("人間が承認して追加(confirmationMethod: human_reviewed)", "ok"),
+          ]),
+          field("統合日時", candidate.reviewedAt),
+          candidate.reviewNote ? field("承認時のメモ", candidate.reviewNote) : null,
+          renderCandidateFactsDetails(candidate),
+        ],
+        "readonly",
+      );
+    }
+
+    // 除外済みの候補(読み取り専用、監査証跡)。
+    function renderRejectedCandidateItem(candidate) {
+      return expertReviewCard(
+        [
+          el("div", { class: "expert-note" }, "この例は、この知識が使われている例として記録しないことにしました。"),
+          el("div", { class: "expert-formula" }, candidate.sourceFaithful),
+          candidate.reviewNote ? el("div", {}, `理由: ${candidate.reviewNote}`) : null,
+        ],
+        [
+          el("div", { class: "field" }, [
+            el("span", { class: "label" }, "candidateId: "),
+            candidate.candidateId,
+            " ",
+            badge("除外済み", "warn"),
+          ]),
+          field("除外日時", candidate.reviewedAt),
+          renderCandidateFactsDetails(candidate),
+        ],
+        "readonly",
+      );
+    }
+
+    // 追加候補(要判断): F群の事実だけでは自動確定できなかった適用例
+    // Source。専門家(教材・会計を理解している人)が、内部設計(Source/
+    // Knowledge/sourceRefs/F群等)を知らなくても判断できる言葉で提示する。
+    // 「何を判断するか」「承認すると何が起きるか」「何は起きないか」の
+    // 3点を、内部用語を使わずに示すことが目的
+    // (今回のユーザー指摘への対応、`p193_multi_knowledge_analysis.md`8節)。
+    // 内部設計の用語は「▼ 開発者向け詳細」へ分離する(expertReviewCard)。
+    function renderPendingEvidenceCard(candidate, k, applicationCaseName) {
+      const errorBox = el("div", { class: "action-error" });
+
+      const reasonExplanation = {
+        cross_topic:
+          "教材の別の場所(この知識の元になった箇所とは異なる論点)で見つかった例です。" +
+          "同じ計算の形をしていても、対象が異なる場合があるため、確認が必要です。",
+        no_definition_candidate: "どの知識の例なのか、システムが自動では一つに絞り込めませんでした。",
+        restoration_unresolved: "教材から数値を正しく読み取れているかの確認がまだ済んでいません。",
+      }[candidate.autoConfirmEvaluation?.reason] ??
+        "システムが自動では判断できなかったため、確認が必要です。";
+
+      const approvePanel = el("div", { class: "candidate-action-panel" });
+      approvePanel.style.display = "none";
+      approvePanel.append(
+        el(
+          "div",
+          {},
+          "記録すると、この教材箇所が「上の知識が使われている例」として残ります。" +
+            "取り消しはできません。よろしいですか?",
+        ),
+      );
+      const approveNoteInput = textareaEl("");
+      approvePanel.append(
+        el("div", { class: "field" }, [el("span", { class: "label" }, "メモ(任意)"), approveNoteInput]),
+      );
+      const approveConfirmBtn = el("button", {}, "はい、記録する");
+      const approveCancelBtn = el("button", {}, "キャンセル");
+      approvePanel.append(el("div", {}, [approveConfirmBtn, " ", approveCancelBtn]));
+
+      const rejectNoteInput = textareaEl("");
+      const rejectPanel = el("div", { class: "candidate-action-panel" });
+      rejectPanel.style.display = "none";
+      rejectPanel.append(
+        el("div", { class: "field" }, [el("span", { class: "label" }, "理由(任意)"), rejectNoteInput]),
+      );
+      const rejectConfirmBtn = el("button", {}, "違う、と記録する");
+      const rejectCancelBtn = el("button", {}, "キャンセル");
+      rejectPanel.append(el("div", {}, [rejectConfirmBtn, " ", rejectCancelBtn]));
+
+      function hideAllPanels() {
+        approvePanel.style.display = "none";
+        rejectPanel.style.display = "none";
+        errorBox.textContent = "";
+      }
+
+      const approveBtn = el("button", {}, "記録する");
+      const rejectBtn = el("button", {}, "違う");
+      approveBtn.addEventListener("click", () => { hideAllPanels(); approvePanel.style.display = "block"; });
+      rejectBtn.addEventListener("click", () => { hideAllPanels(); rejectPanel.style.display = "block"; });
+      approveCancelBtn.addEventListener("click", hideAllPanels);
+      rejectCancelBtn.addEventListener("click", hideAllPanels);
+
+      approveConfirmBtn.addEventListener("click", async () => {
+        try {
+          await postCandidateAction(applicationCaseName, candidate.candidateId, "approve-as-evidence", {
+            note: approveNoteInput.value || undefined,
+          });
+          await refreshAndRenderAll();
+        } catch (err) {
+          errorBox.textContent = `エラー: ${err.message}`;
+        }
+      });
+
+      rejectConfirmBtn.addEventListener("click", async () => {
+        try {
+          await postCandidateAction(applicationCaseName, candidate.candidateId, "reject", {
+            note: rejectNoteInput.value || undefined,
+          });
+          await refreshAndRenderAll();
+        } catch (err) {
+          errorBox.textContent = `エラー: ${err.message}`;
+        }
+      });
+
+      return expertReviewCard(
+        [
+          field("【現在アプリが覚えている知識】", el("div", { class: "expert-formula" }, k.content.rawFormula)),
+
+          field(
+            "【教材の別の場所で見つかった例】",
+            el("div", { class: "expert-formula" }, candidate.sourceFaithful),
+          ),
+
+          field(
+            "【システムが考えている関係】",
+            "この計算例では、上記の知識が使われている可能性があります。" + reasonExplanation,
+          ),
+
+          el("div", { class: "evidence-prompt" }, "【確認したいこと】この計算例を、上の知識が使われている例として記録してよいですか?"),
+
+          field(
+            "【この操作で行われること】",
+            "この教材箇所が、「上の知識が使われている例」として、アプリの記録に追加されます。" +
+              "上の知識の内容(計算式そのもの)は変更されません。",
+          ),
+
+          field(
+            "【この操作では行われないこと】",
+            "この例に関わる、対象固有の条件(教材の別の箇所に書かれている、償却方法・残存価額・" +
+              "耐用年数などの前提)を、上の知識の内容として追加する操作ではありません。" +
+              "気になる点があれば、下のメモ欄に残してください。",
+          ),
+
+          el("div", { class: "field" }, [approveBtn, " ", rejectBtn]),
+          approvePanel,
+          rejectPanel,
+          errorBox,
+        ],
+        [
+          field("candidateId", candidate.candidateId),
+          field("既存Knowledge(id / knowledgeKind)", `${k.id} / ${k.knowledgeKind}`),
+          field(
+            "自動確定されなかった理由(autoConfirmEvaluation.reason)",
+            candidate.autoConfirmEvaluation?.reason ?? "(記録なし)",
+          ),
+          field(
+            "記録すると変化するデータ(sourceRefs)",
+            `{ sourceBlockId: "block-${candidate.candidateId}", role: "application" }` +
+              " が既存Knowledgeのsource参照リストへ1件追加される(content/reviewStatusは不変)。",
+          ),
+          renderCandidateFactsDetails(candidate),
+        ],
+      );
+    }
+
+    // Sourceの追加: 自動統合済み・追加候補(要判断)・除外済みをまとめて
+    // 表示する。M4の承認/修正/除外(reviewStatus)とは別の状態
+    // (confirmationStatus)を扱うが、独立したセクションにはせず、
+    // Derived Knowledge候補セクションの内側に置く
+    // (`knowledge_integration_review_scope_design.md`4節・6節)。
+    function renderSourceIntegrationSection(applicationData, k) {
+      const container = el("div", { class: "evidence-integration-block" });
+
+      if (!applicationData || applicationData.candidates.length === 0) {
+        container.append(
+          el(
+            "div",
+            { class: "scope-out" },
+            "このKnowledgeについては、他の教材箇所からの追加候補データがまだありません" +
+              "(該当する候補生成スクリプトを実行すると生成されます)。",
+          ),
+        );
+        return container;
+      }
+
+      const autoIntegrated = applicationData.candidates.filter(
+        (c) => c.confirmationStatus === "confirmed" && c.confirmationMethod === "auto",
+      );
+      const humanIntegrated = applicationData.candidates.filter(
+        (c) => c.confirmationStatus === "confirmed" && c.confirmationMethod === "human_reviewed",
+      );
+      const pending = applicationData.candidates.filter((c) => c.confirmationStatus === "candidate");
+      const rejected = applicationData.candidates.filter((c) => c.confirmationStatus === "rejected");
+
+      if (pending.length > 0) {
+        container.append(
+          el("div", { class: "field" }, [
+            el("span", { class: "label" }, `確認をお願いしたい例 — ${pending.length}件`),
+          ]),
+        );
+        for (const candidate of pending) {
+          container.append(renderPendingEvidenceCard(candidate, k, applicationData.case));
+        }
+      }
+
+      if (autoIntegrated.length > 0 || humanIntegrated.length > 0) {
+        container.append(
+          el("div", { class: "field" }, [
+            el(
+              "span",
+              { class: "label" },
+              `既に記録されている例 — ${autoIntegrated.length + humanIntegrated.length}件`,
+            ),
+          ]),
+        );
+        for (const candidate of autoIntegrated) {
+          container.append(renderAutoIntegratedItem(candidate));
+        }
+        for (const candidate of humanIntegrated) {
+          container.append(renderHumanIntegratedItem(candidate));
+        }
+      }
+
+      if (rejected.length > 0) {
+        container.append(
+          el("div", { class: "field" }, [
+            el("span", { class: "label" }, `記録しないことにした例 — ${rejected.length}件`),
+          ]),
+        );
+        for (const candidate of rejected) {
+          container.append(renderRejectedCandidateItem(candidate));
+        }
+      }
+
+      if (pending.length === 0 && autoIntegrated.length === 0 && humanIntegrated.length === 0 && rejected.length === 0) {
+        container.append(el("div", { class: "scope-out" }, "他の例はまだ見つかっていません。"));
+      }
+
+      return container;
+    }
+
+    // M4の承認/修正/除外、Sourceの追加候補への承認/却下、いずれの操作後も、
+    // 表示対象の全ケースを再取得して描画し直す(片方だけ古い状態のまま
+    // 表示され続けることを防ぐ)。ケース一覧自体も`/api/cases`から毎回
+    // 取得し直すため、新しいケースファイルが追加されていれば自動的に
+    // 表示対象へ加わる。
+    async function refreshAndRenderAll() {
+      try {
+        const exercisesRes = await fetch("/api/exercises");
+        latestExercisesData = exercisesRes.ok ? await exercisesRes.json() : null;
+
+        const app = document.getElementById("app");
+        app.innerHTML = "";
+
+        const definitionCases = await fetchDefinitionCases();
+        let renderedCount = 0;
+        for (const { caseName, applicationCaseName } of definitionCases) {
+          const definitionRes = await fetch(`/api/case/${caseName}`);
+          if (!definitionRes.ok) continue;
+          const definitionData = await definitionRes.json();
+
+          let applicationData = null;
+          if (applicationCaseName) {
+            const applicationRes = await fetch(`/api/case/${applicationCaseName}`);
+            applicationData = applicationRes.ok ? await applicationRes.json() : null;
+          }
+
+          app.append(render(definitionData, applicationData));
+          renderedCount += 1;
+        }
+
+        if (renderedCount === 0) {
+          throw new Error("表示できるケースが1件もありません");
+        }
+
+        document.getElementById("error").textContent = "";
+      } catch (err) {
+        document.getElementById("error").textContent =
+          `読み込みに失敗しました: ${err.message}\n` +
+          `output/cases/ にケースファイルが存在するか確認してください` +
+          `(node scripts/run-teigakuho-case.mjs 等を先に実行する必要があります)。`;
+      }
+    }
+
+    refreshAndRenderAll();
+  </script>
+</body>
+</html>

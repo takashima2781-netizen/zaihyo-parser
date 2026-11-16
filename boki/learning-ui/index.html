@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<title>簿記論アプリ — 問題を解く</title>
+<style>
+  /* M6: 最小の学習UI。完成版デザインは求めない(vertical_slice_mvp_roadmap.md 7節)。
+     ただし「どこを押せばいいか分からない」状態にはしない。 */
+  body {
+    font-family: -apple-system, "Yu Gothic", "Meiryo", sans-serif;
+    background: #f5f5f5;
+    color: #111;
+    margin: 0;
+    padding: 24px;
+    max-width: 720px;
+  }
+  h1 { font-size: 20px; margin: 0 0 16px; }
+  .card {
+    background: #fff;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+  .instruction { font-size: 16px; margin-bottom: 16px; }
+  .zone-label { font-size: 13px; color: #666; margin-bottom: 6px; }
+  .zone {
+    min-height: 56px;
+    border: 2px dashed #bbb;
+    border-radius: 6px;
+    padding: 10px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 20px;
+  }
+  .zone.answer { border-style: solid; border-color: #8ab4f8; background: #f4f8ff; }
+  .chunk {
+    font-size: 16px;
+    padding: 10px 14px;
+    border: 1px solid #999;
+    border-radius: 5px;
+    background: #fafafa;
+    cursor: pointer;
+    user-select: none;
+  }
+  .chunk:hover { background: #eee; }
+  .zone.answer .chunk { background: #e8f0fe; border-color: #8ab4f8; }
+  .zone.answer .chunk:hover { background: #d5e4fd; }
+  .placeholder { color: #999; font-size: 14px; }
+  .controls { display: flex; gap: 10px; margin-bottom: 8px; }
+  button.primary {
+    font-size: 15px;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 5px;
+    background: #1a73e8;
+    color: #fff;
+    cursor: pointer;
+  }
+  button.primary:disabled { background: #bbb; cursor: not-allowed; }
+  button.secondary {
+    font-size: 14px;
+    padding: 10px 16px;
+    border: 1px solid #999;
+    border-radius: 5px;
+    background: #fff;
+    cursor: pointer;
+  }
+  .result {
+    font-size: 18px;
+    font-weight: bold;
+    padding: 14px;
+    border-radius: 6px;
+    margin-bottom: 12px;
+  }
+  .result.correct { background: #e6f4ea; color: #1e7e34; border: 1px solid #b7dfc0; }
+  .result.incorrect { background: #fdecea; color: #b3261e; border: 1px solid #f3c2bd; }
+  .reveal-formula {
+    font-size: 18px;
+    padding: 14px;
+    background: #eef7ee;
+    border: 1px solid #bcdcbc;
+    border-radius: 5px;
+    margin: 10px 0;
+  }
+  .source-info { font-size: 13px; color: #555; }
+  #error { color: #b00020; white-space: pre-wrap; }
+  .meta { color: #666; font-size: 13px; margin-bottom: 20px; }
+  .exercise-list { list-style: none; padding: 0; margin: 0; }
+  .exercise-list-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 16px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    background: #fff;
+    margin-bottom: 10px;
+    cursor: pointer;
+  }
+  .exercise-list-item:hover { background: #f0f6ff; border-color: #8ab4f8; }
+  .exercise-list-item .label { font-size: 15px; }
+  .exercise-list-item .kind { font-size: 12px; color: #666; }
+  .exercise-list-item .status { font-size: 13px; color: #1e7e34; }
+  .back-link {
+    display: inline-block;
+    margin-bottom: 12px;
+    font-size: 14px;
+    color: #1a73e8;
+    cursor: pointer;
+    background: none;
+    border: none;
+    padding: 0;
+  }
+</style>
+</head>
+<body>
+  <h1>簿記論アプリ — 問題を解く</h1>
+  <div class="meta" id="meta">承認済みのDerived Knowledgeから生成された問題です。</div>
+
+  <div id="error"></div>
+  <div id="app"></div>
+
+  <script type="module">
+    // 正誤判定はM5(Exercise生成)と共有の判定レジストリをそのまま使う
+    // (M6側で判定ロジックを再実装しない、`m5_exercise_generation_design.md`7-1節)。
+    import { grade } from "/lib/gradingRegistry.mjs";
+
+    function el(tag, attrs = {}, children = []) {
+      const node = document.createElement(tag);
+      for (const [k, v] of Object.entries(attrs)) {
+        if (k === "class") node.className = v;
+        else if (k === "onclick") node.addEventListener("click", v);
+        else node.setAttribute(k, v);
+      }
+      for (const child of [].concat(children)) {
+        if (child == null) continue;
+        node.append(child instanceof Node ? child : document.createTextNode(String(child)));
+      }
+      return node;
+    }
+
+    function shuffle(items) {
+      const copy = items.slice();
+      for (let i = copy.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [copy[i], copy[j]] = [copy[j], copy[i]];
+      }
+      return copy;
+    }
+
+    // state: allExercises(取得した全問題) / currentExerciseId(nullなら一覧表示)
+    // / pool(未配置のチャンク) / answer(配置済みのチャンク、順序が回答)
+    // solvedIds(このページを開いている間だけ覚えている「解答済み」の印。
+    // 保存はしない、ページを再読み込みすればリセットされる簡易表示)。
+    let allExercises = [];
+    let currentExerciseId = null;
+    let exercise = null;
+    let pool = [];
+    let answer = [];
+    let submitted = false;
+    const solvedIds = new Set();
+
+    function resetState() {
+      pool = shuffle(exercise.answer.correctOrder);
+      answer = [];
+      submitted = false;
+    }
+
+    function selectExercise(id) {
+      currentExerciseId = id;
+      exercise = allExercises.find((e) => e.id === id);
+      resetState();
+      render();
+    }
+
+    function backToList() {
+      currentExerciseId = null;
+      exercise = null;
+      render();
+    }
+
+    function moveToAnswer(index) {
+      if (submitted) return;
+      const [chunk] = pool.splice(index, 1);
+      answer.push(chunk);
+      render();
+    }
+
+    function moveToPool(index) {
+      if (submitted) return;
+      const [chunk] = answer.splice(index, 1);
+      pool.push(chunk);
+      render();
+    }
+
+    function handleReset() {
+      resetState();
+      render();
+    }
+
+    function handleSubmit() {
+      submitted = true;
+      if (grade(answer, exercise)) {
+        solvedIds.add(exercise.id);
+      }
+      render();
+    }
+
+    function handleRetry() {
+      resetState();
+      render();
+    }
+
+    function render() {
+      if (currentExerciseId === null) {
+        renderExerciseList();
+      } else {
+        renderSolveView();
+      }
+    }
+
+    function renderExerciseList() {
+      const app = document.getElementById("app");
+      app.innerHTML = "";
+
+      document.getElementById("meta").textContent =
+        `承認済みのDerived Knowledgeから生成された問題です(全${allExercises.length}問)。`;
+
+      // 一覧の見出しは、教材内容(正解)を漏らさないよう、問題番号と出題形式
+      // (アプリ側の固定ラベル、教材由来ではない)のみで構成する。
+      const KIND_LABELS = {
+        formula_ordering: "計算式の並び替え",
+        journal_ordering: "仕訳の並び替え",
+      };
+
+      const list = el("ul", { class: "exercise-list" });
+      allExercises.forEach((ex, i) => {
+        const solved = solvedIds.has(ex.id);
+        const kindLabel = KIND_LABELS[ex.exerciseKind] ?? ex.exerciseKind;
+        list.append(
+          el(
+            "li",
+            { class: "exercise-list-item", onclick: () => selectExercise(ex.id) },
+            [
+              el("span", { class: "label" }, `問題${i + 1} — ${kindLabel}`),
+              solved ? el("span", { class: "status" }, "✓ 解答済み") : null,
+            ],
+          ),
+        );
+      });
+      app.append(list);
+    }
+
+    function renderSolveView() {
+      const app = document.getElementById("app");
+      app.innerHTML = "";
+
+      app.append(el("button", { class: "back-link", onclick: backToList }, "← 問題一覧に戻る"));
+
+      const card = el("div", { class: "card" });
+      card.append(el("div", { class: "instruction" }, exercise.prompt.instruction));
+
+      card.append(el("div", { class: "zone-label" }, "回答欄(クリックした順に並びます。並べ替えたい場合はクリックして選び直してください)"));
+      const answerZone = el("div", { class: "zone answer" });
+      if (answer.length === 0) {
+        answerZone.append(el("div", { class: "placeholder" }, "下の選択肢をクリックしてここに並べてください"));
+      } else {
+        answer.forEach((chunk, i) => {
+          answerZone.append(
+            el("div", { class: "chunk", onclick: () => moveToPool(i) }, chunk),
+          );
+        });
+      }
+      card.append(answerZone);
+
+      card.append(el("div", { class: "zone-label" }, "選択肢(クリックすると上の回答欄に追加されます)"));
+      const poolZone = el("div", { class: "zone" });
+      if (pool.length === 0) {
+        poolZone.append(el("div", { class: "placeholder" }, "(すべて回答欄に移動しました)"));
+      } else {
+        pool.forEach((chunk, i) => {
+          poolZone.append(
+            el("div", { class: "chunk", onclick: () => moveToAnswer(i) }, chunk),
+          );
+        });
+      }
+      card.append(poolZone);
+
+      const controls = el("div", { class: "controls" });
+      controls.append(
+        el(
+          "button",
+          {
+            class: "primary",
+            ...(pool.length > 0 || submitted ? { disabled: "" } : {}),
+            onclick: handleSubmit,
+          },
+          "回答する",
+        ),
+        el("button", { class: "secondary", onclick: handleReset }, "リセット"),
+      );
+      card.append(controls);
+
+      app.append(card);
+
+      if (submitted) {
+        const isCorrect = grade(answer, exercise);
+        const resultCard = el("div", { class: "card" });
+        resultCard.append(
+          el(
+            "div",
+            { class: `result ${isCorrect ? "correct" : "incorrect"}` },
+            isCorrect ? "正解です!" : "不正解です",
+          ),
+        );
+        resultCard.append(el("div", { class: "zone-label" }, "正しい式"));
+        resultCard.append(el("div", { class: "reveal-formula" }, exercise.reveal.rawFormula));
+        resultCard.append(
+          el(
+            "div",
+            { class: "source-info" },
+            "出典: " +
+              exercise.reveal.sourceRefs
+                .map((r) => `Source ID "${r.sourceBlockId}"(役割: ${r.role})`)
+                .join(", "),
+          ),
+        );
+        resultCard.append(
+          el("div", { class: "controls", style: "margin-top:16px" }, [
+            el("button", { class: "secondary", onclick: handleRetry }, "もう一度解く"),
+            el("button", { class: "secondary", onclick: backToList }, "問題一覧に戻る"),
+          ]),
+        );
+        app.append(resultCard);
+      }
+    }
+
+    async function main() {
+      try {
+        const res = await fetch("/api/exercises");
+        if (!res.ok) {
+          throw new Error(`APIエラー: ${res.status}`);
+        }
+        const data = await res.json();
+        if (!data.exercises || data.exercises.length === 0) {
+          document.getElementById("error").textContent =
+            "解ける問題がまだありません。開発用確認UIでKnowledge候補を承認し、Exercise生成スクリプトを実行してください。";
+          return;
+        }
+        allExercises = data.exercises;
+        currentExerciseId = null;
+        render();
+      } catch (err) {
+        document.getElementById("error").textContent = `読み込みに失敗しました: ${err.message}`;
+      }
+    }
+
+    main();
+  </script>
+</body>
+</html>

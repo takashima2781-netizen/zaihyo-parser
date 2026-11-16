@@ -1,0 +1,476 @@
+// [3] Block Detection(最小版: 用語ベース計算式パターン検出器のみ)
+//
+// `pattern_detection_survey.md`で検証済みの「漢字項+演算子記号」という
+// 用語ベース計算式のパターンを検出する。ラベル検出系(設例/解説/留意点等)・
+// 仕訳型・方程式検出器は対象外(`m1_minimal_parser_prototype_design.md`3節)。
+//
+// 1行に「（...－...）×...＝...」という形、または「数値×...＝...」という
+// 形(残存価額がゼロで減算部分が教材上省略される適用例。第2ケースの実データ
+// 検証で判明、`planning/case2_readiness_and_generalization_analysis.md`
+// 5節1項)が現れる行を候補として検出する。分数(分子/分母)がFaithful
+// Restoration前の抽出結果で別行に分離している場合があるため
+// (`parser_source_granularity_validation.md`ケース5)、マッチした行の前後
+// 1行を`contextLines`として一緒に保持し、[5]の判定材料にする。
+
+const FORMULA_LINE_PATTERN =
+  /(?:[（(][^（）()]*[－\-][^（）()]*[）)]|[０-９0-9][０-９0-9,，]*)\s*×.*[＝=].+/;
+
+/**
+ * @param {string} pageText
+ * @returns {Array<{
+ *   matchedLine: string,
+ *   lineIndex: number,
+ *   contextBefore: string[],
+ *   contextAfter: string[],
+ *   precedingHeading: string | null,
+ *   detectorId: "termBasedFormulaDetector",
+ * }>}
+ */
+export function detectTermBasedFormulas(pageText) {
+  const rawLines = pageText.split("\n");
+  const candidates = [];
+
+  for (let i = 0; i < rawLines.length; i++) {
+    const line = rawLines[i];
+    if (!FORMULA_LINE_PATTERN.test(line)) continue;
+
+    const contextBefore = rawLines.slice(Math.max(0, i - 1), i).map((l) => l.trim());
+    const contextAfter = rawLines.slice(i + 1, i + 2).map((l) => l.trim());
+
+    // 直前の数行に「サブ項目番号+ラベル」(例: "１ 定額法（〇）")があれば、
+    // どの技術の式かを区別するための手がかりとして保持する。
+    // 意味判断(この式がどのDerived Knowledgeか等)は行わない
+    // (`parser_design_proposal.md`4節)。単なる検出根拠の記録。
+    let precedingHeading = null;
+    for (let j = i - 1; j >= Math.max(0, i - 6); j--) {
+      const trimmed = rawLines[j].trim();
+      const headingMatch = trimmed.match(/^[０-９0-9]+\s+(\S+)/);
+      if (headingMatch) {
+        precedingHeading = trimmed;
+        break;
+      }
+    }
+
+    candidates.push({
+      matchedLine: line.trim(),
+      lineIndex: i,
+      contextBefore,
+      contextAfter,
+      precedingHeading,
+      detectorId: "termBasedFormulaDetector",
+    });
+  }
+
+  return candidates;
+}
+
+// 仕訳パターン検出器(第3ケースで追加): 「(借)勘定科目×××(貸)勘定科目
+// ×××」という形の行を検出する。具体的な金額の代わりに「×××」という
+// プレースホルダーで一般化された仕訳の型を示す教材上の記法であり、
+// 計算式検出器(用語ベース計算式)とは別のパターンとして扱う(第3ケースの
+// 実データ〈テーマ8-11 無形固定資産の会計処理〉で確認済み)。ラベル検出系
+// (設例/解説/留意点等)・方程式検出器は引き続き対象外
+// (`m1_minimal_parser_prototype_design.md`3節の方針を維持)。
+//
+// 第4ケースの実データ(テーマ4-1 手形、約束手形の振出人/名宛人)で、
+// 「(借)」の直前に役割ラベル(例: "振出人")が同じ行に同居しているケースを
+// 確認したため、`^`固定ではなく行内のどこにあってもマッチできるよう
+// 拡張した(前方の文字列は`inlineLabelRaw`として保持し、意味判断は
+// 行わない)。第3ケースのように行頭が「(借)」のままの場合は
+// `inlineLabelRaw`はnullになり、既存の挙動と変わらない。
+const JOURNAL_PATTERN_LINE =
+  /[（(]借[）)]\s*(.+?)\s*×××\s*[（(]貸[）)]\s*(.+?)\s*×××\s*$/;
+
+/**
+ * @param {string} pageText
+ * @returns {Array<{
+ *   matchedLine: string,
+ *   lineIndex: number,
+ *   debitAccountRaw: string,
+ *   creditAccountRaw: string,
+ *   inlineLabelRaw: string | null,
+ *   precedingHeading: string | null,
+ *   detectorId: "journalPatternDetector",
+ * }>}
+ */
+export function detectJournalPatterns(pageText) {
+  const rawLines = pageText.split("\n");
+  const candidates = [];
+
+  for (let i = 0; i < rawLines.length; i++) {
+    const line = rawLines[i].trim();
+    const match = line.match(JOURNAL_PATTERN_LINE);
+    if (!match) continue;
+
+    const journalStartIndex = line.indexOf(match[0]);
+    const inlineLabelRaw = line.slice(0, journalStartIndex).trim() || null;
+
+    // 直前の数行に「(番号) ラベル」(例: "(1) 支出時")があれば、どの局面の
+    // 仕訳かを区別するための手がかりとして保持する。意味判断は行わない
+    // (単なる検出根拠の記録、`termBasedFormulaDetector`と同じ考え方)。
+    let precedingHeading = null;
+    for (let j = i - 1; j >= Math.max(0, i - 6); j--) {
+      const trimmed = rawLines[j].trim();
+      const headingMatch = trimmed.match(/^[（(][０-９0-9]+[）)]\s*(\S+)/);
+      if (headingMatch) {
+        precedingHeading = trimmed;
+        break;
+      }
+    }
+
+    candidates.push({
+      matchedLine: line,
+      inlineLabelRaw,
+      lineIndex: i,
+      debitAccountRaw: match[1],
+      creditAccountRaw: match[2],
+      precedingHeading,
+      detectorId: "journalPatternDetector",
+    });
+  }
+
+  return candidates;
+}
+
+// 加算グループを伴う用語式パターン検出器(第6ケースで追加): 「（項＋項）×
+// ...＝...」という形を検出する。既存の`detectTermBasedFormulas`は先頭の
+// 括弧グループが減算(－)であることを要求するため、加算(＋)のグループには
+// 一致しない(テーマ7-10 仕入諸掛の按分計算〈平均法〉の定義式で確認、
+// `（期首仕入諸掛＋当期仕入諸掛）×...＝期末仕入諸掛`)。既存の検出器を
+// 条件分岐で複雑にせず、独立した検出器として追加する(既存方針を踏襲)。
+const ADDITION_GROUP_FORMULA_LINE = /[（(][^（）()]*[＋+][^（）()]*[）)]\s*×.*[＝=].+/;
+
+/**
+ * @param {string} pageText
+ * @returns {Array<{
+ *   matchedLine: string,
+ *   lineIndex: number,
+ *   contextBefore: string[],
+ *   contextAfter: string[],
+ *   precedingHeading: string | null,
+ *   detectorId: "additionGroupFormulaDetector",
+ * }>}
+ */
+export function detectAdditionGroupFormulas(pageText) {
+  const rawLines = pageText.split("\n");
+  const candidates = [];
+
+  for (let i = 0; i < rawLines.length; i++) {
+    const line = rawLines[i];
+    if (!ADDITION_GROUP_FORMULA_LINE.test(line)) continue;
+
+    const contextBefore = rawLines.slice(Math.max(0, i - 1), i).map((l) => l.trim());
+    const contextAfter = rawLines.slice(i + 1, i + 2).map((l) => l.trim());
+
+    // 直前の数行に「(番号) ラベル」(例: "(1) 平均法")があれば、どの方法の
+    // 式かを区別するための手がかりとして保持する(`detectJournalPatterns`と
+    // 同じ考え方、意味判断は行わない)。
+    let precedingHeading = null;
+    for (let j = i - 1; j >= Math.max(0, i - 6); j--) {
+      const trimmed = rawLines[j].trim();
+      const headingMatch = trimmed.match(/^[（(][０-９0-9]+[）)]\s*(\S+)/);
+      if (headingMatch) {
+        precedingHeading = trimmed;
+        break;
+      }
+    }
+
+    candidates.push({
+      matchedLine: line.trim(),
+      lineIndex: i,
+      contextBefore,
+      contextAfter,
+      precedingHeading,
+      detectorId: "additionGroupFormulaDetector",
+    });
+  }
+
+  return candidates;
+}
+
+// 素朴な用語式パターン検出器(第5ケースで追加): 「項×項＝項」という、
+// 括弧(減算)も分数も伴わない最も単純な計算式の形を検出する。
+// `detectTermBasedFormulas`(括弧内減算 or 先頭数値のいずれかを要求)は、
+// このケース(テーマ11 外貨建取引、「外貨建取引額×為替レート＝円換算額」)の
+// 定義式に一致しない(先頭が漢字項で、括弧も先頭数値も無いため)。既存の
+// 検出器を条件分岐で複雑にするのではなく、独立した検出器として追加する
+// (`detectJournalPatterns`を`detectTermBasedFormulas`と別に追加した際と
+// 同じ方針)。
+//
+// 教材の適用例(※注記の計算)では、この式の直前に「※」や「ＣＲ換算額：」
+// といったラベルが同じ行内に同居する(第4ケースの`inlineLabelRaw`と同種の
+// 事情)。行内のどこにあってもマッチできるようにし、前方の文字列は
+// `inlineLabelRaw`として保持する(意味判断は行わない)。
+//
+// 同一行に「×」または「＝」が複数回現れる行(例: 月割計算のような複合式
+// 「500ドル×６％×(3月／12月)×ＣＲ120円＝900」)は、この検出器が想定する
+// 最も単純な形状(項×項＝項、演算子はそれぞれ1回ずつ)に一致しないため、
+// 意図的に対象外とする(無理に一般化しない、原則6)。
+//
+// 項の文字集合から全角コロン「：」を除外する: 実データ(「ＣＲ換算額：
+// 100ドル×ＣＲ120円＝12,000」)で、ラベルと式本体の間に空白が無く直接
+// 全角コロンで接する形が確認されたため。コロンをラベル側の区切り文字として
+// 扱うことで、非貪欲マッチが式本体側で正しく開始位置を止められるようにする
+// (空白のみに依存すると、空白の無いラベルを式本体へ誤って取り込んでしまう)。
+const PLAIN_TERM_FORMULA_LINE = /([^\s×＝：]+?)×([^\s×＝：]+?)＝([^\s×＝：]+)$/;
+
+/**
+ * @param {string} pageText
+ * @returns {Array<{
+ *   matchedLine: string,
+ *   formulaRaw: string,
+ *   lineIndex: number,
+ *   termA: string,
+ *   operatorSymbol: "×",
+ *   termB: string,
+ *   resultTerm: string,
+ *   inlineLabelRaw: string | null,
+ *   detectorId: "plainTermFormulaDetector",
+ * }>}
+ */
+export function detectPlainTermFormulas(pageText) {
+  const rawLines = pageText.split("\n");
+  const candidates = [];
+
+  for (let i = 0; i < rawLines.length; i++) {
+    const line = rawLines[i].trim();
+    if (!line) continue;
+
+    const timesCount = (line.match(/×/g) ?? []).length;
+    const equalsCount = (line.match(/＝/g) ?? []).length;
+    if (timesCount !== 1 || equalsCount !== 1) continue;
+
+    const match = line.match(PLAIN_TERM_FORMULA_LINE);
+    if (!match) continue;
+
+    const matchStartIndex = line.indexOf(match[0]);
+    const inlineLabelRaw = line.slice(0, matchStartIndex).trim() || null;
+
+    candidates.push({
+      matchedLine: line,
+      formulaRaw: match[0],
+      lineIndex: i,
+      termA: match[1],
+      operatorSymbol: "×",
+      termB: match[2],
+      resultTerm: match[3],
+      inlineLabelRaw,
+      detectorId: "plainTermFormulaDetector",
+    });
+  }
+
+  return candidates;
+}
+
+// 被定義項ラベル分数式パターン検出器(Phase C・テーマ7-4で追加): 「項＝」
+// という、演算子(×等)を一切伴わない行を検出する。テーマ7-4(原価率)の
+// 定義式(「原価率＝原価／売価」)は、視覚的な分数(分子が式行の直前、
+// 分母が直後の別行)として印字され、式行自体には「項＝」しか現れない
+// (既存の`detectTermBasedFormulas`等は行内に×または＝の前後に式の実体が
+// あることを前提とするため一致しない)。この検出器は候補行(式の左辺+＝)の
+// 検出のみを行い、分子/分母の視覚的な分離の復元はfaithful restoration側
+// (既知の個別確認済み補正、`fraction_split`)に委ねる(既存方針を踏襲)。
+const LABEL_FRACTION_FORMULA_LINE = /^([^\s＝×／：]+)＝$/;
+
+/**
+ * @param {string} pageText
+ * @returns {Array<{
+ *   matchedLine: string,
+ *   labelTerm: string,
+ *   lineIndex: number,
+ *   contextBefore: string[],
+ *   contextAfter: string[],
+ *   precedingHeading: string | null,
+ *   detectorId: "labelFractionFormulaDetector",
+ * }>}
+ */
+export function detectLabelFractionFormulas(pageText) {
+  const rawLines = pageText.split("\n");
+  const candidates = [];
+
+  for (let i = 0; i < rawLines.length; i++) {
+    const line = rawLines[i].trim();
+    const match = line.match(LABEL_FRACTION_FORMULA_LINE);
+    if (!match) continue;
+
+    const contextBefore = rawLines.slice(Math.max(0, i - 1), i).map((l) => l.trim());
+    const contextAfter = rawLines.slice(i + 1, i + 2).map((l) => l.trim());
+
+    let precedingHeading = null;
+    for (let j = i - 1; j >= Math.max(0, i - 6); j--) {
+      const trimmed = rawLines[j].trim();
+      const headingMatch = trimmed.match(/^[０-９0-9]+\s+(\S+)/);
+      if (headingMatch) {
+        precedingHeading = trimmed;
+        break;
+      }
+    }
+
+    candidates.push({
+      matchedLine: line,
+      labelTerm: match[1],
+      lineIndex: i,
+      contextBefore,
+      contextAfter,
+      precedingHeading,
+      detectorId: "labelFractionFormulaDetector",
+    });
+  }
+
+  return candidates;
+}
+
+// 減算グループ式パターン検出器(Phase C・テーマ7-2で追加): 「項－（項＋項－
+// 項）＝項」という、先頭が減算で、括弧グループの中に加算と減算が混在する
+// 形状を検出する。既存の検出器(`detectTermBasedFormulas`等)はいずれも行内に
+// 「×」を要求するため、乗算を伴わないこの形状(テーマ7-2 総記法、
+// 「売上高－（期首商品＋当期仕入高－期末商品）＝商品販売益」)には一致しない。
+// 教材上、直前に「※」ラベルが同居する(`detectPlainTermFormulas`と同じ事情)。
+// 同じページに「又は、」で始まる代替表現の式も存在するが、形状が異なる
+// (先頭に減算グループが無い)ためこの検出器には一致しない。代替表現は
+// 対象外として扱う(原則6、実データで確認できた主形状のみを対象とする)。
+const SUBTRACT_GROUP_FORMULA_LINE =
+  /([^\s（）＋－×／＝：]+)－（([^（）＋－：]+)＋([^（）＋－：]+)－([^（）＋－：]+)）＝([^\s（）＋－×／＝：]+)$/;
+
+/**
+ * @param {string} pageText
+ * @returns {Array<{
+ *   matchedLine: string,
+ *   formulaRaw: string,
+ *   lineIndex: number,
+ *   termA: string,
+ *   termB: string,
+ *   termC: string,
+ *   termD: string,
+ *   resultTerm: string,
+ *   inlineLabelRaw: string | null,
+ *   detectorId: "subtractGroupFormulaDetector",
+ * }>}
+ */
+export function detectSubtractGroupFormulas(pageText) {
+  const rawLines = pageText.split("\n");
+  const candidates = [];
+
+  for (let i = 0; i < rawLines.length; i++) {
+    const line = rawLines[i].trim();
+    if (!line) continue;
+
+    const match = line.match(SUBTRACT_GROUP_FORMULA_LINE);
+    if (!match) continue;
+
+    const matchStartIndex = line.indexOf(match[0]);
+    const inlineLabelRaw = line.slice(0, matchStartIndex).trim() || null;
+
+    candidates.push({
+      matchedLine: line,
+      formulaRaw: match[0],
+      lineIndex: i,
+      termA: match[1],
+      termB: match[2],
+      termC: match[3],
+      termD: match[4],
+      resultTerm: match[5],
+      inlineLabelRaw,
+      detectorId: "subtractGroupFormulaDetector",
+    });
+  }
+
+  return candidates;
+}
+
+// 減算グループ÷項式パターン検出器(Phase C・テーマ8-8で追加): 「（項－項－
+// 項）÷項＝項」という、括弧グループの中に減算が2回現れ、乗算ではなく除算
+// 記号「÷」を使う形状を検出する。既存の`detectTermBasedFormulas`等は
+// いずれも「×」を要求するため、除算記号を使うこの形状(テーマ8-8 償却方法の
+// 変更、「（取得原価－期首減価償却累計額－残存価額）÷残存耐用年数＝
+// 減価償却費」)には一致しない。
+const SUBTRACT_GROUP_DIVIDE_FORMULA_LINE =
+  /（([^（）－]+)－([^（）－]+)－([^（）－]+)）÷([^（）÷＝]+)＝([^\s（）÷＝]+)$/;
+
+/**
+ * @param {string} pageText
+ * @returns {Array<{
+ *   matchedLine: string,
+ *   formulaRaw: string,
+ *   lineIndex: number,
+ *   termA: string,
+ *   termB: string,
+ *   termC: string,
+ *   divisorTerm: string,
+ *   resultTerm: string,
+ *   precedingHeading: string | null,
+ *   detectorId: "subtractGroupDivideFormulaDetector",
+ * }>}
+ */
+export function detectSubtractGroupDivideFormulas(pageText) {
+  const rawLines = pageText.split("\n");
+  const candidates = [];
+
+  for (let i = 0; i < rawLines.length; i++) {
+    const line = rawLines[i].trim();
+    if (!line) continue;
+
+    const match = line.match(SUBTRACT_GROUP_DIVIDE_FORMULA_LINE);
+    if (!match) continue;
+
+    let precedingHeading = null;
+    for (let j = i - 1; j >= Math.max(0, i - 6); j--) {
+      const trimmed = rawLines[j].trim();
+      const headingMatch = trimmed.match(/^[（(][０-９0-9]+[）)]\s*(\S+)/);
+      if (headingMatch) {
+        precedingHeading = trimmed;
+        break;
+      }
+    }
+
+    candidates.push({
+      matchedLine: line,
+      formulaRaw: match[0],
+      lineIndex: i,
+      termA: match[1],
+      termB: match[2],
+      termC: match[3],
+      divisorTerm: match[4],
+      resultTerm: match[5],
+      precedingHeading,
+      detectorId: "subtractGroupDivideFormulaDetector",
+    });
+  }
+
+  return candidates;
+}
+
+// 「設 例」ラベル(教材の設例見出し)を、候補行より前の範囲で探す。
+// 第1ケース(トップレベル、ネストなし)では使われない、第2ケース専用の
+// 最小限の追加(`case2_readiness_and_generalization_analysis.md`2-4節・
+// 3-1節)。ラベル検出系全体(6ラベルすべて・PUAアイコン判定等)は引き続き
+// スコープ外であり、「設例」1ラベルの見出し文字列だけを探す。
+//
+// 実データ確認(第2ケース、2箇所とも同一パターン): `sort=True`の読み順
+// ヒューリスティックは、アイコン文字に隣接する「設」の文字を行末へ
+// 追いやり、「例 ◯◯設」のような語順に入れ替えてしまう
+// (`case2_readiness_and_generalization_analysis.md`7-1節と同種の、
+// アイコン隣接テキストの並び替わり)。この実データで確認済みの語順に
+// 合わせてパターンを定義する(「設 例」の通常語順ではなく「例...設」)。
+const NESTED_LABEL_PATTERN = /例.{0,20}設\s*$/;
+
+/**
+ * @param {string} pageText
+ * @param {number} candidateLineIndex
+ * @param {number} [searchWindow] 何行前まで遡って探すか
+ * @returns {{ label: string, lineIndex: number } | null}
+ */
+export function findNestedParentLabel(pageText, candidateLineIndex, searchWindow = 60) {
+  const rawLines = pageText.split("\n");
+  for (
+    let j = candidateLineIndex - 1;
+    j >= Math.max(0, candidateLineIndex - searchWindow);
+    j--
+  ) {
+    const trimmed = rawLines[j].trim();
+    if (NESTED_LABEL_PATTERN.test(trimmed)) {
+      return { label: trimmed, lineIndex: j };
+    }
+  }
+  return null;
+}

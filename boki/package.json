@@ -1,0 +1,10 @@
+{
+  "name": "boki-app",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "簿記論教材(教科書)を解析し、Source / Derived Knowledge / Exerciseの3層構造で保持・出題する学習アプリ",
+  "scripts": {
+    "test": "node --test"
+  }
+}
