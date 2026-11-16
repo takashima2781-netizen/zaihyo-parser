@@ -90,6 +90,27 @@ export function dateAnswerFrom(text) {
   return { prefix, raw: m[0].replace(/\s+/g, ""), kind: r ? "dateRange" : "date", values };
 }
 
+// 決まった組に無い結論でも、言い方から選択肢を作れるもの:
+//   「著しい変動（増加／減少）に該当する」「著しい変動に該当しない」 → 3つ
+//   「１年以内」「１年超２年以内」「２年超３年以内」 → 3つ
+//   「○○に該当する／しない」「○○適用あり／なし」 → 2つ（○○に「、」などが無い短い言い方だけ）
+const SIGNIFICANT_CHANGE = ["著しい変動（増加）に該当する", "著しい変動（減少）に該当する", "著しい変動に該当しない"];
+const HOLDING_PERIOD = ["１年以内", "１年超２年以内", "２年超３年以内"];
+function normalizeJudgement(said) {
+  return said.replace(/\(/g, "（").replace(/\)/g, "）").replace(/[。]$/, "");
+}
+function derivedOptions(said) {
+  const t = normalizeJudgement(said);
+  if (SIGNIFICANT_CHANGE.includes(t)) return SIGNIFICANT_CHANGE;
+  if (HOLDING_PERIOD.includes(t)) return HOLDING_PERIOD;
+  if (/[、。，\s）]/.test(t) || /^(いずれも|すべて|全て)/.test(t)) return null;
+  let m = t.match(/^(.{2,20})に該当(する|しない)$/);
+  if (m) return [`${m[1]}に該当する`, `${m[1]}に該当しない`];
+  m = t.match(/^(.{1,20})適用(あり|なし)$/);
+  if (m) return [`${m[1]}適用あり`, `${m[1]}適用なし`];
+  return null;
+}
+
 /** 行の並びから、最後の「∴ 結論」を読む。対の言い方に当てはまれば選択肢つきで返す。 */
 export function judgementFrom(texts) {
   for (let i = texts.length - 1; i >= 0; i--) {
@@ -97,8 +118,10 @@ export function judgementFrom(texts) {
     if (!m) continue;
     const said = m[1].trim();
     if (new RegExp(`^${AMOUNT.source}$`).test(said)) return null; // 結論が金額のものは金額の段階として扱う
-    const pair = JUDGEMENT_PAIRS.find((p) => p.includes(said));
-    return pair ? { raw: said, options: pair, correct: said } : { raw: said, options: null, correct: null };
+    const pair = JUDGEMENT_PAIRS.find((p) => p.includes(said)) ?? derivedOptions(said);
+    if (!pair) return { raw: said, options: null, correct: null };
+    const correct = normalizeJudgement(said);
+    return { raw: said, options: pair, correct: pair.includes(correct) ? correct : said };
   }
   return null;
 }

@@ -131,7 +131,10 @@ export function restoreFractions(lines, drawings = null) {
   const candidates = findFractionCandidates(out, drawings);
   const fractionLineIdx = new Set(candidates.flatMap((c) => [c.numeratorIndex, c.denominatorIndex]));
   const placements = new Map(); // hostIndex -> [{run, cand}]
+  const joinedInto = new Map(); // つないだ右の行 -> つなぎ先の行
 
+  // 同じ行に分数が複数あるときに左から順につなげられるよう、上から・左から順に処理する
+  candidates.sort((a, b) => (Math.abs(a.centerY - b.centerY) > 4 ? a.centerY - b.centerY : a.centerX - b.centerX));
   for (const cand of candidates) {
     const hosts = [];
     out.forEach((l, i) => {
@@ -154,7 +157,8 @@ export function restoreFractions(lines, drawings = null) {
     // 空白の入った行が無いとき: 分数の左右で行が分かれている（「7,104×」｜分数｜「＝646」）。
     // 同じ高さで、分数のすぐ左で終わる行がちょうど1つあれば、その行に分数と右の行をつなげる。
     if (hosts.length === 0) {
-      const sameRow = (l) => !l.role && cand.centerY >= l.bbox[1] - 1 && cand.centerY <= l.bbox[3] + 1;
+      // 前の分数で右の行としてつないだ行（fractionJoined）も、左の行の候補にする（1行に分数が2つ並ぶとき）
+      const sameRow = (l) => (!l.role || l.role === "fractionJoined") && cand.centerY >= l.bbox[1] - 1 && cand.centerY <= l.bbox[3] + 1;
       const fracX0 = Math.min(out[cand.numeratorIndex].bbox[0], out[cand.denominatorIndex].bbox[0]);
       const fracX1 = Math.max(out[cand.numeratorIndex].bbox[2], out[cand.denominatorIndex].bbox[2]);
       const lefts = [];
@@ -164,10 +168,13 @@ export function restoreFractions(lines, drawings = null) {
         if (l.bbox[2] <= fracX0 + 3 && fracX0 - l.bbox[2] < 15) lefts.push(i);
         else if (l.bbox[0] >= fracX1 - 3 && l.bbox[0] - fracX1 < 15) rights.push(i);
       });
-      if (lefts.length === 1 && rights.length <= 1 && !out[lefts[0]].segments && (rights.length === 0 || !out[rights[0]].segments)) {
-        const left = out[lefts[0]];
+      const rootOf = (i) => (joinedInto.has(i) ? rootOf(joinedInto.get(i)) : i);
+      const leftRoot = lefts.length === 1 ? rootOf(lefts[0]) : null;
+      const leftIsJoined = lefts.length === 1 && out[lefts[0]].role === "fractionJoined";
+      if (lefts.length === 1 && rights.length <= 1 && (leftIsJoined || !out[lefts[0]].segments) && (rights.length === 0 || !out[rights[0]].segments)) {
+        const left = out[leftRoot];
         const segs = [
-          { kind: "text", text: left.text },
+          ...(leftIsJoined ? left.segments : [{ kind: "text", text: left.text }]),
           {
             kind: "fraction",
             numerator: cand.numerator,
@@ -179,6 +186,7 @@ export function restoreFractions(lines, drawings = null) {
         if (rights.length === 1) {
           segs.push({ kind: "text", text: out[rights[0]].text, source: out[rights[0]].source });
           out[rights[0]].role = "fractionJoined";
+          joinedInto.set(rights[0], leftRoot);
         }
         left.segments = segs;
         out[cand.numeratorIndex].role = "fractionPart";
