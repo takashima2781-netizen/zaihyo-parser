@@ -20,7 +20,8 @@ const read = (name) => JSON.parse(readFileSync(out(name), "utf8"));
 const BOOK_TITLES = { "training-basic-1": "トレーニング 基礎M・速修 No.1" };
 
 const trainings = ["training-basic-1"].filter((b) => existsSync(out(`${b}.structure.json`))).map((b) => read(`${b}.structure.json`));
-const theories = [1].filter((n) => existsSync(out(`theory-master-theme${n}.structure.json`))).map((n) => read(`theory-master-theme${n}.structure.json`));
+// 理論マスターは、教材構造を作ったテーマを全部使う（テーマ1〜5。npm run theory -- <n> で作る）。
+const theories = [1, 2, 3, 4, 5, 6, 7, 8, 9].filter((n) => existsSync(out(`theory-master-theme${n}.structure.json`))).map((n) => read(`theory-master-theme${n}.structure.json`));
 if (trainings.length + theories.length === 0) {
   console.error("教材構造がありません。先に npm run training / npm run theory を実行してください。");
   process.exit(1);
