@@ -11,8 +11,23 @@
 // diag側の記録内容には影響しない。
 
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+
+// Pythonの選び方(上から順に、最初に見つかったもの):
+// 1. 環境変数 BOKI_PYTHON_BIN
+// 2. 共通の仮想環境 ~/.venvs/study-drill/bin/python(PyMuPDF 1.28.2 入り。
+//    Mac移行時に作成、2026-11-16。macOS標準のPython 3.9では1.28系を入れられないため)
+// 3. "python"(PATH上のもの。従来の既定)
+const SHARED_VENV_PYTHON = path.join(os.homedir(), ".venvs", "study-drill", "bin", "python");
+
+function resolvePythonBin() {
+  if (process.env.BOKI_PYTHON_BIN) return process.env.BOKI_PYTHON_BIN;
+  if (existsSync(SHARED_VENV_PYTHON)) return SHARED_VENV_PYTHON;
+  return "python";
+}
 
 const HELPER_SCRIPT = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -42,7 +57,7 @@ export async function extractBlocks(pdfPath, pageNumbers) {
 }
 
 async function runExtractHelper(args) {
-  const pythonBin = process.env.BOKI_PYTHON_BIN || "python";
+  const pythonBin = resolvePythonBin();
 
   return new Promise((resolve, reject) => {
     const child = spawn(pythonBin, args);

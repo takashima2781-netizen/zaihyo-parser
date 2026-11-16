@@ -5,7 +5,10 @@
 > (`Zaihyo Parser/html-v2`)」と書かれているのは、同じリポジトリの `../html-v2/` を指す。
 > 「独立したリポジトリとして構築する」「財表ドリル側はこのリポジトリの権限外」という記述は
 > 移転前のもの。今後は最上位の `CLAUDE.md`（構成表）と `../WISHLIST.md` も参照する。
-> テストは `boki/` で `npm test`。PDF 抽出には PyMuPDF 入りの Python を `BOKI_PYTHON_BIN` で指定する。
+> テストは `boki/` で `npm test`。PDF 抽出の Python は、環境変数 `BOKI_PYTHON_BIN` →
+> 共通の仮想環境 `~/.venvs/study-drill/bin/python`（Python 3.12・PyMuPDF 1.28.2）→ `python` の順に探す
+> （`src/parser/extract.mjs`）。仮想環境を作り直すときは PyMuPDF を 1.28.2 にそろえる
+> （1.26 系では分数の位置合わせのテストが1件落ちることを確認済み）。
 
 ## Mission
 
