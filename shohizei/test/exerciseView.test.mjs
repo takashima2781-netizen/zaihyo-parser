@@ -193,3 +193,12 @@ test("文節の区切りでも、括弧の中では切らない", async () => {
   assert.deepEqual(keepParenthesesWhole(["Aの出資（Bを除く。", "）の総数", "からCとする。"]), ["Aの出資（Bを除く。）の総数", "からCとする。"]);
   assert.deepEqual(keepParenthesesWhole(["A", "とB"]), ["A", "とB"]);
 });
+
+test("教材: どの教材の問題かを structure.book に付ける（決められないものには付けない）", async () => {
+  const { withMaterial } = await import("../src/exerciseView/buildExerciseView.mjs");
+  const ex = (sourceKind, bookId) => ({ structure: { theme: { structureNodeId: "t" } }, provenance: { sourceKind, bookId } });
+  assert.equal(withMaterial(ex("shohizei_theory_structure", "theory-master")).structure.book.titleRaw.text, "理論マスター");
+  assert.equal(withMaterial(ex("shohizei_training_structure", "training-advanced-2")).structure.book.structureNodeId, "material:training-advanced");
+  assert.equal(withMaterial(ex("shohizei_text_structure", "text-speed-6")).structure.book.titleRaw.text, "速修テキスト");
+  assert.equal(withMaterial(ex("other", "x")).structure.book, undefined);
+});

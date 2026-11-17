@@ -2005,14 +2005,14 @@
 
   // ---- v2-50(WISHLIST W-2): 範囲を選ぶ画面・出題設定の範囲表示・制限時間 ----
 
-  function rangeRow(range, title, exercises, extraClass) {
+  function rangeRow(range, title, exercises, extraClass, shownTitle) {
     var btn = document.createElement("button");
     btn.type = "button";
     btn.className = "range-row" + (extraClass ? " " + extraClass : "");
     btn.disabled = exercises.length === 0;
     var name = document.createElement("span");
     name.className = "range-row-title";
-    name.textContent = title;
+    name.textContent = shownTitle || title;
     btn.appendChild(name);
     btn.appendChild(EVv2.createProgressMeter(EVv2.summarizeProgress(exercises)));
     var chev = document.createElement("span");
@@ -2044,20 +2044,116 @@
     // 各行の中身にだけ掛ける（並び替え問題など、配列の後ろに追加された問題があっても順序が崩れない）。
     // 該当する問題が0問のテーマ・範囲も「0／0問」として出す（将来問題を追加する可能性があるため、
     // ユーザー指示）。0問の行は選んでも出題できないので押せないようにする。
-    EVv2.buildRangeTree(base).forEach(function (theme) {
-      var themeExercises = narrow(theme.exercises);
+    // v2-62(WISHLIST W-7): 教材・テーマの見出しは押すと開閉する（右の › でその見出し全体を選ぶ）。
+    // 問題データに教材（structure.book）があれば、テーマの上に教材の見出しを置く。
+    var books = EVv2.buildRangeBooks(base);
+    if (!books.length) {
+      renderThemeGroups(els.rangeList, EVv2.buildRangeTree(base), narrow, "");
+      return;
+    }
+    books.forEach(function (book) {
+      if (!book.id) {
+        renderThemeGroups(els.rangeList, book.themes, narrow, "");
+        return;
+      }
+      var wrap = document.createElement("section");
+      wrap.className = "range-book";
+      els.rangeList.appendChild(wrap);
+      collapsible(wrap, book, book.title, book.title, narrow(book.exercises), "range-row-book", function (body) {
+        renderThemeGroups(body, book.themes, narrow, book.title);
+      });
+    });
+  }
+
+  function renderThemeGroups(container, themes, narrow, bookTitle) {
+    themes.forEach(function (theme) {
       var group = document.createElement("section");
       group.className = "range-group";
-      var themeTitle = formatThemeTitle(theme.title);
-      group.appendChild(rangeRow(theme, themeTitle, themeExercises, "range-row-theme"));
-      // テーマ直下に範囲が1つしかない場合も、東進アプリのSTAGEと同じく範囲の行を出す
-      // （テーマ全体と範囲のどちらからでも始められる）。
-      theme.sections.forEach(function (section) {
-        var sectionExercises = narrow(section.exercises);
-        group.appendChild(rangeRow(section, section.title, sectionExercises, "range-row-section"));
+      container.appendChild(group);
+      var label = formatThemeTitle(theme.title);
+      // 教材の見出しの下では、テーマ名の頭の教材名は省いて出す（選んだ範囲の名前には残す）
+      var shown = bookTitle && label.indexOf(bookTitle + " ") === 0 ? label.slice(bookTitle.length + 1) : label;
+      var themeExercises = narrow(theme.exercises);
+      if (!theme.sections.length) {
+        group.appendChild(rangeRow(theme, label, themeExercises, "range-row-theme", shown));
+        return;
+      }
+      collapsible(group, theme, label, shown, themeExercises, "range-row-theme", function (body) {
+        theme.sections.forEach(function (section) {
+          body.appendChild(rangeRow(section, section.title, narrow(section.exercises), "range-row-section"));
+        });
       });
-      els.rangeList.appendChild(group);
     });
+  }
+
+  // v2-62: 開いている見出しは科目ごとにこの端末に覚える（既定は閉じる。失敗しても動作には影響しない）。
+  var RANGE_OPEN_KEY = EVv2.SUBJECT.storage.rangeOpen;
+  var rangeOpen = (function () {
+    var open = {};
+    try {
+      var v = JSON.parse(window.localStorage.getItem(RANGE_OPEN_KEY) || "[]");
+      if (Array.isArray(v)) v.forEach(function (id) { open[id] = true; });
+    } catch (e) {}
+    return open;
+  })();
+  function saveRangeOpen() {
+    try {
+      window.localStorage.setItem(RANGE_OPEN_KEY, JSON.stringify(Object.keys(rangeOpen)));
+    } catch (e) {}
+  }
+
+  // 見出し（押すと開閉）＋ 右端の › （その見出し全体を選ぶ）＋ 中身。中身は開いたときに作る。
+  function collapsible(container, range, label, shown, exercises, extraClass, fillBody) {
+    var key = range.kind + ":" + range.id;
+    var head = document.createElement("div");
+    head.className = "range-head " + extraClass;
+    var toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "range-toggle";
+    var caret = document.createElement("span");
+    caret.className = "range-caret";
+    caret.setAttribute("aria-hidden", "true");
+    toggle.appendChild(caret);
+    var name = document.createElement("span");
+    name.className = "range-row-title";
+    name.textContent = shown;
+    toggle.appendChild(name);
+    toggle.appendChild(EVv2.createProgressMeter(EVv2.summarizeProgress(exercises)));
+    head.appendChild(toggle);
+    var pick = document.createElement("button");
+    pick.type = "button";
+    pick.className = "range-pick";
+    pick.disabled = exercises.length === 0;
+    pick.setAttribute("aria-label", label + " 全体を選ぶ");
+    pick.textContent = "›";
+    pick.addEventListener("click", function () {
+      state.selectedRange = { kind: range.kind, id: range.id || null, label: label };
+      showStudySetup();
+    });
+    head.appendChild(pick);
+    container.appendChild(head);
+
+    var body = document.createElement("div");
+    body.className = "range-body";
+    container.appendChild(body);
+    var filled = false;
+    function apply() {
+      var open = !!rangeOpen[key];
+      toggle.setAttribute("aria-expanded", open ? "true" : "false");
+      head.classList.toggle("is-open", open);
+      body.hidden = !open;
+      if (open && !filled) {
+        fillBody(body);
+        filled = true;
+      }
+    }
+    toggle.addEventListener("click", function () {
+      if (rangeOpen[key]) delete rangeOpen[key];
+      else rangeOpen[key] = true;
+      saveRangeOpen();
+      apply();
+    });
+    apply();
   }
 
   function renderSetupRangeSummary() {

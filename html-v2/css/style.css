@@ -2127,6 +2127,100 @@ header h1 {
   height: 14px;
 }
 
+/* v2-62(WISHLIST W-7): 見出しを押すと開閉（右端の › でその見出し全体を選ぶ） */
+.range-book {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+.range-head {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: stretch;
+}
+.range-row-book {
+  background: var(--surface-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+.range-toggle {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas: "caret title" "caret meter";
+  align-items: center;
+  gap: 6px 10px;
+  min-width: 0;
+  min-height: 0;
+  padding: 12px 6px 12px 14px;
+  background: none;
+  border: none;
+  border-radius: 0;
+  color: var(--text);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.range-toggle:active,
+.range-pick:active {
+  background: var(--surface-sunken);
+}
+.range-toggle .range-row-title {
+  grid-area: title;
+}
+.range-toggle .progress-meter {
+  grid-area: meter;
+}
+.range-caret {
+  grid-area: caret;
+  width: 9px;
+  height: 9px;
+  margin: 0 3px 0 1px;
+  border-right: 2.5px solid var(--text-muted, var(--text-faint));
+  border-bottom: 2.5px solid var(--text-muted, var(--text-faint));
+  transform: rotate(-45deg);
+  transition: transform .15s ease;
+}
+.range-head.is-open .range-caret {
+  transform: rotate(45deg);
+}
+.range-pick {
+  min-width: 48px;
+  min-height: 0;
+  padding: 0 14px;
+  background: none;
+  border: none;
+  border-left: 1px solid var(--border);
+  border-radius: 0;
+  color: var(--text-faint);
+  font-family: inherit;
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.range-pick:disabled {
+  cursor: default;
+  opacity: .35;
+}
+.range-row-book .range-row-title {
+  font-size: 1.1rem;
+  font-weight: 800;
+}
+.range-book > .range-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding-left: var(--sp-3);
+}
+.range-book > .range-body[hidden],
+.range-group > .range-body[hidden] {
+  display: none;
+}
+.range-group > .range-body > .range-row {
+  border-top: 1px solid var(--border);
+}
+
 /* ---- 出題設定 ---- */
 .setup-range-summary {
   background: var(--surface-card);

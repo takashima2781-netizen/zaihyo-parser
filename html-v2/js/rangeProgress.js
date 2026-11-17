@@ -64,11 +64,39 @@ window.EVv2 = EVv2;
     return themes;
   };
 
-  // range: { kind:"all" } | { kind:"theme", id } | { kind:"section", id }
+  // v2-62(WISHLIST W-7): 教材（structure.book）ごとにテーマをまとめる。
+  // [{ kind:"book", id, title, exercises, themes:[…buildRangeTreeのテーマ] }]。教材の無い問題のテーマは
+  // id:null の教材にまとめる（呼び出し側は見出しを出さない）。教材を持つ問題が1つも無ければ空配列。
+  EVv2.buildRangeBooks = function (exercises) {
+    var hasBook = exercises.some(function (ex) {
+      return ex.structure && ex.structure.book;
+    });
+    if (!hasBook) return [];
+    var books = [];
+    var bookMap = {};
+    exercises.forEach(function (ex) {
+      var b = ex.structure && ex.structure.book;
+      var bId = b ? b.structureNodeId : "";
+      var book = bookMap[bId];
+      if (!book) {
+        book = { kind: "book", id: b ? bId : null, title: b ? b.titleRaw.text : "", exercises: [] };
+        bookMap[bId] = book;
+        books.push(book);
+      }
+      book.exercises.push(ex);
+    });
+    books.forEach(function (book) {
+      book.themes = EVv2.buildRangeTree(book.exercises);
+    });
+    return books;
+  };
+
+  // range: { kind:"all" } | { kind:"book", id } | { kind:"theme", id } | { kind:"section", id }
   EVv2.matchesRange = function (ex, range) {
     if (!range || range.kind === "all") return true;
     var s = ex.structure;
     if (!s) return false;
+    if (range.kind === "book") return !!s.book && s.book.structureNodeId === range.id;
     if (range.kind === "theme") return !!s.theme && s.theme.structureNodeId === range.id;
     if (range.kind === "section") return !!s.section && s.section.structureNodeId === range.id;
     return false;

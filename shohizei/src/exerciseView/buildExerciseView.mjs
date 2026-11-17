@@ -808,6 +808,24 @@ function textExercises(structure, figuresById, bookTitle, diag) {
   return exercises;
 }
 
+// 範囲を選ぶ画面で、テーマの上にまとめる教材（structure.book）。ユーザーの要望（2026-11-17、W-7）:
+// 範囲の一覧が長いので、教材ごとに見出しを押して開閉したい。どの教材か決められないものには付けない。
+const MATERIALS = [
+  { test: (k, b) => k === "shohizei_theory_structure", id: "theory-master", title: "理論マスター" },
+  { test: (k, b) => k === "shohizei_doctor_structure", id: "theory-doctor", title: "理論ドクター" },
+  { test: (k, b) => /^training-basic-/.test(b), id: "training-basic", title: "トレーニング 基礎M・速修" },
+  { test: (k, b) => /^training-advanced-/.test(b), id: "training-advanced", title: "トレーニング 上級（速修 No.5〜8）" },
+  { test: (k, b) => /^text-basic-/.test(b), id: "text-basic", title: "基本テキスト" },
+  { test: (k, b) => /^text-speed-/.test(b), id: "text-speed", title: "速修テキスト" },
+];
+
+export function withMaterial(ex) {
+  if (!ex.structure || !ex.provenance) return ex;
+  const m = MATERIALS.find((x) => x.test(ex.provenance.sourceKind, ex.provenance.bookId ?? ""));
+  if (!m) return ex;
+  return { ...ex, structure: { book: structureNode(`material:${m.id}`, m.title), ...ex.structure } };
+}
+
 export function buildShohizeiExerciseView({ trainings = [], theories = [], doctors = [], texts = [], bookTitles = {}, phraseSplit = null, generatedAt = new Date().toISOString() }) {
   const diagnostics = [];
   const base = [
@@ -817,7 +835,9 @@ export function buildShohizeiExerciseView({ trainings = [], theories = [], docto
     ...texts.flatMap((t) => textExercises(t.structure, t.figuresById, bookTitles[t.structure.meta.bookId] ?? t.structure.meta.bookId, diagnostics)),
   ];
   // 並べ替えは、元の暗記カードのすぐ後ろに置く（範囲の中で教材の順に並ぶように）。
-  const exercises = base.flatMap((ex) => (ex.exerciseType === "recall_text" && !ex.recallMeta?.noOrdering ? [ex, ...orderingFromRecall(ex, diagnostics, phraseSplit)] : [ex]));
+  const exercises = base
+    .flatMap((ex) => (ex.exerciseType === "recall_text" && !ex.recallMeta?.noOrdering ? [ex, ...orderingFromRecall(ex, diagnostics, phraseSplit)] : [ex]))
+    .map(withMaterial);
   return {
     meta: {
       schemaVersion: SCHEMA_VERSION,
