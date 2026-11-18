@@ -31,6 +31,7 @@ window.EVv2 = EVv2;
         dataCacheDb: "zaihyo-drill-v2-data-cache",
         timeLimit: "zaihyoDrill.timeLimitSec",
         rangeOpen: "zaihyoDrill.rangeOpen", // v2-62: 範囲を選ぶ画面で開いている見出し
+        rangeEmpty: "zaihyoDrill.rangeEmpty", // v2-63: 0問の範囲を出すか（show / hide）
       },
       filePrefix: "zaihyo-drill",
       // meta.subject を持たない問題データ・書き出しファイル（科目切り替え導入前のもの）は財表のもの。
@@ -49,6 +50,7 @@ window.EVv2 = EVv2;
         dataCacheDb: "boki-drill-v2-data-cache",
         timeLimit: "bokiDrill.timeLimitSec",
         rangeOpen: "bokiDrill.rangeOpen", // v2-62: 範囲を選ぶ画面で開いている見出し
+        rangeEmpty: "bokiDrill.rangeEmpty", // v2-63: 0問の範囲を出すか（show / hide）
       },
       filePrefix: "boki-drill",
       acceptsUnlabeled: false,
@@ -66,6 +68,7 @@ window.EVv2 = EVv2;
         dataCacheDb: "shohizei-drill-v2-data-cache",
         timeLimit: "shohizeiDrill.timeLimitSec",
         rangeOpen: "shohizeiDrill.rangeOpen", // v2-62: 範囲を選ぶ画面で開いている見出し
+        rangeEmpty: "shohizeiDrill.rangeEmpty", // v2-63: 0問の範囲を出すか（show / hide）
       },
       filePrefix: "shohizei-drill",
       acceptsUnlabeled: false,

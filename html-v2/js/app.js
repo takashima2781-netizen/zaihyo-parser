@@ -51,6 +51,7 @@
     rangeList: document.getElementById("range-list"),
     rangeListTypeChips: document.getElementById("range-list-type-chips"),
     rangeListModeChips: document.getElementById("range-list-mode-chips"),
+    rangeListEmptyChips: document.getElementById("range-list-empty-chips"),
     studySetupBackBtn: document.getElementById("study-setup-back-btn"),
     studySetupRangeSummary: document.getElementById("study-setup-range-summary"),
     studySetupTimeChips: document.getElementById("study-setup-time-chips"),
@@ -1062,6 +1063,31 @@
       if (state.data) renderRangeList();
     },
   });
+  // v2-63: 0問の範囲（今の絞り込みで該当する問題が無い教材・テーマ・節）を出すか隠すか。
+  // 既定は今までどおり出す（ユーザー指示 v2-51）。科目ごとにこの端末に覚える。
+  var RANGE_EMPTY_KEY = EVv2.SUBJECT.storage.rangeEmpty;
+  var rangeEmptyChipGroup = EVv2.createChipGroup(els.rangeListEmptyChips, {
+    items: [
+      { value: "show", label: "表示" },
+      { value: "hide", label: "隠す" },
+    ],
+    value: (function () {
+      try {
+        return window.localStorage.getItem(RANGE_EMPTY_KEY) === "hide" ? "hide" : "show";
+      } catch (e) {
+        return "show";
+      }
+    })(),
+    onChange: function (v) {
+      try {
+        window.localStorage.setItem(RANGE_EMPTY_KEY, v);
+      } catch (e) {}
+      if (state.data) renderRangeList();
+    },
+  });
+  function hideEmptyRanges() {
+    return typeof rangeEmptyChipGroup !== "undefined" && rangeEmptyChipGroup.getValue() === "hide";
+  }
   // v2-58: 問題形式のチップは、読み込んだ問題データにある形式だけを出す（科目ごとに形式が違い、
   // 全部並べるとスマホの幅に収まらないため）。選んでいた形式が無くなったら「全て」に戻す。
   function refreshTypeChips() {
@@ -2044,6 +2070,7 @@
     // 各行の中身にだけ掛ける（並び替え問題など、配列の後ろに追加された問題があっても順序が崩れない）。
     // 該当する問題が0問のテーマ・範囲も「0／0問」として出す（将来問題を追加する可能性があるため、
     // ユーザー指示）。0問の行は選んでも出題できないので押せないようにする。
+    // v2-63: 「0問の範囲」で「隠す」を選んだときは、0問の教材・テーマ・節を出さない。
     // v2-62(WISHLIST W-7): 教材・テーマの見出しは押すと開閉する（右の › でその見出し全体を選ぶ）。
     // 問題データに教材（structure.book）があれば、テーマの上に教材の見出しを置く。
     var books = EVv2.buildRangeBooks(base);
@@ -2056,10 +2083,12 @@
         renderThemeGroups(els.rangeList, book.themes, narrow, "");
         return;
       }
+      var bookExercises = narrow(book.exercises);
+      if (!bookExercises.length && hideEmptyRanges()) return;
       var wrap = document.createElement("section");
       wrap.className = "range-book";
       els.rangeList.appendChild(wrap);
-      collapsible(wrap, book, book.title, book.title, narrow(book.exercises), "range-row-book", function (body) {
+      collapsible(wrap, book, book.title, book.title, bookExercises, "range-row-book", function (body) {
         renderThemeGroups(body, book.themes, narrow, book.title);
       });
     });
@@ -2067,20 +2096,23 @@
 
   function renderThemeGroups(container, themes, narrow, bookTitle) {
     themes.forEach(function (theme) {
+      var themeExercises = narrow(theme.exercises);
+      if (!themeExercises.length && hideEmptyRanges()) return;
       var group = document.createElement("section");
       group.className = "range-group";
       container.appendChild(group);
       var label = formatThemeTitle(theme.title);
       // 教材の見出しの下では、テーマ名の頭の教材名は省いて出す（選んだ範囲の名前には残す）
       var shown = bookTitle && label.indexOf(bookTitle + " ") === 0 ? label.slice(bookTitle.length + 1) : label;
-      var themeExercises = narrow(theme.exercises);
       if (!theme.sections.length) {
         group.appendChild(rangeRow(theme, label, themeExercises, "range-row-theme", shown));
         return;
       }
       collapsible(group, theme, label, shown, themeExercises, "range-row-theme", function (body) {
         theme.sections.forEach(function (section) {
-          body.appendChild(rangeRow(section, section.title, narrow(section.exercises), "range-row-section"));
+          var sectionExercises = narrow(section.exercises);
+          if (!sectionExercises.length && hideEmptyRanges()) return;
+          body.appendChild(rangeRow(section, section.title, sectionExercises, "range-row-section"));
         });
       });
     });
