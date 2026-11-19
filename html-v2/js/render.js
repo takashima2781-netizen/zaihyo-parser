@@ -136,9 +136,23 @@ EVv2.createRichBlock = function (lines, label, collapsible) {
       // 折り返しの直前に付いている空白は、つなげると不要な隙間になるので表示上だけ詰める
       p.lastChild.textContent = p.lastChild.textContent.replace(/[ 　]+$/, "");
     }
+    // v2-66: 同じ高さの右隣の文字（表のような2列）は、全角の空白を挟んで1行にする
+    if (joinPrev && line.rowJoin) {
+      var gap = document.createElement("span");
+      gap.className = "rich-row-gap";
+      gap.textContent = "　";
+      p.appendChild(gap);
+    }
     if (!joinPrev) {
       p.className = "rich-line" + (line.frame === "dashed" ? " rich-line-framed" : "");
-      if (line.depth) p.style.paddingLeft = Math.min(line.depth, 6) * 0.9 + "em";
+      var pad = line.depth ? Math.min(line.depth, 6) * 0.9 : 0;
+      // v2-66: 段落の1行目の字下げ（first）、記号だけ左に出す形（hanging。※の注など）
+      if (line.indent === "first") p.style.textIndent = "1em";
+      if (line.indent === "hanging") {
+        pad += 1;
+        p.style.textIndent = "-1em";
+      }
+      if (pad) p.style.paddingLeft = pad + "em";
       if (line.heading) p.classList.add("reading-heading");
       prev = { el: p, frame: line.frame || "none", depth: line.depth || 0, heading: !!line.heading };
     }

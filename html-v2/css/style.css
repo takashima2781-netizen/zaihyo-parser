@@ -2596,6 +2596,20 @@ details.rich-block[open] > summary.rich-block-label {
   font-weight: 700;
   margin-top: var(--sp-2);
 }
+/* v2-66: 段落の区切り（段落の間をあけ、見出しの前は大きくあける） */
+.reading-text .rich-line + .rich-line {
+  margin-top: .6em;
+}
+.reading-text .rich-line.reading-heading {
+  margin-top: 1.4em;
+}
+.reading-text .rich-line.reading-heading:first-of-type,
+.reading-text .rich-block-label + .rich-line.reading-heading {
+  margin-top: .4em;
+}
+.reading-text .rich-line.reading-heading + .rich-line {
+  margin-top: .3em;
+}
 .reading-figure {
   margin: var(--sp-2) 0;
   padding: 6px;

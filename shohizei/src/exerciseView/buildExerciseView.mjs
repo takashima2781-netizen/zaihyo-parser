@@ -10,6 +10,7 @@
 // 教材構造の segments をそのまま渡す。プレーンな文字列（answerText 等）は行の text をつないだもの。
 
 import { buildCalculationSteps } from "./calculation.mjs";
+import { layoutReadingLines } from "./readingLayout.mjs";
 import { categoryLegend, parseGroupedAnswer, parseSelectedAnswer, parseInlineValueAnswers } from "./choiceItems.mjs";
 import { removeAlignmentSpaces, removeAlignmentSpacesMultiline, removeAlignmentSpacesInSegments } from "./displayText.mjs";
 
@@ -767,12 +768,22 @@ function textExercises(structure, figuresById, bookTitle, diag) {
       const sectionNode = structureNode(`${bookId}:${session.parsed.no}:${theme.parsed.no}`, `${session.parsed.raw} ${themeTitle}`);
       for (const sec of theme.children) {
         const title = [sec.parsed.codeRaw, sec.parsed.titleRaw].filter(Boolean).join(" ");
-        const lines = sec.blocks.filter((b) => b.kind === "line");
-        setRightEdgesFromLines(lines);
         const content = [];
         let run = [];
         const flush = () => {
-          if (run.length) content.push({ kind: "lines", lines: richLines(run).map((l, i) => ({ ...l, heading: run[i].style === "heading" })) });
+          // 段落のつながり・字下げは位置から決める（readingLayout.mjs）
+          const layout = layoutReadingLines(run);
+          if (run.length)
+            content.push({
+              kind: "lines",
+              lines: run.map((b, i) => ({
+                ...richLine(b, layout[i].depth),
+                continues: layout[i].continues,
+                ...(layout[i].rowJoin ? { rowJoin: true } : {}),
+                ...(layout[i].indent ? { indent: layout[i].indent } : {}),
+                heading: b.style === "heading",
+              })),
+            });
           run = [];
         };
         for (const b of sec.blocks) {
