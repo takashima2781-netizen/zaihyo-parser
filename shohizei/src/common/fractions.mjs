@@ -62,8 +62,15 @@ export function findFractionCandidates(lines, drawings = null) {
       if (bi === ai || used.has(bi)) continue;
       const b = lines[bi];
       const gap = b.bbox[1] - a.bbox[3];
-      if (gap < -2 || gap > 6) continue;
+      if (gap < -2 || gap > 14) continue;
       if (overlapRatio(a.bbox, b.bbox) < 0.5) continue;
+      // 間が6ptを超えるのは、分子と分母のあいだを本文の行が通っているとき（分子が行の上、分母が行の下に
+      // はみ出す形）だけ。そのような行が無ければ組まない
+      if (gap > 6) {
+        const cx = (Math.min(a.bbox[0], b.bbox[0]) + Math.max(a.bbox[2], b.bbox[2])) / 2;
+        const between = lines.some((l, li) => li !== ai && li !== bi && !l.role && l.text.trim() !== "" && !NUMERIC.test(l.text.trim()) && l.bbox[1] >= a.bbox[3] - 3 && l.bbox[3] <= b.bbox[1] + 3 && cx >= l.bbox[0] && cx <= l.bbox[2] + 25);
+        if (!between) continue;
+      }
       if (!best || gap < best.gap) best = { bi, gap };
     }
     if (!best) continue;
@@ -118,7 +125,16 @@ export function gapRuns(line) {
     }
     offset += span.text.length;
   }
-  return runs;
+  // 空白が文字のかたまりの境目で2つに分かれていることがある（「×   」｜「   ＝」）。続いている空白は1つにまとめる
+  const merged = [];
+  for (const r of runs) {
+    const last = merged[merged.length - 1];
+    if (last && last.end === r.start) {
+      last.end = r.end;
+      last.x1 = r.x1;
+    } else merged.push({ ...r });
+  }
+  return merged;
 }
 
 /**
@@ -128,127 +144,200 @@ export function gapRuns(line) {
 export function restoreFractions(lines, drawings = null) {
   const out = lines.map((l) => ({ ...l }));
   const unresolved = [];
+  // 同じ数字が同じ位置に2回書かれていることがある（PDFの重ね刷り）。2つ目以降は分数の部品にせず、
+  // 表示もしない（role="overprint"。行そのものは残す）
+  out.forEach((l, i) => {
+    if (l.role || !NUMERIC.test(l.text.trim())) return;
+    const twin = out.findIndex((m, j) => j < i && !m.role && m.text.trim() === l.text.trim() && m.bbox.every((v, k) => Math.abs(v - l.bbox[k]) < 0.5));
+    if (twin >= 0) l.role = "overprint";
+  });
   const candidates = findFractionCandidates(out, drawings);
   const fractionLineIdx = new Set(candidates.flatMap((c) => [c.numeratorIndex, c.denominatorIndex]));
-  const placements = new Map(); // hostIndex -> [{run, cand}]
   const joinedInto = new Map(); // つないだ右の行 -> つなぎ先の行
+  const sourceOf = (i) => out[i].source;
+  const fractionSeg = (cand, placeholder) => ({
+    kind: "fraction",
+    numerator: cand.numerator,
+    denominator: cand.denominator,
+    placeholder,
+    source: [sourceOf(cand.numeratorIndex), sourceOf(cand.denominatorIndex)],
+  });
+  const markParts = (cand) => {
+    out[cand.numeratorIndex].role = "fractionPart";
+    out[cand.denominatorIndex].role = "fractionPart";
+  };
+  const giveUp = (reason, cand) =>
+    unresolved.push({ reason, numerator: cand.numerator, denominator: cand.denominator, source: [sourceOf(cand.numeratorIndex), sourceOf(cand.denominatorIndex)] });
 
   // 同じ行に分数が複数あるときに左から順につなげられるよう、上から・左から順に処理する
   candidates.sort((a, b) => (Math.abs(a.centerY - b.centerY) > 4 ? a.centerY - b.centerY : a.centerX - b.centerX));
-  for (const cand of candidates) {
-    const hosts = [];
+
+  // 1) 入る行（空白の連なりを持ち、分数と同じ高さの行）を決める。高さがいちばん近い行が1つに決まらなければ戻さない。
+  //    行の右端のすぐ外（25pt以内）の分数も、その行の末尾の空白に入りうる（「Ａ＋Ｂ×  」のように行が空白で終わる）
+  const hostOf = new Map();
+  const noHost = [];
+  // 高さはまず行の上下1pt以内で探し、見つからなければ4ptまで広げる（行が分数より少し下にずれていることがある）
+  const hostsWithin = (cand, tol) => {
+    const near = [];
     out.forEach((l, i) => {
       if (l.role || fractionLineIdx.has(i)) return;
       const [x0, y0, x1, y1] = l.bbox;
-      if (cand.centerY < y0 - 1 || cand.centerY > y1 + 1) return;
-      if (cand.centerX < x0 || cand.centerX > x1) return;
-      const all = gapRuns(l);
-      let runs = all.filter((r) => cand.centerX >= r.x0 - 3 && cand.centerX <= r.x1 + 3);
-      if (runs.length === 0 && all.length > 0) {
-        // 文字幅の見積もりがずれて、どの空白にも入らないことがある。いちばん近い空白が近く（20pt以内）、
-        // 2番目より明らかに近い（10pt以上の差）ときだけ、その空白に入れる。決めきれなければ入れない。
-        const dist = (r) => (cand.centerX < r.x0 ? r.x0 - cand.centerX : cand.centerX - r.x1);
-        const sorted = [...all].sort((a, b) => dist(a) - dist(b));
-        if (dist(sorted[0]) <= 20 && (sorted.length === 1 || dist(sorted[1]) - dist(sorted[0]) >= 10)) runs = [sorted[0]];
-      }
-      if (runs.length > 0) hosts.push({ index: i, runs });
+      if (cand.centerY < y0 - tol || cand.centerY > y1 + tol) return;
+      if (cand.centerX < x0 || cand.centerX > x1 + 25) return;
+      if (gapRuns(l).length === 0) return;
+      near.push({ i, dy: Math.abs((y0 + y1) / 2 - cand.centerY) });
     });
-    const sourceOf = (i) => out[i].source;
-    // 空白の入った行が無いとき: 分数の左右で行が分かれている（「7,104×」｜分数｜「＝646」）。
-    // 同じ高さで、分数のすぐ左で終わる行がちょうど1つあれば、その行に分数と右の行をつなげる。
-    if (hosts.length === 0) {
-      // 前の分数で右の行としてつないだ行（fractionJoined）も、左の行の候補にする（1行に分数が2つ並ぶとき）
-      const sameRow = (l) => (!l.role || l.role === "fractionJoined") && cand.centerY >= l.bbox[1] - 1 && cand.centerY <= l.bbox[3] + 1;
-      const fracX0 = Math.min(out[cand.numeratorIndex].bbox[0], out[cand.denominatorIndex].bbox[0]);
-      const fracX1 = Math.max(out[cand.numeratorIndex].bbox[2], out[cand.denominatorIndex].bbox[2]);
-      const lefts = [];
-      const rights = [];
-      out.forEach((l, i) => {
-        if (fractionLineIdx.has(i) || !sameRow(l)) return;
-        if (l.bbox[2] <= fracX0 + 3 && fracX0 - l.bbox[2] < 15) lefts.push(i);
-        else if (l.bbox[0] >= fracX1 - 3 && l.bbox[0] - fracX1 < 15) rights.push(i);
-      });
-      const rootOf = (i) => (joinedInto.has(i) ? rootOf(joinedInto.get(i)) : i);
-      const leftRoot = lefts.length === 1 ? rootOf(lefts[0]) : null;
-      const leftIsJoined = lefts.length === 1 && out[lefts[0]].role === "fractionJoined";
-      if (lefts.length === 1 && rights.length <= 1 && (leftIsJoined || !out[lefts[0]].segments) && (rights.length === 0 || !out[rights[0]].segments)) {
-        const left = out[leftRoot];
-        const segs = [
-          ...(leftIsJoined ? left.segments : [{ kind: "text", text: left.text }]),
-          {
-            kind: "fraction",
-            numerator: cand.numerator,
-            denominator: cand.denominator,
-            placeholder: "",
-            source: [sourceOf(cand.numeratorIndex), sourceOf(cand.denominatorIndex)],
-          },
-        ];
-        if (rights.length === 1) {
-          segs.push({ kind: "text", text: out[rights[0]].text, source: out[rights[0]].source });
-          out[rights[0]].role = "fractionJoined";
-          joinedInto.set(rights[0], leftRoot);
+    return near;
+  };
+  const besideRow = (cand) => {
+    const fracX0 = Math.min(out[cand.numeratorIndex].bbox[0], out[cand.denominatorIndex].bbox[0]);
+    const fracX1 = Math.max(out[cand.numeratorIndex].bbox[2], out[cand.denominatorIndex].bbox[2]);
+    return out.some(
+      (l, i) =>
+        !fractionLineIdx.has(i) && !l.role && l.text.trim() !== "" && cand.centerY >= l.bbox[1] - 1 && cand.centerY <= l.bbox[3] + 1 &&
+        ((l.bbox[2] <= fracX0 + 6 && fracX0 - l.bbox[2] < 20) || (l.bbox[0] >= fracX1 - 6 && l.bbox[0] - fracX1 < 20))
+    );
+  };
+  for (const cand of candidates) {
+    let near = hostsWithin(cand, 1);
+    // 分数のすぐ左右に同じ高さの行があるなら、左右に分かれた行（3）として扱い、高さを広げて探さない
+    if (near.length === 0 && !besideRow(cand)) near = hostsWithin(cand, 4);
+    near.sort((a, b) => a.dy - b.dy);
+    if (near.length === 0) noHost.push(cand);
+    else if (near.length > 1 && near[1].dy - near[0].dy < 2) giveUp("fraction-host-ambiguous", cand);
+    else hostOf.set(cand, near[0].i);
+  }
+
+  // 2) 行ごとに、分数を空白へ入れる。
+  //    まず分数ごとに、位置で1つに決まる空白に入れる（行頭の空白にも入る: 「   ＝0.51…」の頭に分数）。
+  //    それで決まらない（空白が見つからない・2つの分数が同じ空白に入る）ときだけ、分数の数と空白の数が
+  //    同じなら左から順に対応させる（文字幅の見積もりが少しずれても入れられる。行頭・行末の空白を除いて
+  //    数が合うときも同じ）。それでも決まらない分数は、左右に分かれた行など（3）で試す。
+  const byHost = new Map();
+  for (const [cand, index] of hostOf) {
+    if (!byHost.has(index)) byHost.set(index, []);
+    byHost.get(index).push(cand);
+  }
+  for (const [index, list] of byHost) {
+    const line = out[index];
+    const text = line.text;
+    const all = gapRuns(line);
+    const leading = (r) => text.slice(0, r.start).trim() === "";
+    const trailing = (r) => text.slice(r.end).trim() === "";
+    const dist = (c, r) => (c.centerX < r.x0 ? r.x0 - c.centerX : c.centerX > r.x1 ? c.centerX - r.x1 : 0);
+    list.sort((a, b) => a.centerX - b.centerX);
+
+    // a) 分数ごとに位置で決める（これまでと同じ決め方）
+    const pairs = [];
+    const notFound = [];
+    const ambiguous = [];
+    for (const c of list) {
+      const inside = all.filter((r) => c.centerX >= r.x0 - 3 && c.centerX <= r.x1 + 3);
+      if (inside.length === 1) pairs.push([c, inside[0]]);
+      else if (inside.length > 1) ambiguous.push(c);
+      else {
+        // いちばん近い空白が近く（20pt以内）、2番目より明らかに近い（10pt以上の差）ときだけ入れる
+        const sorted = [...all].sort((x, y) => dist(c, x) - dist(c, y));
+        if (sorted.length && dist(c, sorted[0]) <= 20 && (sorted.length === 1 || dist(c, sorted[1]) - dist(c, sorted[0]) >= 10)) pairs.push([c, sorted[0]]);
+        else notFound.push(c);
+      }
+    }
+    const collision = new Set(pairs.map(([, r]) => r.start)).size !== pairs.length;
+    let chosen = null;
+    if (!collision && ambiguous.length === 0 && notFound.length === 0) chosen = pairs;
+    else {
+      // b) 数が合えば左から順に
+      const near = (c, r) => (c.centerX >= r.x0 - 25 && c.centerX <= r.x1 + 25) || (trailing(r) && c.centerX >= r.x0 - 25);
+      for (const runs of [all, all.filter((r) => !leading(r) && !trailing(r)), all.filter((r) => !leading(r))]) {
+        if (runs.length !== list.length) continue;
+        const tryPairs = list.map((c, k) => [c, runs[k]]);
+        if (tryPairs.every(([c, r]) => near(c, r))) {
+          chosen = tryPairs;
+          break;
         }
-        left.segments = segs;
-        out[cand.numeratorIndex].role = "fractionPart";
-        out[cand.denominatorIndex].role = "fractionPart";
+      }
+    }
+    if (!chosen) {
+      if (collision) {
+        // 2つの分数が同じ空白に入ろうとした → 決めきれないので、この行の分数はすべて戻さない
+        for (const c of list) giveUp("fraction-gap-collision", c);
         continue;
       }
+      for (const c of ambiguous) giveUp("fraction-host-ambiguous", c);
+      for (const c of notFound) noHost.push(c); // この行の空白には入らない → 左右に分かれた行など（3）で試す
+      chosen = pairs;
     }
-    if (hosts.length !== 1 || hosts[0].runs.length !== 1) {
-      unresolved.push({
-        reason: hosts.length === 0 ? "fraction-host-not-found" : "fraction-host-ambiguous",
-        numerator: cand.numerator,
-        denominator: cand.denominator,
-        source: [sourceOf(cand.numeratorIndex), sourceOf(cand.denominatorIndex)],
-      });
-      continue;
-    }
-    const { index, runs } = hosts[0];
-    if (!placements.has(index)) placements.set(index, []);
-    placements.get(index).push({ run: runs[0], cand });
-  }
-
-  for (const [index, list] of placements) {
-    const used = new Set(list.map((p) => p.run.start));
-    if (used.size !== list.length) {
-      // 2つの分数が同じ空白に入ろうとした → 決めきれないので、この行の分数はすべて戻さない
-      for (const p of list) {
-        unresolved.push({
-          reason: "fraction-gap-collision",
-          numerator: p.cand.numerator,
-          denominator: p.cand.denominator,
-          source: [out[p.cand.numeratorIndex].source, out[p.cand.denominatorIndex].source],
-        });
-      }
-      continue;
-    }
-    list.sort((a, b) => a.run.start - b.run.start);
-    const text = out[index].text;
+    if (chosen.length === 0) continue;
+    chosen.sort((a, b) => a[1].start - b[1].start);
     const segments = [];
     let pos = 0;
-    for (const p of list) {
-      if (p.run.start > pos) segments.push({ kind: "text", text: text.slice(pos, p.run.start) });
-      segments.push({
-        kind: "fraction",
-        numerator: p.cand.numerator,
-        denominator: p.cand.denominator,
-        placeholder: text.slice(p.run.start, p.run.end),
-        source: [out[p.cand.numeratorIndex].source, out[p.cand.denominatorIndex].source],
-      });
-      pos = p.run.end;
+    for (const [c, r] of chosen) {
+      if (r.start > pos) segments.push({ kind: "text", text: text.slice(pos, r.start) });
+      segments.push(fractionSeg(c, text.slice(r.start, r.end)));
+      pos = r.end;
+      markParts(c);
     }
     if (pos < text.length) segments.push({ kind: "text", text: text.slice(pos) });
-    out[index].segments = segments;
+    line.segments = segments;
   }
 
-  // 復元できた分数の部品の行だけを本文から外す。復元できなかったものは本文の行として残す
-  // （表示から消えないように。unresolved にも分子・分母と出典が残る）。
-  for (const [, list] of placements) {
-    if (new Set(list.map((p) => p.run.start)).size !== list.length) continue;
-    for (const p of list) {
-      out[p.cand.numeratorIndex].role = "fractionPart";
-      out[p.cand.denominatorIndex].role = "fractionPart";
+  // 3) 空白の入った行が無い分数:
+  //    - 分数の左右で行が分かれている（「7,104×」｜分数｜「＝646」）→ 左の行に分数と右の行をつなげる
+  //    - 行の頭に分数がある（分数｜「＝310,716…」）→ 右の行の頭に分数を入れる
+  //    - まわりに行が無く、分数の線がある（表の中の割合など）→ 分子の行を分数として出す
+  noHost.sort((a, b) => (Math.abs(a.centerY - b.centerY) > 4 ? a.centerY - b.centerY : a.centerX - b.centerX));
+  for (const cand of noHost) {
+    const sameRow = (l) => (!l.role || l.role === "fractionJoined") && cand.centerY >= l.bbox[1] - 1 && cand.centerY <= l.bbox[3] + 1;
+    const fracX0 = Math.min(out[cand.numeratorIndex].bbox[0], out[cand.denominatorIndex].bbox[0]);
+    const fracX1 = Math.max(out[cand.numeratorIndex].bbox[2], out[cand.denominatorIndex].bbox[2]);
+    let lefts = [];
+    let rights = [];
+    out.forEach((l, i) => {
+      if (fractionLineIdx.has(i) || !sameRow(l) || l.text.trim() === "") return;
+      if (l.bbox[2] <= fracX0 + 6 && fracX0 - l.bbox[2] < 20) lefts.push(i);
+      else if (l.bbox[0] >= fracX1 - 6 && l.bbox[0] - fracX1 < 20) rights.push(i);
+    });
+    // 左（右）の候補が2つあるときは、明らかに近い（5pt以上の差）ほうだけにする（「140,000,000」「×」｜分数）
+    const nearest = (list, gapOf) => {
+      if (list.length < 2) return list;
+      const sorted = [...list].sort((a, b) => gapOf(a) - gapOf(b));
+      return gapOf(sorted[1]) - gapOf(sorted[0]) >= 5 ? [sorted[0]] : list;
+    };
+    lefts = nearest(lefts, (i) => fracX0 - out[i].bbox[2]);
+    rights = nearest(rights, (i) => out[i].bbox[0] - fracX1);
+    const rootOf = (i) => (joinedInto.has(i) ? rootOf(joinedInto.get(i)) : i);
+    // 左の行にすでに分数が入っていても（行の途中の分数）、行の終わりのすぐ後ろの分数はその後ろにつなげる
+    if (lefts.length === 1 && rights.length <= 1 && (rights.length === 0 || out[rights[0]].role !== "fractionJoined")) {
+      const leftRoot = rootOf(lefts[0]);
+      const left = out[leftRoot];
+      // 左の行がすでに前の分数とつないだ行なら、その続きに足す（1行に分数が2つ並ぶとき）
+      const segs = [...(left.segments ?? [{ kind: "text", text: left.text }]), fractionSeg(cand, "")];
+      if (rights.length === 1) {
+        // 右の行にすでに分数が入っていれば（行末の空白の分数）、その並びのままつなぐ
+        if (out[rights[0]].segments) segs.push(...out[rights[0]].segments);
+        else segs.push({ kind: "text", text: out[rights[0]].text, source: out[rights[0]].source });
+        out[rights[0]].role = "fractionJoined";
+        joinedInto.set(rights[0], leftRoot);
+      }
+      left.segments = segs;
+      markParts(cand);
+      continue;
     }
+    if (lefts.length === 0 && rights.length === 1 && !out[rights[0]].segments) {
+      const right = out[rights[0]];
+      right.segments = [fractionSeg(cand, ""), { kind: "text", text: right.text }];
+      markParts(cand);
+      continue;
+    }
+    if (lefts.length === 0 && rights.length === 0 && hasFractionBar(out[cand.numeratorIndex], out[cand.denominatorIndex], drawings) === true) {
+      const num = out[cand.numeratorIndex];
+      num.segments = [fractionSeg(cand, "")];
+      num.fractionStandalone = true;
+      out[cand.denominatorIndex].role = "fractionPart";
+      continue;
+    }
+    giveUp("fraction-host-not-found", cand);
   }
+
   return { lines: out, unresolved };
 }

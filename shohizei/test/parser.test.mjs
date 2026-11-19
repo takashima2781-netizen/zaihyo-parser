@@ -144,3 +144,68 @@ test("分数: 分子と分母のあいだに横線が無ければ分数とみな
   assert.equal(findFractionCandidates([num, den], [{ rect: [99, 110, 131, 110.5] }]).length, 1);
   assert.equal(findFractionCandidates([num, den], [{ rect: [20, 110, 400, 110.5] }]).length, 0, "表の罫線のような長い線は数えない");
 });
+
+test("分数: 分子が行の上・分母が行の下にはみ出していても（あいだを行が通る）、その行の空白に戻す", () => {
+  const host = line("6,000×   ＝5,454", [96, 591, 200, 600]);
+  const num = line("100", [131, 582, 149, 591], { lineNo: 1 });
+  const den = line("110", [131, 600, 149, 609], { lineNo: 2 });
+  const { lines, unresolved } = restoreFractions([num, host, den]);
+  assert.equal(unresolved.length, 0);
+  assert.deepEqual(lines[1].segments.map((s) => s.text ?? `${s.numerator}/${s.denominator}`), ["6,000×", "100/110", "＝5,454"]);
+});
+
+test("分数: 1行に分数が2つ・空白も2つなら、左から順に入れる（行末の空白にも入る）", () => {
+  const host = line("Ａ＋Ｂ×    ×   ", [100, 644, 213, 653]);
+  const n1 = line("12", [163, 638, 175, 647], { lineNo: 1 });
+  const d1 = line("９", [163, 650, 176, 659], { lineNo: 2 });
+  const n2 = line("６", [198, 637, 207, 646], { lineNo: 3 });
+  const d2 = line("12", [198, 650, 207, 659], { lineNo: 4 });
+  const { lines, unresolved } = restoreFractions([host, n1, d1, n2, d2]);
+  assert.equal(unresolved.length, 0);
+  assert.deepEqual(lines[0].segments.filter((s) => s.kind === "fraction").map((s) => `${s.numerator}/${s.denominator}`), ["12/９", "６/12"]);
+});
+
+test("分数: 行の頭の分数は、右の行の頭に入れる", () => {
+  const right = line(" ＝310,000≦4,000,000", [145, 125, 316, 134]);
+  const num = line("1,860,000", [92, 119, 137, 128], { lineNo: 1 });
+  const den = line("６", [108, 131, 121, 140], { lineNo: 2 });
+  const { lines, unresolved } = restoreFractions([right, num, den]);
+  assert.equal(unresolved.length, 0);
+  assert.equal(lines[0].segments[0].kind, "fraction");
+});
+
+test("分数: まわりに行が無くても、分数の線があれば分子の行を分数として出す。線が無ければ戻さない", () => {
+  const num = line("77,500,000", [199, 327, 249, 336], { lineNo: 1 });
+  const den = line("77,515,000", [199, 339, 249, 348], { lineNo: 2 });
+  const withBar = restoreFractions([num, den], [{ rect: [189, 338, 254, 338] }]);
+  assert.equal(withBar.unresolved.length, 0);
+  assert.equal(withBar.lines[0].segments[0].kind, "fraction");
+  assert.equal(withBar.lines[1].role, "fractionPart");
+  assert.equal(restoreFractions([num, den]).unresolved.length, 1);
+});
+
+test("分数: 文字のかたまりの境目で分かれた空白は1つとして扱う", () => {
+  const host = line("77,000×      ＝5,460", [87, 177, 202, 186]);
+  host.spans = [span("77,000×    ", 87, 177, 145, 186), span("  ＝5,460", 145, 177, 202, 186)];
+  const num = line("7.8", [133, 171, 151, 180], { lineNo: 1 });
+  const den = line("110", [133, 183, 151, 192], { lineNo: 2 });
+  const { lines, unresolved } = restoreFractions([host, num, den]);
+  assert.equal(unresolved.length, 0);
+  assert.equal(lines[0].segments.filter((s) => s.kind === "fraction").length, 1);
+});
+
+test("分数: 同じ数字が同じ位置に重ねて書かれていても、1つの分数として戻す", () => {
+  const host = line("Ａ×     ×80％＋Ｂ×     ×50％", [98, 640, 422, 649]);
+  const parts = [
+    line("6.24", [204, 634, 222, 643], { lineNo: 1 }),
+    line("108", [207, 646, 220, 655], { lineNo: 2 }),
+    line("6.24", [204, 634, 222, 643], { lineNo: 3 }),
+    line("108", [207, 646, 220, 655], { lineNo: 4 }),
+    line("6.24", [343, 634, 361, 643], { lineNo: 5 }),
+    line("108", [346, 646, 359, 655], { lineNo: 6 }),
+  ];
+  const { lines, unresolved } = restoreFractions([host, ...parts]);
+  assert.equal(unresolved.length, 0);
+  assert.equal(lines[0].segments.filter((s) => s.kind === "fraction").length, 2);
+  assert.equal(lines[3].role, "overprint");
+});
