@@ -18,6 +18,7 @@
   （`/input/`・`/output/`・`/work/`・`/docs/`、`boki/input/`・`boki/output/`、`shohizei/input/`・`shohizei/output/` など）。
   科目のフォルダを足すときは、そのフォルダにも `.gitignore` を置く（最上位の `/input/` 等はそのフォルダの中には効かない）。
 - やりたいことは科目に関係なく `WISHLIST.md` 1つに書く。
+- `html-v2/` を公開するときは、`html-v2/index.html` の js・css の `?v=` を上げる（上げないと iPhone が古い js を使い続け、新しい画面が動かないことがある）。
 
 ## Mission
 
