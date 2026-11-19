@@ -1,0 +1,91 @@
+// 答練1回分（問題・答案用紙・解答）→ 教材構造（第1層）。
+//
+// 問いの木（problem.mjs）、解答欄ごとの答え（answerKey.mjs）、解答への道（guidance.mjs）を、
+// 大問・問・小問・枝問の番号（nodeKey / unitKey）でつなぐ。つながらないものは推測で埋めず unresolved に残す。
+
+import { documentRows } from "../common/rows.mjs";
+import { buildAnswerKey } from "./answerKey.mjs";
+import { formCandidates } from "./forms.mjs";
+import { buildGuidance } from "./guidance.mjs";
+import { buildProblemTree, nodeKey, unitKey } from "./problem.mjs";
+
+export const STRUCTURE_VERSION = "zaihyo-exam-structure-0.1";
+
+/**
+ * @param {object} o
+ * @param {object} o.set { id, title, book, daimonNos }
+ * @param {object} o.problemDoc extractDocument の結果（透かし除去済み）
+ * @param {object} o.sheetDoc
+ * @param {object} o.answerDoc
+ */
+export function buildExam({ set, problemDoc, sheetDoc, answerDoc }) {
+  const unresolved = [];
+  const problem = buildProblemTree({ setId: set.id, rows: documentRows(problemDoc), daimonNos: set.daimonNos });
+  const key = buildAnswerKey({ sheetRows: documentRows(sheetDoc), answerRows: documentRows(answerDoc), daimonNos: set.daimonNos });
+
+  const nodes = problem.nodes;
+  const children = new Map();
+  for (const n of nodes) if (n.parent) children.set(n.parent, [...(children.get(n.parent) ?? []), n.id]);
+  for (const n of nodes) n.children = children.get(n.id) ?? [];
+  const byKey = new Map(nodes.map((n) => [nodeKey(nodes, n), n]));
+
+  // 答え
+  for (const d of key.daimons) {
+    for (const u of d.units) {
+      if (u.slots.length === 0) continue; // 問・小問の見出しだけの単位（答えは下の枝問にある）
+      const n = byKey.get(u.key);
+      if (!n) {
+        unresolved.push({ reason: "answer-unit-without-question", key: u.key, source: u.heading.source });
+        continue;
+      }
+      n.answer = { key: u.key, heading: u.heading, sheetHeading: u.sheetHeading, segments: u.segments, unmatchedSheetSpans: u.unmatchedSheetSpans };
+      n.source.push(u.heading.source);
+    }
+    const daimon = byKey.get(unitKey({ daimon: d.daimon }));
+    if (daimon) {
+      daimon.pointsRaw = d.points;
+      daimon.answerHeading = d.heading;
+    }
+  }
+
+  // 解答への道
+  const guidanceDiag = [];
+  for (const d of key.daimons) {
+    const g = buildGuidance(d.guidanceRows, d.daimon);
+    guidanceDiag.push(...g.diag);
+    for (const b of g.blocks) {
+      const targets = b.refs
+        ? b.refs.map((r) => byKey.get(unitKey({ daimon: d.daimon, toi: b.toi, shomon: r.shomon, edamon: r.edamon })))
+        : [byKey.get(unitKey({ daimon: d.daimon, toi: b.toi }))];
+      const block = { heading: b.heading, rows: b.rows.map(({ text, source }) => ({ text, source })), optionJudgements: b.optionJudgements.map(({ x, ...j }) => j), sharedWith: b.refs && b.refs.length > 1 ? b.refs : null };
+      targets.forEach((t, i) => {
+        if (!t) {
+          unresolved.push({ reason: "guidance-without-question", daimon: d.daimon, toi: b.toi, ref: b.refs?.[i] ?? null, source: b.heading?.source ?? b.rows[0]?.source ?? null });
+          return;
+        }
+        (t.guidance ??= []).push(block);
+      });
+    }
+  }
+
+  // 問い方の候補と、答えが無い問い
+  for (const n of nodes) {
+    if (n.kind === "daimon" || n.outOfScope) continue;
+    const isLeaf = n.children.length === 0 && n.kind !== "toi";
+    // 末端の問いは、指示文が「。」で切れた後の行（本文に入った行）にも問い方が書かれていることがある
+    // （「…示している。」の次の行に「上記Ａ～Ｅを…並び替えなさい。」など）。末端では本文の行も根拠に含める。
+    const formText = (n.instructionText ?? "") + (isLeaf ? n.passage.map((r) => r.text.trim()).join("") : "");
+    n.formCandidates = formCandidates(formText);
+    if (isLeaf && !n.answer) unresolved.push({ reason: "question-without-answer", id: n.id, source: n.heading.source });
+    if (isLeaf && n.formCandidates.length === 0) unresolved.push({ reason: "form-unknown", id: n.id, source: n.heading.source });
+  }
+
+  return {
+    structureVersion: STRUCTURE_VERSION,
+    set: { id: set.id, title: set.title, book: set.book, daimonNos: set.daimonNos },
+    documents: [problemDoc, sheetDoc, answerDoc].map((d) => ({ docId: d.docId, file: d.file, tool: d.tool, toolVersion: d.toolVersion, pageCount: d.pageCount, watermarkLinesRemoved: d.diag.watermarkLinesRemoved })),
+    nodes,
+    unresolved,
+    diag: [...problem.diag, ...key.diag, ...guidanceDiag],
+  };
+}

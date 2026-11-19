@@ -1,0 +1,15 @@
+{
+  "name": "zaihyo-exams",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "財務諸表論の答練・演習・模試（問題・答案用紙・解答）を教材構造（中間データ）へ解析する",
+  "scripts": {
+    "test": "node --test",
+    "exam": "node src/cli/run-exam.mjs",
+    "view": "node src/cli/run-exercise-view.mjs",
+    "text": "node src/cli/run-text.mjs",
+    "text-view": "node src/cli/run-text-view.mjs",
+    "merge": "node src/cli/run-merge.mjs"
+  }
+}

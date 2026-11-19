@@ -1,0 +1,58 @@
+# 財務諸表論 答練・演習・模試（zaihyo-exams/）
+
+財務諸表論の本試験形式の教材（TAC の答練・演習・模試。1回分が A問題・B答案用紙・C解答 の3つのPDF）を解析し、
+教材の構造を失わずに中間データ（教材構造）へ変換して、財表の問題データへ合流させる。
+最上位の `CLAUDE.md` の原則（原文を失わない・推測しない・unknown を残す・問題形式を固定しない）に従う。
+**`src/`（ポイントチェック用パーサー v1.0.0）は凍結。ここからは読まない・呼ばない・変えない**（合流は v1 の出力ファイルを読むだけ）。
+経緯は WISHLIST の W-9、調査・設計は `work/zaihyo/survey-2026-11-20.md`・`work/zaihyo/design-report-2026-11-20.md`（git 対象外）。
+
+テキスト（基本テキスト No.1〜4・理論テキスト・上級テキスト1〜4・直前対策テキスト）を「読む」問題（`reading`）にする部分もここにある。
+消費税の仕組み（`shohizei/src/text/`・`readingLayout.mjs` など）の複製で、財表の違い（「理論編・計算編」の段、＜メモ＞ページ）だけ足している。
+
+## 層
+
+| 層 | 中身 | 場所 |
+|---|---|---|
+| 第0層 抽出 | ページの行・文字のかたまり（位置・大きさ）・図形。透かしを除く | `src/extract/`（PyMuPDF。`shohizei/src/extract/` の複製） |
+| 第1層 教材構造 | 回 → 大問〔第n問〕 → 問 → 小問 → 枝問。各節に指示文・本文・選択肢・語群・記号つきの文、答え（解答欄ごと）、解答への道（選択肢ごとの〇×） | `src/exam/` |
+| 第1層 テキスト | （回・編）→ テーマ → 節「N-N」→ 本文の行と図（図・表は範囲を画像にする） | `src/text/`（`shohizei/src/text/` の複製） |
+| 第2層 Exercise View | 財表の問題データ（`meta.subject: "zaihyo"`）の形。答練は `structure.book` に教材・`theme` に回。テキストは `book` にテキスト名・`theme` にテーマ・`section` に節で、節の中を ➊➋ の見出しごとに1ページ | `src/exerciseView/`（`buildReading.mjs`・`readingLayout.mjs`・`displayText.mjs` はテキスト用） |
+| 合流 | 土台（財表の問題データ）＋答練の問題 → アプリ用の財表の問題データ | `src/merge/` |
+
+共通の部品は `src/common/`（span を行にまとめる・照合用の正規化）、書き出し前の検査は `src/gateChecks/`。
+
+### 3つのPDFのつなぎ方
+- A問題 → 問いの木（見出しの形と字下げ）。層は固定しない（「問」の層が無い教材もある）。
+- B答案用紙と C解答の前半は同じ配置。見出し（問１・１・１(1)…）で区切った単位ごとに、
+  **答案用紙にも同じ位置にある文字 → 定型の文、答案用紙に無い文字 → 答え**とする。行の順番には頼らない。
+- C解答の後半「解答への道」は「１について」「１(2)及び(3)について」の見出しで小問・枝問に付ける。
+- 大問・問・小問・枝問の番号でつなぐ。つながらないものは `unresolved` に理由の名前つきで残す。
+
+## 決まり
+
+- **教材は有償。** PDF と、抽出・生成したデータは git に入れない（`input/`・`output/`・`work/` は `.gitignore` 済み）。
+  テストは教材の原文を使わず、型だけをまねた作り物のデータで書く。
+- **透かし（会員番号・氏名）は抽出の直後に取り除く**（`src/extract/extract.mjs`）。検査が透かしの文字を見つけたら、何も書き出さずに止まる。
+- 原文の行（`text`・`spans`）は書き換えない。照合用の正規化（空白除去・全角→半角・「第ニ問」→2）は `parsed` や比較の中だけで使う。
+- 問い方（`formCandidates`）は指示文の言い回しを根拠（`evidence`）に付けた候補であり、決定ではない。
+- 問題データにする形式（W-9 の決定）: 語群・1つ選ぶ → `choice_item`／2つ以上選ぶ → 解答への道の「ア 〇 / エ ×：理由」から選択肢ごとの `true_false`（〇×と解答が食い違えば作らない）／語句・名称 → `multi_blank`／定義・説明 → `recall_text`／並べ替え → `ordering`／計算 → まだ作らない（`diagnostics` に残す）。
+- 〔第三問〕（計算）は読まない（`src/sets.mjs` の `daimonNos` で理論の大問だけを指定）。
+
+## 動かし方
+
+教材PDFを `input/pdf/` に置く（答練は `<setId>-problem.pdf` / `-sheet.pdf` / `-answer.pdf`、回の一覧は `src/sets.mjs`。
+テキストは `<textId>.pdf`、一覧は `src/texts.mjs`）。
+
+```bash
+npm run exam -- jitsuryoku-1   # → output/jitsuryoku-1.structure.json と .summary.json
+npm run view                   # → output/zaihyo-exams-exercise-view.json（src/sets.mjs の全回）
+npm run text                   # → output/<textId>.structure.json と .figures.json（src/texts.mjs の全冊）
+npm run text-view              # → output/zaihyo-texts-exercise-view.json
+npm run merge                  # 上の2つを ../html-v2/data/exercise_view_full.json へ（上書き前に output/backup/ へ控え）
+npm test
+```
+
+`npm run merge -- --base <file>` で土台を指定できる（アプリで編集して書き出した `exercise_view_full.edited-*.json` を土台にするときなど）。
+何度実行しても、前回合流した答練の問題を入れ替えるだけで、土台の問題は変わらない（ポイントチェックには教材の見出し「ポイントチェック」を付ける）。
+
+Python は 環境変数 `ZAIHYO_EXAMS_PYTHON_BIN` → `~/.venvs/study-drill/bin/python`（Python 3.12・PyMuPDF 1.28.2）→ `python` の順に探す。

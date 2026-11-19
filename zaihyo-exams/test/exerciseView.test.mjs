@@ -1,0 +1,130 @@
+// 問題データ化（第2層）と合流のテスト。教材の原文は使わず、型だけをまねた作り物のデータで確かめる。
+
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { buildExamExercises, GENERATOR, joinRows } from "../src/exerciseView/buildExerciseView.mjs";
+import { mergeExerciseViews, POINTCHECK_BOOK } from "../src/merge/merge.mjs";
+
+const src = (row, page = 1, doc = "A") => ({ doc, page, row, bbox: [80, row * 18, 500, row * 18 + 10] });
+const row = (text, n, x = 80) => ({ text, x, source: src(n) });
+
+function node(id, kind, no, parent, extra = {}) {
+  return {
+    id,
+    kind,
+    parent,
+    heading: { text: "", source: src(0), x: 77 },
+    parsed: { no },
+    source: [src(0)],
+    instruction: [],
+    passage: [],
+    options: [],
+    wordBank: null,
+    labeledItems: [],
+    blankLabels: [],
+    instructionText: "",
+    children: [],
+    formCandidates: [],
+    ...extra,
+  };
+}
+
+const slot = (text, label = null) => ({ type: "slot", label, text, lines: [{ text }], sources: [src(1, 1, "C")] });
+const answer = (segments) => ({ key: "k", heading: { text: "", source: src(0, 1, "C") }, segments });
+
+function structureWith(q, { toi = {}, guidance = [] } = {}) {
+  const d = node("x:d1", "daimon", 1, null, { heading: { text: "〔第一問〕 －25点－", source: src(0), x: 77 } });
+  const t = node("x:d1:t1", "toi", 1, d.id, toi);
+  d.children = [t.id];
+  t.children = [q.id];
+  q.parent = t.id;
+  if (guidance.length) q.guidance = guidance;
+  return { set: { id: "x", title: "回", book: { id: "b", title: "教材" } }, nodes: [d, t, q] };
+}
+
+test("段落のつなぎ: 折り返しはつなぎ、項番号・字下げ・節の境目で改める", () => {
+  const text = joinRows([
+    { text: "一行目の途中", x: 83 },
+    { text: "の続き。", x: 83 },
+    { text: "次の段落は字下げ", x: 93 },
+    { text: "１. 項番号の行", x: 83 },
+    { text: "節の境目", x: 83, paragraphStart: true },
+  ]);
+  assert.equal(text, "一行目の途中の続き。\n次の段落は字下げ\n１. 項番号の行\n節の境目");
+});
+
+test("語群から選ぶ: 空欄ごとの choice_item。語群に無い答えは作らない", () => {
+  const q = node("x:d1:t1:s1", "shomon", 1, null, {
+    instructionText: "空欄 ① から ② に当てはまる語句を【語群】から選び",
+    formCandidates: [{ form: "choose_from_word_bank" }],
+    wordBank: { entries: [{ symbol: "ア", text: "語甲" }, { symbol: "イ", text: "語乙" }] },
+    answer: answer([{ type: "text", text: "①" }, slot("イ", "①"), { type: "text", text: "②" }, slot("ウ", "②")]),
+  });
+  const diag = [];
+  const ex = buildExamExercises(structureWith(q, { toi: { passage: [row("甲は  ①  、乙は  ②  。", 2)], blankLabels: ["①", "②"] } }), { diag });
+  assert.equal(ex.length, 1);
+  assert.equal(ex[0].exerciseType, "choice_item");
+  assert.equal(ex[0].correctChoice, "イ");
+  assert.deepEqual(ex[0].choiceOptions.map((o) => o.label), ["ア 語甲", "イ 語乙"]);
+  assert.equal(ex[0].structure.book.titleRaw.text, "教材");
+  assert.deepEqual(diag.map((d) => d.reason), ["word-bank-answer-not-in-bank"]);
+});
+
+test("2つ選ぶ: 解答への道の〇×と解答が合えば選択肢ごとの true_false、食い違えば作らない", () => {
+  const options = ["ア", "イ", "ウ"].map((s, i) => ({ symbol: s, text: `文${i}`, rows: [row(`${s} 文${i}`, 5 + i)] }));
+  const judgement = (symbol, mark, reason = null) => ({ symbol, mark, markRaw: mark, reason, source: src(9, 2, "C"), rows: [{ text: `${symbol} ${mark}`, source: src(9, 2, "C") }] });
+  const make = (answerText, marks) =>
+    structureWith(
+      node("x:d1:t1:s2", "shomon", 2, null, {
+        instructionText: "適切でないものを２つ選び、記号で答えなさい。",
+        formCandidates: [{ form: "choose_options", count: 2 }],
+        options,
+        answer: answer([slot(answerText)]),
+      }),
+      { guidance: [{ rows: [], optionJudgements: marks.map(([s, m, r]) => judgement(s, m, r)) }] },
+    );
+  const ok = buildExamExercises(make("ア、ウ", [["ア", "×", "理由甲"], ["イ", "○"], ["ウ", "×", "理由丙"]]));
+  assert.deepEqual(ok.map((e) => [e.exerciseType, e.judgement.symbolRaw.text, e.explanation?.raw.text ?? null]), [
+    ["true_false", "×", "理由甲"],
+    ["true_false", "○", null],
+    ["true_false", "×", "理由丙"],
+  ]);
+  const diag = [];
+  assert.equal(buildExamExercises(make("ア、イ", [["ア", "×"], ["イ", "○"], ["ウ", "×"]]), { diag }).length, 0);
+  assert.deepEqual(diag.map((d) => d.reason), ["choose-many-judgements-mismatch"]);
+});
+
+test("答案用紙の定型の文に答えを入れる multi_blank。欄の名前は本文に重ねて出さない", () => {
+  const q = node("x:d1:t1:s3", "shomon", 3, null, {
+    instructionText: "解答欄に適切な語句を記入しなさい。",
+    formCandidates: [{ form: "write_terms" }],
+    answer: answer([{ type: "text", text: "甲とは、" }, slot("答え一"), { type: "text", text: "をいう。" }, { type: "break" }, { type: "text", text: "Ａ" }, slot("答え二", "Ａ")]),
+  });
+  const [ex] = buildExamExercises(structureWith(q));
+  assert.equal(ex.exerciseType, "multi_blank");
+  assert.deepEqual(ex.bodySegments.map((s) => (s.type === "blank" ? `[${s.label}]` : s.text)), ["甲とは、", "[1]", "をいう。", "\n", "[Ａ]"]);
+  assert.deepEqual(ex.expectedAnswer.map((a) => a.answerText.text), ["答え一", "答え二"]);
+  assert.equal(ex.stableItemIds.length, 2);
+});
+
+test("計算の問いはまだ作らず、理由を残す", () => {
+  const q = node("x:d1:t1:s4", "shomon", 4, null, { formCandidates: [{ form: "calculate" }], answer: answer([slot("1,000")]) });
+  const diag = [];
+  assert.equal(buildExamExercises(structureWith(q), { diag }).length, 0);
+  assert.equal(diag[0].reason, "calculation-not-yet");
+});
+
+test("合流: 前回の答練の問題は入れ替え、土台の問題は残して教材の見出しだけ付ける", () => {
+  const pc = { exerciseId: "p1", exerciseType: "true_false", stableItemIds: ["s1"], structure: { theme: { structureNodeId: "t" } } };
+  const oldExam = { exerciseId: "old", exerciseType: "choice_item", stableItemIds: ["o"], provenance: { generator: GENERATOR } };
+  const base = { meta: { schemaVersion: "v", exerciseCount: 2 }, exercises: [pc, oldExam], withheldExercises: [], exerciseConversions: [{ a: 1 }] };
+  const exams = { meta: { sets: ["x"] }, exercises: [{ exerciseId: "new", provenance: { generator: GENERATOR } }] };
+  const { merged, stats } = mergeExerciseViews(base, [exams], { generatedAt: "t" });
+  assert.deepEqual(merged.exercises.map((e) => e.exerciseId), ["p1", "new"]);
+  assert.equal(merged.exercises[0].structure.book, POINTCHECK_BOOK);
+  assert.equal(merged.exercises[0].structure.theme.structureNodeId, "t");
+  assert.deepEqual(merged.exerciseConversions, [{ a: 1 }]);
+  assert.equal(stats.removed, 1);
+  assert.equal(base.exercises[0].structure.book, undefined); // 土台のオブジェクトは書き換えない
+  assert.throws(() => mergeExerciseViews({ meta: { subject: "boki" }, exercises: [] }, [exams]));
+});
