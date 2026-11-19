@@ -2127,6 +2127,39 @@ header h1 {
   height: 14px;
 }
 
+/* v2-64(WISHLIST W-8): キーワード検索 */
+.range-search {
+  margin-bottom: var(--sp-3);
+}
+.range-search-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  font-size: 16px; /* iPhone で入力時に拡大されないよう 16px 以上 */
+  font-family: inherit;
+  color: var(--text);
+  background: var(--surface-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.range-search-input:focus {
+  outline: 2px solid var(--accent, #14b8a6);
+  outline-offset: 1px;
+}
+.range-search-fields {
+  margin-top: var(--sp-3);
+}
+.range-search-fields[hidden],
+.range-search-hits[hidden] {
+  display: none;
+}
+.range-search-hits {
+  margin: var(--sp-3) 0 0;
+  font-size: .9rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
 /* v2-62(WISHLIST W-7): 見出しを押すと開閉（右端の › でその見出し全体を選ぶ） */
 .range-book {
   display: flex;

@@ -111,6 +111,16 @@
     <button type="button" id="range-list-back-btn" class="page-back-btn" aria-label="トップに戻る">&lsaquo;</button>
     <h2 class="page-title">範囲を選ぶ<small>学習状況</small></h2>
   </div>
+  <!-- v2-64(WISHLIST W-8): キーワード検索（結果はそのまま出題できる） -->
+  <div class="field-group range-search">
+    <label class="eyebrow" for="range-search-input">キーワード</label>
+    <input type="search" id="range-search-input" class="range-search-input" placeholder="例: 簡易課税（空白で区切ると、すべてを含む問題）" autocomplete="off" enterkeyhint="search">
+    <div id="range-search-fields" class="range-search-fields" hidden>
+      <span class="eyebrow">探す場所（複数選択可）</span>
+      <div id="range-search-field-chips" class="chip-grid fill"></div>
+    </div>
+    <p id="range-search-hits" class="range-search-hits" hidden></p>
+  </div>
   <div class="field-group range-type-filter">
     <span class="eyebrow">問題形式</span>
     <div id="range-list-type-chips" class="chip-grid fill"></div>
@@ -418,6 +428,7 @@
 <script src="js/progressStore.js"></script>
 <script src="js/memoStore.js"></script>
 <script src="js/rangeProgress.js"></script>
+<script src="js/search.js"></script>
 <script src="js/questionTimer.js"></script>
 <script src="js/orderingAdapter.js"></script>
 <script src="js/blankMarkerIndex.js"></script>

@@ -52,6 +52,10 @@
     rangeListTypeChips: document.getElementById("range-list-type-chips"),
     rangeListModeChips: document.getElementById("range-list-mode-chips"),
     rangeListEmptyChips: document.getElementById("range-list-empty-chips"),
+    rangeSearchInput: document.getElementById("range-search-input"),
+    rangeSearchFields: document.getElementById("range-search-fields"),
+    rangeSearchFieldChips: document.getElementById("range-search-field-chips"),
+    rangeSearchHits: document.getElementById("range-search-hits"),
     studySetupBackBtn: document.getElementById("study-setup-back-btn"),
     studySetupRangeSummary: document.getElementById("study-setup-range-summary"),
     studySetupTimeChips: document.getElementById("study-setup-time-chips"),
@@ -309,6 +313,7 @@
   }
 
   function refreshDerivedState() {
+    if (EVv2.resetSearchCache) EVv2.resetSearchCache(); // v2-64: 編集・読み込みで問題の中身が変わるため
     // v2-30(文節ならびかえ): 旧バージョンでキャッシュされたデータにはこのキーが無いため、
     // ここで一度だけ初期化しておく(呼び出し元によらず必ず通る単一箇所)。
     if (!Array.isArray(state.data.exerciseConversions)) state.data.exerciseConversions = [];
@@ -1063,6 +1068,36 @@
       if (state.data) renderRangeList();
     },
   });
+  // v2-64(WISHLIST W-8): キーワード検索。範囲を選ぶ画面の絞り込みの1つとして、範囲ごとの件数・
+  // 出題する問題の両方に掛かる。キーワードは端末に覚えない（開き直すと空）。探す場所は覚えない（既定は「すべて」）。
+  var searchTerms = [];
+  var searchFieldGroup = EVv2.createMultiChipGroup(els.rangeSearchFieldChips, {
+    items: EVv2.SEARCH_FIELD_ITEMS,
+    value: ["all"],
+    onChange: function () {
+      if (state.data) renderRangeList();
+    },
+  });
+  function matchesSearch(ex) {
+    return EVv2.matchesKeyword(ex, searchTerms, searchFieldGroup.getValue());
+  }
+  function searchLabel() {
+    if (!searchTerms.length) return "";
+    var label = "「" + els.rangeSearchInput.value.trim().replace(/[\s\u3000]+/g, " ") + "」";
+    return searchFieldGroup.isAll() ? label : label + "（" + searchFieldGroup.getLabel() + "）";
+  }
+  var searchTimer = null;
+  els.rangeSearchInput.addEventListener("input", function () {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(function () {
+      searchTerms = EVv2.parseSearchQuery(els.rangeSearchInput.value);
+      if (state.data) renderRangeList();
+    }, 250);
+  });
+  els.rangeSearchInput.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") els.rangeSearchInput.blur(); // スマホのキーボードを閉じて結果を見せる
+  });
+
   // v2-63: 0問の範囲（今の絞り込みで該当する問題が無い教材・テーマ・節）を出すか隠すか。
   // 既定は今までどおり出す（ユーザー指示 v2-51）。科目ごとにこの端末に覚える。
   var RANGE_EMPTY_KEY = EVv2.SUBJECT.storage.rangeEmpty;
@@ -1166,7 +1201,7 @@
     var all = state.baseExercises || state.data.exercises;
     var byType = filterByType(all, type);
     return byType.filter(function (ex) {
-      return matchesStudyMode(ex, studyMode) && EVv2.matchesRange(ex, range);
+      return matchesStudyMode(ex, studyMode) && EVv2.matchesRange(ex, range) && matchesSearch(ex);
     });
   }
 
@@ -1186,7 +1221,7 @@
       els.studySetupDockSummary.textContent = "条件に該当する問題がありません";
     } else {
       els.studySetupDockSummary.appendChild(document.createTextNode(themeLabel));
-      [typeLabel, modeLabel, timeLabel].forEach(function (label) {
+      [typeLabel, modeLabel].concat(searchTerms.length ? [searchLabel()] : [], [timeLabel]).forEach(function (label) {
         var sep = document.createElement("span");
         sep.className = "sep";
         sep.textContent = "・";
@@ -2059,12 +2094,21 @@
     var mode = rangeModeChipGroup.getValue();
     function narrow(list) {
       return filterByType(list, type).filter(function (ex) {
-        return matchesStudyMode(ex, mode);
+        return matchesStudyMode(ex, mode) && matchesSearch(ex);
       });
     }
     var all = narrow(base);
     els.rangeList.innerHTML = "";
-    els.rangeList.appendChild(rangeRow({ kind: "all" }, "全範囲", all, "range-row-all"));
+    // v2-64: キーワードがあるときは、探す場所を出し、ヒット件数を出す（範囲ごとの内訳は下の一覧の件数）
+    var searching = searchTerms.length > 0;
+    els.rangeSearchFields.hidden = !searching && searchFieldGroup.isAll();
+    els.rangeSearchHits.hidden = !searching;
+    if (searching) {
+      els.rangeSearchHits.textContent = all.length
+        ? searchLabel() + " を含む問題: " + all.length + "問（範囲ごとの件数は下の一覧）"
+        : searchLabel() + " を含む問題は見つかりませんでした";
+    }
+    els.rangeList.appendChild(rangeRow({ kind: "all" }, searching ? "検索結果（全範囲）" : "全範囲", all, "range-row-all"));
 
     // v2-51: テーマ・範囲の並び順は絞り込み前（教材の順）で決め、問題形式の絞り込みは
     // 各行の中身にだけ掛ける（並び替え問題など、配列の後ろに追加された問題があっても順序が崩れない）。
@@ -2193,7 +2237,7 @@
     var mode = modeChipGroup.getValue();
     var all = filterByType(state.baseExercises || state.data.exercises, typeChipGroup.getValue());
     var inRange = all.filter(function (ex) {
-      return EVv2.matchesRange(ex, range) && matchesStudyMode(ex, mode);
+      return EVv2.matchesRange(ex, range) && matchesStudyMode(ex, mode) && matchesSearch(ex);
     });
     els.studySetupRangeSummary.innerHTML = "";
     var title = document.createElement("p");
@@ -2202,6 +2246,7 @@
     var filters = [];
     if (typeValue !== "all") filters.push(typeChipGroup.getLabel());
     if (!modeChipGroup.isAll()) filters.push(modeChipGroup.getLabel());
+    if (searchTerms.length) filters.push(searchLabel());
     title.textContent = range.label + (filters.length ? "（" + filters.join("・") + "）" : "");
     els.studySetupRangeSummary.appendChild(title);
     els.studySetupRangeSummary.appendChild(EVv2.createProgressMeter(EVv2.summarizeProgress(inRange)));
