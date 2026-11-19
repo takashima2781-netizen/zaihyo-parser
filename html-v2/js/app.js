@@ -161,6 +161,9 @@
   }
   syncHeaderHeightVar();
   window.addEventListener("resize", syncHeaderHeightVar);
+  // v2-67: 画面切替の後でヘッダーの中身が変わって高さが変わることがあり（測った時は65px、その後109px）、
+  // 学習画面が画面より高くなって一番下のボタンが画面の外に出ていた。ヘッダーの大きさが変わるたびに測り直す。
+  if (typeof ResizeObserver === "function") new ResizeObserver(syncHeaderHeightVar).observe(els.header);
 
   function showError(msg) {
     els.errorPanel.hidden = false;
@@ -1248,6 +1251,7 @@
 
     els.studySessionProgress.textContent =
       (studySession.index + 1) + " / " + studySession.queue.length + "問";
+    syncHeaderHeightVar(); // v2-67: 進捗の文字が入るとヘッダーが折り返して高くなることがある
 
     var ex = studySession.queue[studySession.index];
     setCurrentSessionExercise(ex);

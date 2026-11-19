@@ -396,7 +396,10 @@ header h1 {
   padding: var(--sp-2) 0;
 }
 .ex-card-answer-zone {
-  flex: 0 1 auto;
+  /* v2-67: 問題文が長いと、問題文と一緒にこちらも縮み、ボタンが切れていた（読む画面の「読んだ」など）。
+     こちらは中身の高さのまま縮めず、多いときだけカードの55%までにしてスクロールする */
+  flex: 0 0 auto;
+  max-height: 55%;
   min-height: 0;
   overflow-y: auto;
   display: flex;
@@ -442,6 +445,7 @@ header h1 {
   }
   .ex-card-answer-zone {
     grid-area: answer;
+    max-height: none; /* 横並びのときは高さを分け合わない */
     padding: 0 0 0 var(--sp-3);
   }
   .ex-card-footer-zone {
