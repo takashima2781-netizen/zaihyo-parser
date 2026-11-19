@@ -15,11 +15,12 @@ export function parseDaimon(text) {
 }
 
 // 問１(11点) / 問１（14 点）
+// 【設問１】（12点）・設問１（15点）（「問」の代わりに設問nを使う教材がある）
 export function parseToiHeading(text) {
   const t = normalizeForMatch(text);
-  const m = t.match(/^問(\d+)(?:\((\d+)点\))?(.*)$/);
+  const m = t.match(/^(?:問(\d+)|【?設問(\d+)】?)(?:\((\d+)点\))?(.*)$/);
   if (!m) return null;
-  return { no: Number(m[1]), points: m[2] ? Number(m[2]) : null, rest: m[3] };
+  return { no: Number(m[1] ?? m[2]), points: m[3] ? Number(m[3]) : null, rest: m[4] };
 }
 
 // 小問「１ 空欄…」: 先頭が数字1〜2桁＋空白。「１. 企業の…」（引用文の項番号）は数字の直後が「.」なので当てはまらない。
@@ -44,19 +45,28 @@ export function kanaIndex(symbol) {
 }
 export function parseOptionLine(text) {
   const t = text.replace(/^[\s　]+/, "");
-  const m = t.match(/^([ア-ワ])[\s　]+(\S.*)$/);
-  if (!m || kanaIndex(m[1]) < 0) return null;
+  const m = t.match(/^([ア-ワい-ん])[\s　]+(\S.*)$/);
+  if (!m || !OPTION_SERIES.some((ser) => ser.includes(m[1]))) return null;
   return { symbol: m[1], text: m[2].replace(/[\s　]+$/, "") };
 }
 
+// 選択肢の記号の並び。ア・イ・ウ… のほか、イ・ロ・ハ…、い・ろ・は… の教材がある
+export const OPTION_SERIES = [KANA_ORDER, "イロハニホヘトチリヌルヲ", "いろはにほへとちりぬるを"];
+/** 前の選択肢の記号（無ければ null）の次に来てよい記号か。並びの最初は、どの並びの先頭でもよい。 */
+export function isNextOption(prevSymbol, symbol, series = null) {
+  if (prevSymbol === null) return OPTION_SERIES.some((ser) => ser[0] === symbol);
+  const ser = series ?? OPTION_SERIES.find((x) => x.includes(prevSymbol));
+  return ser ? ser.indexOf(symbol) === ser.indexOf(prevSymbol) + 1 : false;
+}
+
 export function isWordBankHeading(text) {
-  return /^【語群】$/.test(normalizeForMatch(text));
+  return /^【(語群|選択肢)】$/.test(normalizeForMatch(text));
 }
 
 // 語群の行「ア 収益力   イ 純資産計算  …」: 記号＋語句が1行に複数。全体がこの形でなければ null。
 export function parseWordBankLine(text) {
   const t = text.replace(/[\s　]+$/, "");
-  const re = /(?:^|[\s　]+)([ア-ワ])[\s　]+(.+?)(?=[\s　]+[ア-ワ][\s　]+|$)/gy;
+  const re = /(?:^|[\s　]+)([ア-ワい-ん])[\s　]+(.+?)(?=[\s　]+[ア-ワい-ん][\s　]+|$)/gy;
   const entries = [];
   let last = 0;
   re.lastIndex = 0;
@@ -88,13 +98,15 @@ export function blankLabelsIn(text) {
  * 見出しの後ろに短い語（名称・金額など、答案用紙の欄の名前）が続くことがある → rest に返す。
  */
 export function parseSheetHeading(text) {
+  // 「問１ １」（問と小問が1つの span）: 空白で区切られた形は元の文字で見る（正規化すると「問11」と区別できない）
+  const spaced = toHalfWidth(text).replace(/[\s　]+/g, " ").trim();
+  let m = spaced.match(/^(?:問 ?(\d+)|【?設問 ?(\d+)】?(?:\(\d+点\))?)(?: (\d)(?:\((\d+)\))?)?$/);
+  if (m) return { toi: Number(m[1] ?? m[2]), shomon: m[3] ? Number(m[3]) : null, edamon: m[4] ? Number(m[4]) : null, rest: "" };
   const t = normalizeForMatch(text);
-  let m = t.match(/^問(\d+)$/);
-  if (m) return { toi: Number(m[1]), shomon: null, edamon: null, rest: "" };
   // 後ろに続いてよいのは、かな・漢字だけの短い欄の名前（「5,100」のような金額を見出しと取り違えない）
-  m = t.match(/^(\d)(?:\((\d+)\))?([぀-ヿ一-鿿]{0,4})$/);
+  m = t.match(/^(\d)(?:\((\d+)\))?([぀-ヿ一-鿿①-⑳]{0,12})$/);
   if (m) return { toi: null, shomon: Number(m[1]), edamon: m[2] ? Number(m[2]) : null, rest: m[3] };
-  m = t.match(/^\((\d+)\)([぀-ヿ一-鿿]{0,4})$/);
+  m = t.match(/^\((\d+)\)([぀-ヿ一-鿿①-⑳]{0,12})$/);
   if (m) return { toi: null, shomon: null, edamon: Number(m[1]), rest: m[2] };
   return null;
 }
@@ -110,7 +122,7 @@ export function parseGuidanceHeading(text) {
     const pm = part.match(/^(\d)?(?:\((\d+)\))?$/);
     if (!pm || (pm[1] === undefined && pm[2] === undefined)) return null;
     if (pm[1] !== undefined) shomon = Number(pm[1]);
-    if (shomon === null) return null;
+    // 「(1)について」だけ（小問の層が無い問）は shomon: null のまま問の直下の枝問を指す
     refs.push({ shomon, edamon: pm[2] !== undefined ? Number(pm[2]) : null });
   }
   return refs.length ? refs : null;

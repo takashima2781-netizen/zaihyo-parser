@@ -89,9 +89,29 @@ test("2つ選ぶ: 解答への道の〇×と解答が合えば選択肢ごとの
     ["true_false", "○", null],
     ["true_false", "×", "理由丙"],
   ]);
+  // 食い違えば〇×は作らず、選択肢を見せて解答の記号を答える暗記カードにする（理由は残す）
   const diag = [];
-  assert.equal(buildExamExercises(make("ア、イ", [["ア", "×"], ["イ", "○"], ["ウ", "×"]]), { diag }).length, 0);
-  assert.deepEqual(diag.map((d) => d.reason), ["choose-many-judgements-mismatch"]);
+  const fallback = buildExamExercises(make("ア、イ", [["ア", "×"], ["イ", "○"], ["ウ", "×"]]), { diag });
+  assert.deepEqual(fallback.map((e) => [e.exerciseType, e.expectedAnswer[0].answerText.text]), [["recall_text", "ア、イ"]]);
+  assert.match(fallback[0].prompt.text, /ア 文0/);
+  assert.deepEqual(diag.map((d) => [d.reason, d.builtAs]), [["choose-many-judgements-mismatch", "recall_text"]]);
+});
+
+test("答えが金額の問いは、指示文に「計算」が無くても計算の問いとして作らない", () => {
+  const q = node("x:d1:t1:s5", "shomon", 5, null, { formCandidates: [{ form: "write_terms" }], answer: answer([slot("5,500 千円")]) });
+  const diag = [];
+  assert.equal(buildExamExercises(structureWith(q), { diag }).length, 0);
+  assert.equal(diag[0].reason, "calculation-not-yet");
+});
+
+test("記述の欄が2つ以上: 欄の名前ごと1つの模範解答にする", () => {
+  const q = node("x:d1:t1:s6", "shomon", 6, null, {
+    formCandidates: [{ form: "write_text" }],
+    answer: answer([{ type: "text", text: "名称" }, slot("答え一"), { type: "break" }, { type: "text", text: "内容" }, slot("答え二")]),
+  });
+  const [ex] = buildExamExercises(structureWith(q));
+  assert.equal(ex.exerciseType, "recall_text");
+  assert.equal(ex.expectedAnswer[0].answerText.text, "名称 答え一\n内容 答え二");
 });
 
 test("答案用紙の定型の文に答えを入れる multi_blank。欄の名前は本文に重ねて出さない", () => {

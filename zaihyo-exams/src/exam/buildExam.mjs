@@ -20,8 +20,10 @@ export const STRUCTURE_VERSION = "zaihyo-exam-structure-0.1";
  */
 export function buildExam({ set, problemDoc, sheetDoc, answerDoc }) {
   const unresolved = [];
-  const problem = buildProblemTree({ setId: set.id, rows: documentRows(problemDoc), daimonNos: set.daimonNos });
   const key = buildAnswerKey({ sheetRows: documentRows(sheetDoc), answerRows: documentRows(answerDoc), daimonNos: set.daimonNos });
+  // 問題の見出しは、解答に出てくる見出しの並びと照らして見つける（字下げの位置は回ごとにまちまち）
+  const expectedPaths = new Map(key.daimons.map((d) => [d.daimon, d.units.map((u) => u.path)]));
+  const problem = buildProblemTree({ setId: set.id, rows: documentRows(problemDoc), daimonNos: set.daimonNos, expectedPaths });
 
   const nodes = problem.nodes;
   const children = new Map();
@@ -33,7 +35,10 @@ export function buildExam({ set, problemDoc, sheetDoc, answerDoc }) {
   for (const d of key.daimons) {
     for (const u of d.units) {
       if (u.slots.length === 0) continue; // 問・小問の見出しだけの単位（答えは下の枝問にある）
-      const n = byKey.get(u.key);
+      // 解答だけに「(1)」がある（問題の小問に枝問の見出しが無い）→ 枝問の無い小問に付ける
+      const parentKey = u.path.edamon !== null ? unitKey({ ...u.path, edamon: null }) : null;
+      const parent = parentKey ? byKey.get(parentKey) : null;
+      const n = byKey.get(u.key) ?? (parent && parent.children.length === 0 && !parent.answer ? parent : null);
       if (!n) {
         unresolved.push({ reason: "answer-unit-without-question", key: u.key, source: u.heading.source });
         continue;
@@ -49,14 +54,16 @@ export function buildExam({ set, problemDoc, sheetDoc, answerDoc }) {
   }
 
   // 解答への道
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const hasToi = new Set(nodes.filter((n) => n.kind === "toi").map((n) => byId.get(n.parent).parsed.no)); // 問の層がある大問
   const guidanceDiag = [];
   for (const d of key.daimons) {
     const g = buildGuidance(d.guidanceRows, d.daimon);
     guidanceDiag.push(...g.diag);
     for (const b of g.blocks) {
-      const targets = b.refs
-        ? b.refs.map((r) => byKey.get(unitKey({ daimon: d.daimon, toi: b.toi, shomon: r.shomon, edamon: r.edamon })))
-        : [byKey.get(unitKey({ daimon: d.daimon, toi: b.toi }))];
+      // 解説に「設問１」があっても、答案用紙・問題の木に問の層が無い回がある → 問の層なしでも探す
+      const find = (p) => byKey.get(unitKey({ daimon: d.daimon, ...p })) ?? (p.toi !== null && !hasToi.has(d.daimon) ? byKey.get(unitKey({ daimon: d.daimon, ...p, toi: null })) : undefined);
+      const targets = b.refs ? b.refs.map((r) => find({ toi: b.toi, shomon: r.shomon, edamon: r.edamon })) : [find({ toi: b.toi })];
       const block = { heading: b.heading, rows: b.rows.map(({ text, source }) => ({ text, source })), optionJudgements: b.optionJudgements.map(({ x, ...j }) => j), sharedWith: b.refs && b.refs.length > 1 ? b.refs : null };
       targets.forEach((t, i) => {
         if (!t) {

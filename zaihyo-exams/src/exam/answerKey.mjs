@@ -52,8 +52,16 @@ export function sheetUnits(rows, daimonNo) {
     if (spans.length === 0) continue;
     const first = spans[0];
     const h = first.bbox[0] < HEADING_MAX_X ? parseSheetHeading(first.text) : null;
+    // 「１」「(1)」が別の span に分かれている見出し → 小問１の枝問(1)
+    if (h && h.shomon !== null && h.edamon === null && !h.rest && spans[1]) {
+      const e = parseSheetHeading(spans[1].text);
+      if (e && e.toi === null && e.shomon === null && !e.rest) {
+        h.edamon = e.edamon;
+        spans.splice(1, 1);
+      }
+    }
     if (h) {
-      if (h.toi !== null) path = { daimon: daimonNo, toi: h.toi, shomon: null, edamon: null };
+      if (h.toi !== null) path = { daimon: daimonNo, toi: h.toi, shomon: h.shomon, edamon: h.edamon };
       else if (h.shomon !== null) path = { ...path, shomon: h.shomon, edamon: h.edamon };
       else path = { ...path, edamon: h.edamon };
       unit = { key: unitKey(path), path: { ...path }, headingRow: r, rest: h.rest, rows: [] };

@@ -1035,6 +1035,13 @@ header h1 {
   padding: 4px 10px;
   font-size: 0.85rem;
 }
+/* v2-69: 答練の「最も適切なものを選択し」のように選択肢が長い文のときは、欄からはみ出さず折り返す
+   （縮めない設定のままだと1行のまま右へ切れて読めない）。 */
+.choices-choice_item .choice-btn {
+  max-width: 100%;
+  text-align: left;
+  border-radius: 16px;
+}
 /* v2-48: 丸バツ(true_false)の○×ボタンは、上のchoices縮小の対象から外し元の大きさに戻す
    （ユーザー指示: 4択は縮小したいが○×はそのままでよい。true_falseとsingle_blankの4択は
    render.js側で.choices/.choice-btnを共有しているため、ここで打ち消す）。 */

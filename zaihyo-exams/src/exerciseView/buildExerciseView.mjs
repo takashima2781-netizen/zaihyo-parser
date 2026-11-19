@@ -81,7 +81,7 @@ function questionLabel(chain) {
 }
 
 /** 問題文: 問・小問・枝問の指示文と本文（記号つきの文は opts.withLabeled のときだけ）。 */
-function contextRows(chain, { withLabeled = true, withOwnPassage = true } = {}) {
+function contextRows(chain, { withLabeled = true, withOwnPassage = true, withOptions = false } = {}) {
   const rows = [];
   chain.forEach((n, i) => {
     if (n.kind === "daimon") return;
@@ -91,6 +91,8 @@ function contextRows(chain, { withLabeled = true, withOwnPassage = true } = {}) 
     rows.push(...mark(n.instruction.filter((r) => displayText(r.text))));
     if (withLabeled) for (const l of n.labeledItems) rows.push(...mark(l.rows));
     if (!own || withOwnPassage) rows.push(...mark(n.passage));
+    if (withOptions) for (const o of n.options) rows.push(...mark(o.rows));
+    if (withOptions && n.wordBank) rows.push(...mark(n.wordBank.rows));
   });
   return rows;
 }
@@ -117,6 +119,9 @@ function slotLabels(q) {
   if (named.every((l) => !l) && labels.length === slots.length) return labels;
   return named;
 }
+
+// 金額・数量の答え「5,500 千円」「△100」「0」
+const AMOUNT = /^[△▲]?[\d０-９][\d０-９,，.．]*[\s　]*(千円|円|百万円|%|％)?$/;
 
 export function buildExamExercises(structure, { diag = [] } = {}) {
   const byId = new Map(structure.nodes.map((n) => [n.id, n]));
@@ -146,6 +151,8 @@ export function buildExamExercises(structure, { diag = [] } = {}) {
     const before = out.length;
     if (!q.answer) diag.push({ reason: "no-answer", question: q.id });
     else if (forms.includes("calculate")) diag.push({ reason: "calculation-not-yet", question: q.id, forms });
+    // 指示文に「計算」とは書いていなくても、答えに金額がある問いは計算の問い（語句の穴埋めにはしない）
+    else if (q.answer.segments.some((s) => s.type === "slot" && AMOUNT.test(s.text.trim()))) diag.push({ reason: "calculation-not-yet", question: q.id, forms, evidence: "amount-in-answer" });
     else if (forms.includes("choose_from_word_bank")) out.push(...wordBankExercises(ctx, diag));
     else if (forms.includes("choose_options")) {
       const count = q.formCandidates.find((c) => c.form === "choose_options").count;
@@ -201,7 +208,17 @@ function promptOf(ctx, opts) {
 
 function findWordBank(chain) {
   for (let i = chain.length - 1; i >= 0; i--) if (chain[i].wordBank?.entries.length) return chain[i].wordBank;
-  return null;
+  // 【語群】の見出しが無く、選択肢が1行に1つずつ並ぶ教材 → その選択肢を語群として使う
+  const opts = optionsOf(chain);
+  return opts.length ? { entries: opts.map((o) => ({ symbol: o.symbol, text: o.text, source: o.rows[0].source })), fromOptions: true } : null;
+}
+
+/** 選択肢（ア…・イロハ…）。無ければ記号つきの文（Ａ…）。小問に無ければ上の節のもの。 */
+function optionsOf(chain) {
+  for (let i = chain.length - 1; i >= 0; i--) if (chain[i].options?.length) return chain[i].options;
+  for (let i = chain.length - 1; i >= 0; i--)
+    if (chain[i].labeledItems?.length) return chain[i].labeledItems.map((l) => ({ symbol: l.label, text: l.text, rows: l.rows, fromLabeled: true }));
+  return [];
 }
 
 function wordBankExercises(ctx, diag) {
@@ -240,14 +257,17 @@ function wordBankExercises(ctx, diag) {
 function chooseOneExercises(ctx, diag) {
   const q = ctx.q;
   const slots = slotsOf(q);
-  const answer = slots.length === 1 ? displayText(slots[0].text) : null;
-  if (!q.options.length || !answer || !q.options.some((o) => o.symbol === answer)) {
+  const answer = slots.length === 1 ? displayText(slots[0].text).trim() : null;
+  const options = optionsOf(ctx.chain);
+  if (!options.length || !answer || !options.some((o) => o.symbol === answer)) {
+    // 答えが記号2つ以上（「２つ」と書いていない複数選択）など → 選択肢を見せて答える暗記カード
+    if (options.length && answer) return chooseAsRecall(ctx, diag, "choose-one-answer-shape");
     diag.push({ reason: "choose-one-answer-not-in-options", question: q.id });
     return [];
   }
   const stable = `zexam:${q.id}`;
-  const ex = baseExercise(ctx, { id: `${stable}:choice`, type: "choice_item", stableIds: [stable], prompt: promptOf(ctx) });
-  ex.choiceOptions = q.options.map((o) => ({ value: o.symbol, label: `${o.symbol} ${displayText(o.text)}` }));
+  const ex = baseExercise(ctx, { id: `${stable}:choice`, type: "choice_item", stableIds: [stable], prompt: promptOf(ctx, { withLabeled: !options[0].fromLabeled }) });
+  ex.choiceOptions = options.map((o) => ({ value: o.symbol, label: `${o.symbol} ${displayText(o.text)}` }));
   ex.correctChoice = answer;
   ex.choiceMeta = { kind: "choose-one", answerSource: slots[0].sources[0] };
   return [ex];
@@ -260,15 +280,14 @@ function chooseManyExercises(ctx, count, diag) {
   const judgements = new Map(ctx.guidance.flatMap((b) => b.optionJudgements).map((j) => [j.symbol, j]));
   const negative = /適切でない|誤っている|正しくない|妥当でない/.test(q.instructionText);
   const positive = !negative && /適切な|正しい|妥当な/.test(q.instructionText);
-  if (answers.length !== count || (!negative && !positive)) {
-    diag.push({ reason: "choose-many-answer-shape", question: q.id });
-    return [];
+  if ((count !== "all" && answers.length !== count) || (!negative && !positive) || !q.options.length) {
+    // 〇×に分けられない（「該当するもの」「特徴」など向きの言葉が無い・選択肢が上の節にある）→ 選択肢を見せて答える暗記カード
+    return chooseAsRecall(ctx, diag, "choose-many-answer-shape");
   }
-  // 解答への道の〇×と、解答の記号が食い違わないことを確かめる（食い違えば作らない）
+  // 解答への道の〇×と、解答の記号が食い違わないことを確かめる（食い違えば〇×は作らない）
   const picked = q.options.filter((o) => judgements.get(o.symbol)?.mark === (negative ? "×" : "○")).map((o) => o.symbol);
   if (q.options.some((o) => !judgements.has(o.symbol)) || picked.join() !== [...answers].sort((a, b) => a.localeCompare(b)).join()) {
-    diag.push({ reason: "choose-many-judgements-mismatch", question: q.id });
-    return [];
+    return chooseAsRecall(ctx, diag, "choose-many-judgements-mismatch");
   }
   // 指示欄: 問・小問の指示文と本文。並べ替え用の記号つきの文（Ａ～Ｅ）は、選択肢の〇×には関係しないので出さない
   const instruction = rawSpan(joinRows(contextRows(ctx.chain, { withLabeled: false })), q.instruction[0]?.source, q.id);
@@ -309,17 +328,36 @@ function orderingExercises(ctx, diag) {
   return [ex];
 }
 
+/** 選ぶ問いを、選択肢つきの問いと解答の記号の暗記カードにする（選択式・〇×にできないとき）。理由は diagnostics に残す。 */
+function chooseAsRecall(ctx, diag, reason) {
+  const q = ctx.q;
+  const slots = slotsOf(q);
+  if (slots.length === 0) {
+    diag.push({ reason, question: q.id });
+    return [];
+  }
+  diag.push({ reason, question: q.id, builtAs: "recall_text" });
+  const stable = `zexam:${q.id}`;
+  const ex = baseExercise(ctx, { id: `${stable}:recall`, type: "recall_text", stableIds: [stable], prompt: promptOf(ctx, { withOptions: true }) });
+  const text = slots.length === 1 ? slots[0].lines.map((l) => displayText(l.text)).join("") : answerWithTemplate(q.answer.segments);
+  ex.expectedAnswer = [{ answerText: rawSpan(text, sourceOf(slots[0]), q.id) }];
+  ex.recallMeta = { derivedFrom: "choose-options" };
+  return [ex];
+}
+
 function recallExercises(ctx, diag) {
   const q = ctx.q;
   const slots = slotsOf(q);
-  if (slots.length !== 1) {
-    diag.push({ reason: "write-text-slot-count", question: q.id, slots: slots.length });
+  if (slots.length === 0) {
+    diag.push({ reason: "write-text-slot-count", question: q.id, slots: 0 });
     return [];
   }
   const stable = `zexam:${q.id}`;
   const ex = baseExercise(ctx, { id: `${stable}:recall`, type: "recall_text", stableIds: [stable], prompt: promptOf(ctx) });
   const s = slots[0];
-  ex.expectedAnswer = [{ answerText: rawSpan(s.lines.map((l) => displayText(l.text)).join(""), sourceOf(s), q.id) }];
+  // 欄が2つ以上（「名称」「目的」など）→ 答案用紙の欄の名前も含めて、解答の並びのまま1つの模範解答にする
+  const text = slots.length === 1 ? s.lines.map((l) => displayText(l.text)).join("") : answerWithTemplate(q.answer.segments);
+  ex.expectedAnswer = [{ answerText: rawSpan(text, sourceOf(s), q.id) }];
   return [ex];
 }
 
@@ -407,4 +445,18 @@ function termsExercises(ctx, diag) {
   }));
   ex.multiBlankMeta = { bodyFrom: passageOwner ? "problem-passage" : "answer-sheet-template" };
   return [ex];
+}
+
+/** 解答の単位の並び（定型の文・答え・改行）→ 1つの文。欄の名前と答えのあいだは「 」、行は改行でつなぐ。 */
+function answerWithTemplate(segments) {
+  const lines = [[]];
+  for (const seg of segments) {
+    if (seg.type === "break") lines.push([]);
+    else if (seg.type === "slot") lines.at(-1).push(seg.lines.map((l) => displayText(l.text)).join(""));
+    else if (seg.text.trim()) lines.at(-1).push(displayText(seg.text).trim());
+  }
+  return lines
+    .map((l) => l.join(" ").trim())
+    .filter(Boolean)
+    .join("\n");
 }

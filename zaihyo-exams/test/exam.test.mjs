@@ -15,7 +15,7 @@ import {
   parseGuidanceHeading,
   parseOptionJudgement,
 } from "../src/exam/patterns.mjs";
-import { blanksInPassageRow, buildProblemTree } from "../src/exam/problem.mjs";
+import { blanksInPassageRow, buildProblemTree, headingEvents } from "../src/exam/problem.mjs";
 import { classifyUnit, sheetUnits } from "../src/exam/answerKey.mjs";
 import { buildGuidance } from "../src/exam/guidance.mjs";
 import { formCandidates } from "../src/exam/forms.mjs";
@@ -178,4 +178,51 @@ test("検査: 透かし・id の重複・出典なしを見つける", () => {
   assert.equal(r.ok, false);
   assert.equal(r.violations.length, 3);
   assert.equal(runStructureChecks({ nodes: [{ id: "a", source: [{}] }] }).ok, true);
+});
+
+test("答案用紙の見出し: 「問１ １」・設問・欄の名前が長い見出し", () => {
+  assert.deepEqual(parseSheetHeading("問１ １ "), { toi: 1, shomon: 1, edamon: null, rest: "" });
+  assert.deepEqual(parseSheetHeading("問11"), { toi: 11, shomon: null, edamon: null, rest: "" });
+  assert.deepEqual(parseSheetHeading("【設問２】"), { toi: 2, shomon: null, edamon: null, rest: "" });
+  assert.equal(parseSheetHeading("２ 一時差異の定義").rest, "一時差異の定義");
+  assert.equal(parseToiHeading("設問１（15点）").no, 1);
+});
+
+test("選択肢の記号の並び: ア・イ・ウ／イ・ロ・ハ／い・ろ・は", () => {
+  const p = page(1, [
+    [span("〔第一問〕 －25点－", 77, 70)],
+    [span("１ 最も適切なものを選択し、記号で答えなさい。", 77, 90)],
+    [span("イ 一つ目", 87, 108)],
+    [span("ロ 二つ目", 87, 126)],
+    [span("ハ 三つ目", 87, 144)],
+  ]);
+  const { nodes } = buildProblemTree({ setId: "x", rows: pageRows(doc("A", []), p), daimonNos: [1] });
+  assert.deepEqual(nodes[1].options.map((o) => o.symbol), ["イ", "ロ", "ハ"]);
+});
+
+test("問題の見出しは解答の見出しの並びと照らす: 字下げが違っても拾い、引用文の項番号は拾わない", () => {
+  const p = page(1, [
+    [span("〔第一問〕 －25点－", 72, 70)],
+    [span("問１", 87, 90)], // 大問の見出しより右にある
+    [span("次の文章について答えなさい。", 97, 108)],
+    [span("２ 引用文の項番号", 97, 126)], // 小問２の形だが、待っている小問１が後ろにある
+    [span("(1) 引用文の枝番号", 107, 144)],
+    [span("１ 空欄に当てはまる語句を答えなさい。", 87, 162)],
+    [span("２ 理由を説明しなさい。", 87, 180)],
+  ]);
+  const expectedPaths = new Map([[1, [{ toi: 1, shomon: 1, edamon: null }, { toi: 1, shomon: 2, edamon: null }]]]);
+  const { nodes } = buildProblemTree({ setId: "x", rows: pageRows(doc("A", []), p), daimonNos: [1], expectedPaths });
+  assert.deepEqual(nodes.map((n) => n.id), ["x:d1", "x:d1:t1", "x:d1:t1:s1", "x:d1:t1:s2"]);
+  assert.match(nodes[1].passage.map((r) => r.text).join(), /引用文の項番号/);
+  // 上の層（小問）を飛ばして下の層（枝問）には当てない
+  assert.deepEqual(headingEvents([{ toi: 1, shomon: 1, edamon: null }, { toi: 1, shomon: 2, edamon: 1 }]).map((e) => e.kind + e.no), ["toi1", "shomon1", "shomon2", "edamon1"]);
+});
+
+test("問い方の候補: 選択肢から選ぶ・選択し・すべて選択・指摘しなさい", () => {
+  const forms = (t) => formCandidates(t).map((c) => (c.count ? `${c.form}(${c.count})` : c.form));
+  assert.deepEqual(forms("空欄①から③に当てはまる語句を選択肢から選び、記号で答えなさい。"), ["choose_from_word_bank"]);
+  assert.deepEqual(forms("正しいものをすべて選択し、記号で答えなさい。"), ["choose_options(all)"]);
+  assert.deepEqual(forms("最も適切なものを選択し、記号で答えなさい。"), ["choose_options(1)"]);
+  assert.deepEqual(forms("その理由を２つ指摘しなさい。"), ["write_text"]);
+  assert.deepEqual(forms("方法（名称）を指摘しなさい。"), ["write_terms"]);
 });

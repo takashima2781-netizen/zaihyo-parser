@@ -7,8 +7,9 @@
 import { contentRows, normalizeForMatch } from "../common/rows.mjs";
 import {
   CIRCLED,
+  isNextOption,
   isWordBankHeading,
-  kanaIndex,
+  OPTION_SERIES,
   parseDaimon,
   parseEdamonHeading,
   parseLabeledStatement,
@@ -37,8 +38,11 @@ function rowRef(r) {
  * @param {string} o.setId
  * @param {Array} o.rows documentRows(problemDoc)
  * @param {number[]} o.daimonNos 読む大問（理論）の番号
+ * @param {Map<number, Array<object>>} [o.expectedPaths] 大問ごとの、解答に出てくる見出しの並び（path の配列）。
+ *   あれば、問題の見出しの候補のうち、この並びの次に来るものだけを見出しとする（字下げの位置は回ごとにまちまちなので）。
+ *   引用文の項番号「１ 研究及び開発」「(1) 表示期間より…」を見出しと取り違えないため。
  */
-export function buildProblemTree({ setId, rows, daimonNos }) {
+export function buildProblemTree({ setId, rows, daimonNos, expectedPaths = new Map() }) {
   const nodes = [];
   const diag = [];
   const daimons = findDaimonRows(rows);
@@ -50,10 +54,32 @@ export function buildProblemTree({ setId, rows, daimonNos }) {
       continue;
     }
     const sectionRows = contentRows(rows.slice(d.index + 1, end));
-    buildDaimon({ setId, d, sectionRows, nodes, diag });
+    const events = headingEvents(expectedPaths.get(d.parsed.no) ?? []);
+    buildDaimon({ setId, d, sectionRows, nodes, diag, events });
   }
   for (const n of nodes) splitContent(n);
   return { nodes, diag };
+}
+
+/** 解答の単位の並び → 見出しが現れる順番（問・小問・枝問の切り替わり）。 */
+export function headingEvents(paths) {
+  const events = [];
+  let prev = { toi: null, shomon: null, edamon: null };
+  for (const p of paths) {
+    if (p.toi !== null && p.toi !== prev.toi) {
+      events.push({ kind: "toi", no: p.toi });
+      prev = { toi: p.toi, shomon: null, edamon: null };
+    }
+    if (p.shomon !== null && p.shomon !== prev.shomon) {
+      events.push({ kind: "shomon", no: p.shomon });
+      prev = { ...prev, shomon: p.shomon, edamon: null };
+    }
+    if (p.edamon !== null && p.edamon !== prev.edamon) {
+      events.push({ kind: "edamon", no: p.edamon });
+      prev = { ...prev, edamon: p.edamon };
+    }
+  }
+  return events;
 }
 
 function daimonNode(setId, d, extra = {}) {
@@ -69,43 +95,87 @@ function daimonNode(setId, d, extra = {}) {
   };
 }
 
-function buildDaimon({ setId, d, sectionRows, nodes, diag }) {
+/** 行が見出しの形なら候補を返す（問・小問・枝問のどれか）。 */
+function headingCandidates(r) {
+  const out = [];
+  const th = parseToiHeading(r.text);
+  if (th) out.push({ kind: "toi", no: th.no, points: th.points, rest: th.rest });
+  const sh = parseShomonHeading(r.text);
+  if (sh) out.push({ kind: "shomon", no: sh.no, rest: sh.rest });
+  const ed = parseEdamonHeading(r.text);
+  if (ed) out.push({ kind: "edamon", no: ed.no, rest: ed.rest });
+  return out;
+}
+
+// 解答の並びで、問題に見出しが無い（または読めない）ものを飛ばしてよい数
+const EVENT_LOOKAHEAD = 2;
+const LEVEL = { toi: 1, shomon: 2, edamon: 3 };
+
+function buildDaimon({ setId, d, sectionRows, nodes, diag, events }) {
   const daimon = daimonNode(setId, d);
   nodes.push(daimon);
   const margin = d.row.x;
   let toi = null;
   let shomon = null;
   let edamon = null;
+  let next = 0; // events の次に待つ位置
   const current = () => edamon ?? shomon ?? toi ?? daimon;
 
-  for (const r of sectionRows) {
-    const atMargin = Math.abs(r.x - margin) <= MARGIN_TOLERANCE;
-    const th = atMargin ? parseToiHeading(r.text) : null;
-    if (th && /^$|^[（(]/.test(th.rest)) {
+  const candsByRow = sectionRows.map(headingCandidates);
+  const appearsLater = (i, e) => candsByRow.slice(i + 1).some((cs) => cs.some((c) => c.kind === e.kind && c.no === e.no));
+  const accept = (r, i) => {
+    const cands = candsByRow[i];
+    if (cands.length === 0) return null;
+    if (events.length === 0) {
+      // 解答の並びが無いとき: 大問の見出しと同じ字下げの見出しだけ（以前の決まり）
+      const atMargin = Math.abs(r.x - margin) <= MARGIN_TOLERANCE;
+      const c = cands.find((c) =>
+        c.kind === "toi" ? atMargin && /^$|^[（(]/.test(c.rest) : c.kind === "shomon" ? atMargin : shomon && r.x >= margin - MARGIN_TOLERANCE,
+      );
+      return c ?? null;
+    }
+    for (let k = next; k < Math.min(events.length, next + 1 + EVENT_LOOKAHEAD); k++) {
+      // 上の層（問・小問）を飛ばして下の層に当てない（飛ばした小問の枝問を前の小問に付けてしまう）
+      if (events.slice(next, k).some((e) => LEVEL[e.kind] < LEVEL[events[k].kind])) break;
+      const c = cands.find((c) => c.kind === events[k].kind && c.no === events[k].no);
+      // 待っている見出しが後ろの行にあるなら、ここは飛ばさない（引用文の項番号「２ 決算時の処理」を小問２と取り違えない）
+      if (c && k > next && appearsLater(i, events[next])) return null;
+      if (c) {
+        if (k > next) diag.push({ reason: "expected-heading-not-found", daimon: d.parsed.no, skipped: events.slice(next, k), page: r.page });
+        next = k + 1;
+        return c;
+      }
+    }
+    return null;
+  };
+
+  for (const [i, r] of sectionRows.entries()) {
+    const c = accept(r, i);
+    if (c?.kind === "toi") {
       toi = {
-        id: `${daimon.id}:t${th.no}`,
+        id: `${daimon.id}:t${c.no}`,
         kind: "toi",
         parent: daimon.id,
         heading: rowRef(r),
-        parsed: { no: th.no, points: th.points },
+        parsed: { no: c.no, points: c.points },
         source: [r.source],
         contentRows: [],
       };
+      if (!/^$|^[（(]/.test(c.rest)) toi.headingRest = c.rest.length ? r.text.replace(/^[\s　]*(?:問[\s　]*[0-9０-９]+|【設問[0-9０-９]+】)[\s　]*/, "") : undefined;
       nodes.push(toi);
       shomon = null;
       edamon = null;
       continue;
     }
-    const sh = atMargin ? parseShomonHeading(r.text) : null;
-    if (sh) {
+    if (c?.kind === "shomon") {
       const parent = toi ?? daimon;
       shomon = {
-        id: `${parent.id}:s${sh.no}`,
+        id: `${parent.id}:s${c.no}`,
         kind: "shomon",
         parent: parent.id,
         heading: rowRef(r),
-        headingRest: sh.rest,
-        parsed: { no: sh.no },
+        headingRest: c.rest,
+        parsed: { no: c.no },
         source: [r.source],
         contentRows: [],
       };
@@ -117,23 +187,28 @@ function buildDaimon({ setId, d, sectionRows, nodes, diag }) {
       edamon = null;
       continue;
     }
-    const ed = shomon && r.x >= margin - MARGIN_TOLERANCE ? parseEdamonHeading(r.text) : null;
-    if (ed) {
+    if (c?.kind === "edamon") {
+      const parent = shomon ?? toi ?? daimon;
       edamon = {
-        id: `${shomon.id}:e${ed.no}`,
+        id: `${parent.id}:e${c.no}`,
         kind: "edamon",
-        parent: shomon.id,
+        parent: parent.id,
         heading: rowRef(r),
-        headingRest: ed.rest,
-        parsed: { no: ed.no },
+        headingRest: c.rest,
+        parsed: { no: c.no },
         source: [r.source],
         contentRows: [],
       };
+      if (nodes.some((n) => n.id === edamon.id)) {
+        diag.push({ reason: "duplicate-edamon-number", id: edamon.id, page: r.page });
+        edamon.id += `~${r.page}-${r.source.row}`;
+      }
       nodes.push(edamon);
       continue;
     }
     current().contentRows.push(r);
   }
+  if (events.length && next < events.length) diag.push({ reason: "expected-heading-not-found", daimon: d.parsed.no, skipped: events.slice(next), page: null });
 }
 
 /**
@@ -157,6 +232,7 @@ function splitContent(n) {
     if (/。[\s　]*$/.test(n.headingRest)) mode = "body";
   }
   let lastOption = null;
+  let optionSeries = null;
   for (const r of n.contentRows) {
     if (mode === "wordBank") {
       const entries = parseWordBankLine(r.text);
@@ -173,8 +249,9 @@ function splitContent(n) {
       continue;
     }
     const opt = parseOptionLine(r.text);
-    const expected = lastOption ? kanaIndex(lastOption.symbol) + 1 : 0;
-    if (opt && kanaIndex(opt.symbol) === expected && !parseWordBankLine(r.text)?.[1]) {
+    const prevSymbol = options.at(-1)?.symbol ?? null;
+    if (opt && isNextOption(prevSymbol, opt.symbol, optionSeries) && !parseWordBankLine(r.text)?.[1]) {
+      if (prevSymbol === null) optionSeries = OPTION_SERIES.find((ser) => ser[0] === opt.symbol);
       lastOption = { symbol: opt.symbol, text: opt.text, x: r.x, rows: [rowRef(r)] };
       options.push(lastOption);
       mode = "body";

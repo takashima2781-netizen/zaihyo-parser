@@ -6,6 +6,28 @@
 
 export const SETS = {
   "jitsuryoku-1": { title: "実力完成答練 第1回", book: { id: "chokuzen-jitsuryoku", title: "直前対策 実力完成答練" }, daimonNos: [1, 2] },
+  "jitsuryoku-2": { title: "実力完成答練 第2回", book: { id: "chokuzen-jitsuryoku", title: "直前対策 実力完成答練" }, daimonNos: [1, 2] },
+  "jitsuryoku-3": { title: "実力完成答練 第3回", book: { id: "chokuzen-jitsuryoku", title: "直前対策 実力完成答練" }, daimonNos: [1, 2] },
+  "jitsuryoku-4": { title: "実力完成答練 第4回", book: { id: "chokuzen-jitsuryoku", title: "直前対策 実力完成答練" }, daimonNos: [1, 2] },
+  "jitsuryoku-5": { title: "実力完成答練 第5回", book: { id: "chokuzen-jitsuryoku", title: "直前対策 実力完成答練" }, daimonNos: [1, 2] },
+  "jitsuryoku-6": { title: "実力完成答練 第6回", book: { id: "chokuzen-jitsuryoku", title: "直前対策 実力完成答練" }, daimonNos: [1, 2] },
+  "yosou-1": { title: "直前予想答練 第1回", book: { id: "chokuzen-yosou", title: "直前対策 直前予想答練" }, daimonNos: [1, 2] },
+  "yosou-2": { title: "直前予想答練 第2回", book: { id: "chokuzen-yosou", title: "直前対策 直前予想答練" }, daimonNos: [1, 2] },
+  "yosou-3": { title: "直前予想答練 第3回", book: { id: "chokuzen-yosou", title: "直前対策 直前予想答練" }, daimonNos: [1, 2] },
+  "koukai-moshi": { title: "公開模試", book: { id: "chokuzen-moshi", title: "直前対策 公開模試" }, daimonNos: [1, 2] },
+  "jokyu-1": { title: "上級演習 第1回", book: { id: "jokyu-enshu", title: "上級 演習" }, daimonNos: [1, 2] },
+  "jokyu-2": { title: "上級演習 第2回", book: { id: "jokyu-enshu", title: "上級 演習" }, daimonNos: [1, 2] },
+  "jokyu-3": { title: "上級演習 第3回", book: { id: "jokyu-enshu", title: "上級 演習" }, daimonNos: [1, 2] },
+  "jokyu-4": { title: "上級演習 第4回", book: { id: "jokyu-enshu", title: "上級 演習" }, daimonNos: [1, 2] },
+  "jokyu-5": { title: "上級演習 第5回", book: { id: "jokyu-enshu", title: "上級 演習" }, daimonNos: [1, 2] },
+  "jokyu-6": { title: "上級演習 第6回", book: { id: "jokyu-enshu", title: "上級 演習" }, daimonNos: [1, 2] },
+  "jokyu-7": { title: "上級演習 第7回", book: { id: "jokyu-enshu", title: "上級 演習" }, daimonNos: [1, 2] },
+  "jokyu-8": { title: "上級演習 第8回", book: { id: "jokyu-enshu", title: "上級 演習" }, daimonNos: [1, 2] },
+  "jokyu-9": { title: "上級演習 第9回", book: { id: "jokyu-enshu", title: "上級 演習" }, daimonNos: [1, 2] },
+  "jokyu-10": { title: "上級演習 第10回", book: { id: "jokyu-enshu", title: "上級 演習" }, daimonNos: [1, 2] },
+  "kiso-2-test": { title: "基礎マスター No.2 実力テスト", book: { id: "kiso-test", title: "基礎マスター 実力テスト" }, daimonNos: [1, 2] },
+  "kiso-3-test": { title: "基礎マスター No.3 実力テスト", book: { id: "kiso-test", title: "基礎マスター 実力テスト" }, daimonNos: [1, 2] },
+  "kiso-4-test": { title: "基礎マスター No.4 実力テスト", book: { id: "kiso-test", title: "基礎マスター 実力テスト" }, daimonNos: [1, 2] },
 };
 
 export function getSet(id) {
