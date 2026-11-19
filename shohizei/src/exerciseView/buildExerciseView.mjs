@@ -768,55 +768,88 @@ function textExercises(structure, figuresById, bookTitle, diag) {
       const sectionNode = structureNode(`${bookId}:${session.parsed.no}:${theme.parsed.no}`, `${session.parsed.raw} ${themeTitle}`);
       for (const sec of theme.children) {
         const title = [sec.parsed.codeRaw, sec.parsed.titleRaw].filter(Boolean).join(" ");
-        const content = [];
-        let run = [];
-        const flush = () => {
-          // 段落のつながり・字下げは位置から決める（readingLayout.mjs）
-          const layout = layoutReadingLines(run);
-          if (run.length)
-            content.push({
-              kind: "lines",
-              lines: run.map((b, i) => ({
-                ...richLine(b, layout[i].depth),
-                continues: layout[i].continues,
-                ...(layout[i].rowJoin ? { rowJoin: true } : {}),
-                ...(layout[i].indent ? { indent: layout[i].indent } : {}),
-                heading: b.style === "heading",
-              })),
-            });
-          run = [];
-        };
-        for (const b of sec.blocks) {
-          if (b.kind === "line") run.push(b);
-          else {
-            flush();
-            const img = figuresById.get(b.id);
-            if (!img) {
-              diag.push({ reason: "text-figure-missing", figure: b.id });
-              continue;
-            }
-            content.push({ kind: "figure", src: `data:image/jpeg;base64,${img.jpegBase64}`, width: img.width, height: img.height, page: b.page });
-          }
-        }
-        flush();
-        if (content.length === 0) continue;
+        // ユーザーの要望（2026-11-19）: 節（N-N）の中の ❶❷… の見出しごとに1ページにする。
+        // 全体像を見失わないよう、どの本・テーマ・節の、何番目の見出しかを readingMeta に持たせる。
+        const parts = splitAtNumberedHeadings(sec.blocks);
+        const outline = parts.map((pt) => pt.heading);
         const topicNode = structureNode(sec.stableId, title);
-        const ex = baseExercise({
-          id: `${sec.stableId}:reading`,
-          type: "reading",
-          stableId: sec.stableId,
-          structure: { theme: themeNode, section: sectionNode, topic: topicNode },
-          structurePath: [themeNode, sectionNode, topicNode].map((n) => n.structureNodeId),
-          prompt: rawSpan(title, sec.source[0], sec.id),
-          instructionRaw: null,
-          provenance,
+        parts.forEach((pt, k) => {
+          const content = readingContentOf(pt.blocks, figuresById, diag);
+          if (content.length === 0) return;
+          // 見出しが1つも無い節は、これまでどおり節で1ページ（学習記録のキーも変えない）
+          const stableId = parts.length === 1 ? sec.stableId : `${sec.stableId}:part-${k + 1}`;
+          const ex = baseExercise({
+            id: `${stableId}:reading`,
+            type: "reading",
+            stableId,
+            structure: { theme: themeNode, section: sectionNode, topic: topicNode },
+            structurePath: [themeNode, sectionNode, topicNode].map((n) => n.structureNodeId),
+            prompt: rawSpan(pt.heading ? `${title} ${pt.heading}` : title, sec.source[0], sec.id),
+            instructionRaw: null,
+            provenance,
+          });
+          ex.readingContent = content;
+          ex.readingMeta = {
+            bookTitle,
+            themeTitle: `${session.parsed.raw} ${themeTitle}`.trim(),
+            sectionTitle: title,
+            partTitle: pt.heading,
+            part: k + 1,
+            parts: parts.length,
+            outline: outline.map((h) => h ?? "（はじめ）"),
+          };
+          exercises.push(ex);
         });
-        ex.readingContent = content;
-        exercises.push(ex);
       }
     }
   }
   return exercises;
+}
+
+// 節の中を ❶❷…（➊➋…）で始まる見出しの行で分ける。最初の見出しより前に中身があれば「はじめ」の部分にする。
+const NUMBERED_HEADING = /^[\s　]*[❶-❿➊-➓]/;
+export function splitAtNumberedHeadings(blocks) {
+  const parts = [{ heading: null, blocks: [] }];
+  for (const b of blocks) {
+    if (b.kind === "line" && b.style === "heading" && NUMBERED_HEADING.test(b.text)) parts.push({ heading: b.text.trim().replace(/\s+/g, " "), blocks: [b] });
+    else parts[parts.length - 1].blocks.push(b);
+  }
+  return parts.filter((pt, k) => k > 0 || pt.blocks.length > 0);
+}
+
+function readingContentOf(blocks, figuresById, diag) {
+  const content = [];
+  let run = [];
+  const flush = () => {
+    // 段落のつながり・字下げは位置から決める（readingLayout.mjs）
+    const layout = layoutReadingLines(run);
+    if (run.length)
+      content.push({
+        kind: "lines",
+        lines: run.map((b, i) => ({
+          ...richLine(b, layout[i].depth),
+          continues: layout[i].continues,
+          ...(layout[i].rowJoin ? { rowJoin: true } : {}),
+          ...(layout[i].indent ? { indent: layout[i].indent } : {}),
+          heading: b.style === "heading",
+        })),
+      });
+    run = [];
+  };
+  for (const b of blocks) {
+    if (b.kind === "line") run.push(b);
+    else {
+      flush();
+      const img = figuresById.get(b.id);
+      if (!img) {
+        diag.push({ reason: "text-figure-missing", figure: b.id });
+        continue;
+      }
+      content.push({ kind: "figure", src: `data:image/jpeg;base64,${img.jpegBase64}`, width: img.width, height: img.height, page: b.page });
+    }
+  }
+  flush();
+  return content;
 }
 
 // 範囲を選ぶ画面で、テーマの上にまとめる教材（structure.book）。ユーザーの要望（2026-11-17、W-7）:

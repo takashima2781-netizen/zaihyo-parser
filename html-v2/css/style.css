@@ -2586,6 +2586,90 @@ details.rich-block[open] > summary.rich-block-label {
 }
 
 /* v2-61: テキストを読む */
+/* v2-68: どこを読んでいるか（上に固定） */
+.reading-where {
+  position: sticky;
+  top: calc(-1 * var(--sp-2));
+  z-index: 2;
+  margin: calc(-1 * var(--sp-2)) 0 var(--sp-3);
+  padding: var(--sp-2) 0 8px;
+  background: var(--surface-card);
+  border-bottom: 1px solid var(--border);
+}
+.reading-where-crumb {
+  font-size: .72rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.reading-where .reading-title {
+  margin: 2px 0 0;
+}
+.reading-outline {
+  margin-top: 6px;
+}
+.reading-outline summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  list-style: none;
+  font-size: .85rem;
+}
+.reading-outline summary::-webkit-details-marker {
+  display: none;
+}
+.reading-outline-current {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: 700;
+  color: var(--accent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.reading-outline-pos {
+  flex: 0 0 auto;
+  font-size: .75rem;
+  color: var(--text-muted);
+}
+.reading-outline-dots {
+  flex: 0 1 auto;
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: 40%;
+  gap: 3px;
+  margin-right: 6px;
+}
+.reading-outline-dots i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--border);
+}
+.reading-outline-dots i.is-before {
+  background: var(--text-faint);
+}
+.reading-outline-dots i.is-current {
+  background: var(--accent);
+}
+.reading-outline ol {
+  margin: 6px 0 0;
+  padding-left: 1.2em;
+  font-size: .82rem;
+  color: var(--text-muted);
+  list-style: none;
+}
+.reading-outline li {
+  padding: 2px 0;
+}
+.reading-outline li.is-current {
+  color: var(--text);
+  font-weight: 700;
+}
 .reading-title {
   font-size: 1rem;
   margin: 0 0 var(--sp-2);

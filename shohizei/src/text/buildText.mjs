@@ -106,8 +106,9 @@ export function buildText({ bookId, doc }) {
         section = null;
         continue;
       }
-      // 節の見出し: テーマの見出しより小さく、19pt以上の「N-N 題名」
-      const sec = size >= 19 && size < (themeSize ?? 21) ? t.match(SECTION) : null;
+      // 節の見出し: 19pt以上で、テーマの見出し以下の大きさの「N-N 題名」
+      // （速修テキストは、節の見出しがテーマの見出しと同じ24ptのページがある）
+      const sec = size >= 19 && size <= (themeSize ?? 21) ? t.match(SECTION) : null;
       if (sec) {
         ensureSection(sec[3].trim() || "unknown", l.source);
         section.parsed.codeRaw = `${toHalfWidthDigits(sec[1])}-${toHalfWidthDigits(sec[2])}`;

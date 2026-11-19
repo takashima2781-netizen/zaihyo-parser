@@ -1188,10 +1188,59 @@ var readingHandler = {
     return ex.prompt ? [ex.prompt] : [];
   },
   renderInteractive: function (ex, context, card, progressPanel, exerciseKey, onNext, zones) {
-    var title = document.createElement("h3");
-    title.className = "reading-title";
-    title.textContent = ex.prompt ? ex.prompt.text : "";
-    zones.question.appendChild(title);
+    // v2-68: どこを読んでいるか（本 › テーマ › 節、節の中の ❶❷… の何番目か）。読み進めても見えるよう上に固定する
+    var meta = ex.readingMeta;
+    if (meta) {
+      var where = document.createElement("div");
+      where.className = "reading-where";
+      var crumb = document.createElement("div");
+      crumb.className = "reading-where-crumb";
+      crumb.textContent = [meta.bookTitle, meta.themeTitle].filter(Boolean).join(" › ");
+      where.appendChild(crumb);
+      var secTitle = document.createElement("h3");
+      secTitle.className = "reading-title";
+      secTitle.textContent = meta.sectionTitle || (ex.prompt ? ex.prompt.text : "");
+      where.appendChild(secTitle);
+      if (meta.parts > 1) {
+        var outline = document.createElement("details");
+        outline.className = "reading-outline";
+        var sum = document.createElement("summary");
+        var cur = document.createElement("span");
+        cur.className = "reading-outline-current";
+        cur.textContent = meta.partTitle || "（はじめ）";
+        sum.appendChild(cur);
+        var pos = document.createElement("span");
+        pos.className = "reading-outline-pos";
+        pos.textContent = meta.part + " / " + meta.parts;
+        sum.appendChild(pos);
+        var dots = document.createElement("span");
+        dots.className = "reading-outline-dots";
+        dots.setAttribute("aria-hidden", "true");
+        for (var d = 1; d <= meta.parts; d++) {
+          var dot = document.createElement("i");
+          if (d === meta.part) dot.className = "is-current";
+          else if (d < meta.part) dot.className = "is-before";
+          dots.appendChild(dot);
+        }
+        sum.appendChild(dots);
+        outline.appendChild(sum);
+        var list = document.createElement("ol");
+        (meta.outline || []).forEach(function (h, i) {
+          var li = document.createElement("li");
+          li.textContent = h;
+          if (i + 1 === meta.part) li.className = "is-current";
+          list.appendChild(li);
+        });
+        outline.appendChild(list);
+        where.appendChild(outline);
+      }
+      zones.question.appendChild(where);
+    } else {
+      var title = document.createElement("h3");
+      title.className = "reading-title";
+      title.textContent = ex.prompt ? ex.prompt.text : "";
+      zones.question.appendChild(title);
+    }
     (ex.readingContent || []).forEach(function (part) {
       if (part.kind === "figure") {
         var fig = document.createElement("figure");
