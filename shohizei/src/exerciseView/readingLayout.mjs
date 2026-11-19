@@ -47,9 +47,28 @@ function mode(values) {
  * 戻り値: 行ごとの { continues, rowJoin, depth, indent }（lines と同じ順・同じ数）。
  */
 export function layoutReadingLines(lines) {
+  // ページの右端は本文の行だけで決める（見出し「理論：重要度 ★★★」などは本文より右まで出ていることがあり、
+  // それで決めると本文の行がどれも右端に届かず、折り返しがつながらなかった）
   const rightEdge = new Map();
-  for (const l of lines) rightEdge.set(pageKey(l), Math.max(rightEdge.get(pageKey(l)) ?? 0, bboxOf(l)[2]));
-  const reachesRight = (l) => bboxOf(l)[2] >= (rightEdge.get(pageKey(l)) ?? Infinity) - 12;
+  for (const l of lines) if (l.style !== "heading") rightEdge.set(pageKey(l), Math.max(rightEdge.get(pageKey(l)) ?? 0, bboxOf(l)[2]));
+  for (const l of lines) if (!rightEdge.has(pageKey(l))) rightEdge.set(pageKey(l), bboxOf(l)[2]);
+  // 枠の中や図の横など、本文より狭い所の文章: まわり（上下60pt以内で、書き出し位置が±20pt以内）の本文の行の
+  // 右端で最も右のものを、その所の右端とする。3行以上がその右端にそろっている（折り返している文章）ときだけ使う
+  // （短い項目を並べただけのところで、いちばん長い項目を「右端まで届いた」と取り違えないため）
+  const body = lines.filter((l) => l.style !== "heading");
+  const localEdge = (l) => {
+    const [x0, y0] = bboxOf(l);
+    const near = body.filter((m) => pageKey(m) === pageKey(l) && Math.abs(bboxOf(m)[1] - y0) <= 60 && Math.abs(bboxOf(m)[0] - x0) <= 20);
+    if (near.length < 3) return null;
+    const edge = Math.max(...near.map((m) => bboxOf(m)[2]));
+    const aligned = near.filter((m) => bboxOf(m)[2] >= edge - 6).length;
+    return aligned >= 3 ? edge : null;
+  };
+  const reachesRight = (l) => {
+    if (bboxOf(l)[2] >= (rightEdge.get(pageKey(l)) ?? Infinity) - 12) return true;
+    const edge = localEdge(l);
+    return edge != null && bboxOf(l)[2] >= edge - 6;
+  };
 
   // 1) 行のつながり
   const out = lines.map(() => ({ continues: false, rowJoin: false, depth: 0, indent: null }));
@@ -73,7 +92,12 @@ export function layoutReadingLines(lines) {
     const canContinue = prev && !heading && prev.style !== "heading" && !startsWithMarker(text) && paraStart >= 0;
     // 折り返しの続きは、段落の1行目より大きく右へは下がらない（※の注の2行目は1文字ほど右）
     const notFarRight = paraStart >= 0 && bboxOf(l)[0] <= bboxOf(lines[paraStart])[0] + 1.5 * CHAR;
-    if (canContinue && notFarRight && (reachesRight(prev) || parenDepth > 0)) {
+    // 前の行が「。」で終わるとき: 次の行が1文字ほど下がって始まる（段落の1行目の字下げ）か、前の行が
+    // 狭い所の右端に届いただけなら、文がちょうど右端で終わった段落の終わりとみなす
+    const prevEndsSentence = prev && /。[\s　]*$/.test(textOf(prev));
+    const pageEdgeReached = prev && bboxOf(prev)[2] >= (rightEdge.get(pageKey(prev)) ?? Infinity) - 12;
+    const newParaAfterSentence = prevEndsSentence && (bboxOf(l)[0] >= bboxOf(prev)[0] + CHAR / 2 || !pageEdgeReached);
+    if (canContinue && notFarRight && !newParaAfterSentence && (reachesRight(prev) || parenDepth > 0)) {
       out[i].continues = true;
     } else {
       paraStart = i;

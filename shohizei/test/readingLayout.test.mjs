@@ -36,3 +36,42 @@ test("読む: 同じ高さで右隣にある文字は、表のように1行に�
   assert.equal(out[2].rowJoin, true);
   assert.equal(out[3].continues, false);
 });
+
+test("読む: 右端は本文の行で決める（本文より右まで出た見出しがあっても、折り返しをつなぐ）", () => {
+  const out = layoutReadingLines([
+    L("理論：重要度", 343, 124, 460, "heading"),
+    L("あいうえおかきくけこ", 96, 178, 447),
+    L("さしすせそ。", 87, 196, 279),
+  ]);
+  assert.equal(out[2].continues, true);
+});
+
+test("読む: 枠の中など狭い所でも、3行以上が同じ右端にそろっていれば、そこを右端として折り返しをつなぐ", () => {
+  const out = layoutReadingLines([
+    L("本文の行", 96, 100, 456),
+    L("枠の中の文章の一行目", 112, 200, 380),
+    L("枠の中の文章の二行目", 103, 218, 380),
+    L("枠の中の文章の三行目", 103, 236, 380),
+    L("おわり。", 103, 254, 200),
+  ]);
+  assert.deepEqual(out.slice(1).map((o) => o.continues), [false, true, true, true]);
+});
+
+test("読む: 短い項目を並べただけのところは、いちばん長い項目でもつながない", () => {
+  const out = layoutReadingLines([
+    L("本文の行", 96, 100, 456),
+    L("第１段階…あいうえお", 112, 200, 300),
+    L("第２段階…かき", 112, 218, 240),
+    L("第３段階…くけこさし", 112, 236, 320),
+  ]);
+  assert.deepEqual(out.slice(1).map((o) => o.continues), [false, false, false]);
+});
+
+test("読む: 「。」で右端に届いた行の次が1文字下がっていれば、新しい段落", () => {
+  const out = layoutReadingLines([
+    L("あいうえおかきくけこ", 123, 100, 456),
+    L("さしすせそたちつてと。", 114, 118, 456),
+    L("なにぬねの", 123, 136, 300),
+  ]);
+  assert.deepEqual(out.map((o) => o.continues), [false, true, false]);
+});
