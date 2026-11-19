@@ -123,6 +123,25 @@ export function layoutReadingLines(lines) {
   }
 
   // 3) 段落ごとの字下げ
+  // 2行以上の段落の左端（2行目の書き出し位置）を、ページごとに集めておく。1行だけの段落は自分では左端が
+  // 分からないので、近く（上下80pt以内）の段落の左端からちょうど1文字下がって始まっていれば、その段落と
+  // 同じ左端で1行目を下げたもの（ふつうの段落）とみなす（枠の中の「したがって、…」の1行の段落など）
+  const knownLefts = [];
+  for (let i = 0; i < lines.length; ) {
+    let j = i + 1;
+    while (j < lines.length && out[j].continues) j += 1;
+    const second = lines.slice(i + 1, j).find((l, k) => !out[i + 1 + k].rowJoin && pageKey(l) === pageKey(lines[i]));
+    if (second && lines[i].style !== "heading") knownLefts.push({ page: pageKey(lines[i]), y: bboxOf(lines[i])[1], x: bboxOf(second)[0] });
+    i = j;
+  }
+  const nearbyLeftFor = (first) => {
+    const fx = bboxOf(first)[0];
+    const fy = bboxOf(first)[1];
+    const hits = knownLefts.filter((k) => k.page === pageKey(first) && Math.abs(k.y - fy) <= 80 && Math.abs(fx - CHAR - k.x) <= 3);
+    if (!hits.length) return null;
+    hits.sort((a, b) => Math.abs(a.y - fy) - Math.abs(b.y - fy));
+    return hits[0].x;
+  };
   for (let i = 0; i < lines.length; ) {
     let j = i + 1;
     while (j < lines.length && out[j].continues) j += 1;
@@ -138,6 +157,9 @@ export function layoutReadingLines(lines) {
       left = bboxOf(second)[0];
       if (firstX - left > CHAR / 2) indent = "first";
       else if (left - firstX > CHAR / 2) indent = "hanging";
+    } else if (!startsWithMarker(textOf(first)) && nearbyLeftFor(first) != null) {
+      left = nearbyLeftFor(first);
+      indent = "first";
     } else if (firstX - base > CHAR / 2 && firstX - base <= 1.5 * CHAR && !startsWithMarker(textOf(first))) {
       // 1行だけの段落で、1文字分だけ下がっているものは、ふつうの段落の1行目の字下げ
       left = base;

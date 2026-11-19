@@ -75,3 +75,16 @@ test("読む: 「。」で右端に届いた行の次が1文字下がってい�
   ]);
   assert.deepEqual(out.map((o) => o.continues), [false, true, false]);
 });
+
+test("読む: 1行だけの段落が、近くの段落の左端から1文字下がって始まっていれば、同じ左端の段落にする", () => {
+  const out = layoutReadingLines([
+    L("本文の行", 87, 100, 456),
+    L("枠の中の文章の一行目", 112, 251, 450),
+    L("枠の中の文章の二行目", 103, 269, 300),
+    L("したがって、…。", 112, 305, 430),
+  ]);
+  assert.equal(out[2].continues, true);
+  assert.equal(out[3].continues, false);
+  assert.equal(out[3].depth, out[1].depth);
+  assert.equal(out[3].indent, "first");
+});
