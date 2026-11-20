@@ -245,7 +245,7 @@ var multiBlankHandler = {
         var revealQText = document.createElement("p");
         revealQText.className = "question-text";
         if (revealQuestionSpan) {
-          EVv2.appendTextWithHeadingMarkers(revealQText, revealQuestionSpan.text);
+          EVv2.appendMarkedText(revealQText, revealQuestionSpan);
         } else {
           revealQText.textContent = "(問題文なし)";
         }
@@ -450,7 +450,7 @@ var multiBlankHandler = {
     var splitQText = document.createElement("p");
     splitQText.className = "question-text";
     if (choiceQuestionSpan) {
-      EVv2.appendTextWithHeadingMarkers(splitQText, choiceQuestionSpan.text);
+      EVv2.appendMarkedText(splitQText, choiceQuestionSpan);
     } else {
       splitQText.textContent = "(問題文なし)";
     }

@@ -5,6 +5,7 @@
 
 import { documentRows } from "../common/rows.mjs";
 import { buildAnswerKey, circleMarks } from "./answerKey.mjs";
+import { attachUnderlines, underlineSegments } from "./underlines.mjs";
 import { formCandidates } from "./forms.mjs";
 import { buildGuidance } from "./guidance.mjs";
 import { buildProblemTree, nodeKey, unitKey } from "./problem.mjs";
@@ -28,7 +29,10 @@ export function buildExam({ set, problemDoc, sheetDoc, answerDoc }) {
   });
   // 問題の見出しは、解答に出てくる見出しの並びと照らして見つける（字下げの位置は回ごとにまちまち）
   const expectedPaths = new Map(key.daimons.map((d) => [d.daimon, d.units.map((u) => u.path)]));
-  const problem = buildProblemTree({ setId: set.id, rows: documentRows(problemDoc), daimonNos: set.daimonNos, expectedPaths });
+  const problemRows = documentRows(problemDoc);
+  const problem = buildProblemTree({ setId: set.id, rows: problemRows, daimonNos: set.daimonNos, expectedPaths });
+  // 「上記下線部」の問い: 問題PDFの下線（行の下の細い横線）を、行の文字の範囲として残す
+  attachUnderlines(problem.nodes, problemRows, underlineSegments(problemDoc));
 
   const nodes = problem.nodes;
   const children = new Map();

@@ -50,27 +50,142 @@ function isDataRowBreak(r, prev) {
   );
 }
 
+/** 行の原文 → 表示の文字（displayText と同じ）と、原文の各文字が表示の何文字目になるか（消えた空白は -1）。 */
+function displayWithMap(raw) {
+  const map = [];
+  let out = "";
+  let pendingSpace = false;
+  for (let i = 0; i < raw.length; i++) {
+    if (/[\s　]/.test(raw[i])) {
+      map.push(-1);
+      if (out) pendingSpace = true;
+      continue;
+    }
+    if (pendingSpace) out += " ";
+    pendingSpace = false;
+    map.push(out.length);
+    out += raw[i];
+  }
+  return { text: out, map };
+}
+
 /**
- * PDF の行の並び → 段落ごとにつないだ文。新しい段落は、行頭の項番号・字下げで見分ける。
+ * PDF の行の並び → 段落ごとにつないだ文と、下線の範囲（marks）。新しい段落は、行頭の項番号・字下げで見分ける。
  * opts.keepTableRows のときは、表の行（前の行か自分が表の行・左端が大きく違う行・金額で終わる行の次）もつながない（計算の資料）。
+ * 行の underlines（教材構造の下線の範囲）は、つないだ文の中の位置に直して marks にする。
  */
-export function joinRows(rows, { keepTableRows = false } = {}) {
-  const paras = [];
+export function joinRowsMarked(rows, { keepTableRows = false } = {}) {
+  let text = "";
+  const marks = [];
   let prev = null;
-  for (const r of rows) {
-    const t = displayText(r.text);
-    if (!t) continue;
+  for (const r of placeUnderlineLabels(rows)) {
+    const d = displayWithMap(r.text);
+    if (!d.text) continue;
     const startsNew =
       !prev ||
       r.paragraphStart ||
       PARAGRAPH_START.test(r.text) ||
       (keepTableRows && isDataRowBreak(r, prev)) ||
       (/[。」）)]$/.test(displayText(prev.text)) && r.x > prev.x + 4);
-    if (startsNew) paras.push(t);
-    else paras[paras.length - 1] += t;
+    if (startsNew && prev) text += "\n";
+    const base = text.length;
+    text += d.text;
+    for (const u of r.underlines ?? []) {
+      const idx = d.map.slice(u.start, u.end).filter((x) => x >= 0);
+      if (!idx.length) continue;
+      const start = base + idx[0];
+      const end = base + idx.at(-1) + 1;
+      // 前の行から続く下線（行をまたぐ下線）は1つにつなぐ
+      const last = marks.filter((m) => m.kind === "underline").at(-1);
+      if (last && last.end === start && !last.labeled) last.end = end;
+      else marks.push({ start, end, kind: "underline" });
+      if (u.label) {
+        const li = d.map.slice(u.end, u.end + u.label.length).filter((x) => x >= 0);
+        if (li.length) {
+          marks.at(-1).labeled = true;
+          marks.push({ start: base + li[0], end: base + li.at(-1) + 1, kind: "underline-label" });
+        }
+      }
+    }
     prev = r;
   }
-  return paras.join("\n");
+  for (const m of marks) {
+    m.text = text.slice(m.start, m.end);
+    delete m.labeled;
+  }
+  marks.sort((a, b) => a.start - b.start);
+  return { text, marks };
+}
+
+/**
+ * 下線部の札だけの行「(a)」（教材では下線のすぐ下にある）を、札の付く下線の直後に置く。
+ * 札の付く行が同じ並びに無ければ、札の行はそのまま（元の位置）に残す。
+ */
+function placeUnderlineLabels(rows) {
+  const keyOf = (r) => (r.source ? `${r.source.page}:${r.source.row}` : null);
+  const present = new Set(rows.map(keyOf));
+  const targetKey = (r) => (r.underlineLabelOf ? `${r.underlineLabelOf.page}:${r.underlineLabelOf.row}` : null);
+  const byKey = new Map(rows.map((r, i) => [keyOf(r), i]));
+  // 行末まで続く下線が次の行の頭へ続くとき（2行にまたがる下線）は、続きの下線の後ろに札を置く
+  const resolve = (k, index) => {
+    for (let guard = 0; guard < 5; guard++) {
+      const i = byKey.get(k);
+      const r = rows[i];
+      const u = r?.underlines?.[index];
+      const next = rows.slice(i + 1).find((x) => !x.underlineLabelOf && displayText(x.text));
+      const cont = next?.underlines?.[0];
+      if (!u || r.text.slice(u.end).trim() || !cont || next.text.slice(0, cont.start).trim()) break;
+      k = keyOf(next);
+      index = 0;
+    }
+    return { k, index };
+  };
+  const labelsByTarget = new Map();
+  for (const r of rows) {
+    const k0 = targetKey(r);
+    if (!k0 || !present.has(k0)) continue;
+    const { k, index } = resolve(k0, r.underlineLabelOf.index);
+    if (!labelsByTarget.has(k)) labelsByTarget.set(k, []);
+    labelsByTarget.get(k).push({ index, label: r.text.trim() });
+  }
+  if (!labelsByTarget.size) return rows;
+  const out = [];
+  for (const r of rows) {
+    const k = targetKey(r);
+    if (k && present.has(k)) continue; // 下線の後ろへ移した札の行
+    const labels = labelsByTarget.get(keyOf(r));
+    if (!labels) {
+      out.push(r);
+      continue;
+    }
+    let text = r.text;
+    const underlines = r.underlines.map((u) => ({ ...u }));
+    for (const l of [...labels].sort((a, b) => underlines[b.index].end - underlines[a.index].end)) {
+      const u = underlines[l.index];
+      if (!u || u.label) continue;
+      const at = u.end;
+      text = text.slice(0, at) + l.label + text.slice(at);
+      for (const x of underlines) if (x !== u && x.start >= at) {
+        x.start += l.label.length;
+        x.end += l.label.length;
+      }
+      u.label = l.label;
+    }
+    out.push({ ...r, text, underlines });
+  }
+  return out;
+}
+
+export function joinRows(rows, opts) {
+  return joinRowsMarked(rows, opts).text;
+}
+
+/** 行の並び → 原文の参照（rawSpan）。下線があれば marks を付ける（アプリが下線を引く）。 */
+function rowsSpan(rows, source, nodeId, opts) {
+  const { text, marks } = joinRowsMarked(rows, opts);
+  const span = rawSpan(text, source, nodeId);
+  if (marks.length) span.marks = marks;
+  return span;
 }
 
 function richFromRows(rows, opts) {
@@ -100,11 +215,13 @@ function questionLabel(chain) {
     .join(" ");
 }
 
-/** 問題文: 問・小問・枝問の指示文と本文（記号つきの文は opts.withLabeled のときだけ）。 */
+/**
+ * 問題文: 大問・問・小問・枝問の指示文と本文（記号つきの文は opts.withLabeled のときだけ）。
+ * 大問は見出し（〔第一問〕）を出さず、指示文と本文（「次の文章は…から抜粋したものである」と抜粋）だけ。
+ */
 function contextRows(chain, { withLabeled = true, withOwnPassage = true, withOptions = false } = {}) {
   const rows = [];
   chain.forEach((n, i) => {
-    if (n.kind === "daimon") return;
     const own = i === chain.length - 1;
     // 節の境目（指示文・本文・記号つきの文）では必ず段落を改める（joinRows が見る印）
     const mark = (rs) => rs.map((r, k) => (k === 0 ? { ...r, paragraphStart: true } : r));
@@ -225,7 +342,7 @@ function baseExercise(ctx, { id, type, stableIds, prompt = null, body = null, in
 
 function promptOf(ctx, opts) {
   const rows = contextRows(ctx.chain, opts);
-  return rawSpan(joinRows(rows), rows[0]?.source, ctx.q.id);
+  return rowsSpan(rows, rows[0]?.source, ctx.q.id);
 }
 
 function findWordBank(chain) {
@@ -361,7 +478,7 @@ function chooseManyExercises(ctx, count, diag) {
     return chooseAsRecall(ctx, diag, "choose-many-judgements-mismatch");
   }
   // 指示欄: 問・小問の指示文と本文。並べ替え用の記号つきの文（Ａ～Ｅ）は、選択肢の〇×には関係しないので出さない
-  const instruction = rawSpan(joinRows(contextRows(ctx.chain, { withLabeled: false })), q.instruction[0]?.source, q.id);
+  const instruction = rowsSpan(contextRows(ctx.chain, { withLabeled: false }), q.instruction[0]?.source, q.id);
   return q.options.map((o) => {
     const j = judgements.get(o.symbol);
     const stable = `zexam:${q.id}:option-${o.symbol}`;
@@ -544,8 +661,8 @@ function judgeStatementExercises(ctx, diag) {
     id: `${stable}:tf`,
     type: "true_false",
     stableIds: [stable],
-    body: rawSpan(joinRows(q.passage), q.passage[0].source, q.id),
-    instructionRaw: rawSpan(joinRows(contextRows(ctx.chain, { withOwnPassage: false })), q.instruction[0]?.source, q.id),
+    body: rowsSpan(q.passage, q.passage[0].source, q.id),
+    instructionRaw: rowsSpan(contextRows(ctx.chain, { withOwnPassage: false }), q.instruction[0]?.source, q.id),
   });
   const mark = marks[0] === "×" ? "×" : "○";
   ex.judgement = { symbolRaw: rawSpan(mark, slots[0].sources[0], q.id), answerBodyRaw: reason ? rawSpan(displayText(reason), slots[0].sources[0], q.id) : null };
@@ -628,13 +745,13 @@ function termsExercises(ctx, diag) {
   }
   // 指示欄には問・小問の指示文を出す。空欄つきで本文欄に出す本文（passageOwner の本文）は重ねて出さない
   const shownInBody = new Set((passageOwner?.passage ?? []).map((r) => r.source));
-  const intro = joinRows(contextRows(ctx.chain).filter((r) => !shownInBody.has(r.source)));
+  const introRows = contextRows(ctx.chain).filter((r) => !shownInBody.has(r.source));
   const ex = baseExercise(ctx, {
     id: `${stableBase}:multi`,
     type: "multi_blank",
     stableIds: units.map((u) => u.id),
     body: rawSpan(bodyText, bodySource, q.id),
-    instructionRaw: rawSpan(intro, q.instruction[0]?.source, q.id),
+    instructionRaw: rowsSpan(introRows, q.instruction[0]?.source, q.id),
   });
   ex.structureType = "shared_body_blanks";
   ex.answerForm = "blank";

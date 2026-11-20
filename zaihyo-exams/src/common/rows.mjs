@@ -32,6 +32,7 @@ function joinSpans(spans) {
       const touchesSpace = /[\s　]$/.test(out) || /^[\s　]/.test(s.text);
       if (gap > s.size * 0.5 && !touchesSpace) out += " ";
     }
+    s.start = out.length; // 行の文字の中で、この span が始まる位置（下線の位置を文字に当てるのに使う）
     out += s.text;
     prev = s;
   }
@@ -62,7 +63,7 @@ export function pageRows(doc, page) {
       Math.max(...g.spans.map((s) => s.bbox[2])),
       Math.max(...g.spans.map((s) => s.bbox[3])),
     ];
-    const spansOut = g.spans.map((s) => ({ text: s.text, bbox: s.bbox, size: s.size }));
+    const spansOut = g.spans.map((s) => (s.chars ? { text: s.text, bbox: s.bbox, size: s.size, chars: s.chars } : { text: s.text, bbox: s.bbox, size: s.size }));
     const text = joinSpans(spansOut);
     return {
       page: page.page,

@@ -2,7 +2,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildExamExercises, GENERATOR, joinRows } from "../src/exerciseView/buildExerciseView.mjs";
+import { buildExamExercises, GENERATOR, joinRows, joinRowsMarked } from "../src/exerciseView/buildExerciseView.mjs";
 import { mergeExerciseViews, POINTCHECK_BOOK } from "../src/merge/merge.mjs";
 
 const src = (row, page = 1, doc = "A") => ({ doc, page, row, bbox: [80, row * 18, 500, row * 18 + 10] });
@@ -222,4 +222,20 @@ test("本文の空欄が表の中で番号の順に並んでいなくても、�
   const [ex] = buildExamExercises(structureWith(q, { toi: { passage: [row("表 ② の欄", 2), row("表 ① の欄", 3)], blankLabels: ["②", "①"] } }));
   assert.equal(ex.exerciseType, "multi_blank");
   assert.deepEqual(ex.bodySegments.filter((s) => s.type === "blank").map((s) => s.label), ["②", "①"]);
+});
+
+test("下線: つないだ文の中の位置に直し、下線部の札「(a)」は下線の後ろに置く（2行にまたがる下線はつなぐ）", () => {
+  const { text, marks } = joinRowsMarked([
+    { text: "8. 期末の甲は乙として控", x: 80, source: src(1), underlines: [{ start: 6, end: 13, text: "甲は乙として控", line: [0, 0, 0] }] },
+    { text: "(c)", x: 120, source: src(2), underlineLabelOf: { page: 1, row: 1, index: 0 } },
+    { text: "除する形式。", x: 90, source: src(3), underlines: [{ start: 0, end: 5, text: "除する形式" }] },
+  ]);
+  assert.equal(text, "8. 期末の甲は乙として控除する形式(c)。");
+  assert.deepEqual(
+    marks.map((m) => [m.kind, m.text]),
+    [
+      ["underline", "甲は乙として控除する形式"],
+      ["underline-label", "(c)"],
+    ],
+  );
 });

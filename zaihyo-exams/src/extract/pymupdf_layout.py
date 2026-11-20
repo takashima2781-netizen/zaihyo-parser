@@ -43,23 +43,32 @@ def rounded(values):
 def extract_page(page):
     lines = []
     text_dict = page.get_text("dict")
+    # 文字ごとの左右の位置（下線・〇の印を文字に当てるのに使う）。同じ並びの rawdict から取り、
+    # 文字の数が span の文字と合うときだけ付ける（span の文字そのものは dict のまま）
+    raw_dict = page.get_text("rawdict")
     for block_index, block in enumerate(text_dict["blocks"]):
         if block.get("type") != 0:
             continue
-        for line in block.get("lines", []):
+        raw_block = raw_dict["blocks"][block_index] if block_index < len(raw_dict["blocks"]) else {}
+        for line_index, line in enumerate(block.get("lines", [])):
+            raw_lines = raw_block.get("lines", [])
+            raw_line = raw_lines[line_index] if line_index < len(raw_lines) else {}
             spans = []
-            for span in line.get("spans", []):
+            for span_index, span in enumerate(line.get("spans", [])):
                 if span["text"] == "":
                     continue
-                spans.append(
-                    {
-                        "text": span["text"],
-                        "bbox": rounded(span["bbox"]),
-                        "size": round(span["size"], 2),
-                        "font": span["font"],
-                        "flags": span["flags"],
-                    }
-                )
+                out = {
+                    "text": span["text"],
+                    "bbox": rounded(span["bbox"]),
+                    "size": round(span["size"], 2),
+                    "font": span["font"],
+                    "flags": span["flags"],
+                }
+                raw_spans = raw_line.get("spans", [])
+                raw_chars = raw_spans[span_index].get("chars", []) if span_index < len(raw_spans) else []
+                if "".join(c["c"] for c in raw_chars) == span["text"]:
+                    out["chars"] = [[round(c["bbox"][0], 1), round(c["bbox"][2], 1)] for c in raw_chars]
+                spans.append(out)
             if spans:
                 lines.append(
                     {

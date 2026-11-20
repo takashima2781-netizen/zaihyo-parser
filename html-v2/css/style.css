@@ -2722,3 +2722,15 @@ details.rich-block[open] > summary.rich-block-label {
 .reading-done-btn {
   width: 100%;
 }
+
+/* v2-70: 問題文の下線（「上記下線部(a)」の問い）と、下線部の札「(a)」 */
+.text-underline {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+.text-underline-label {
+  font-size: 0.75em;
+  margin-left: 1px;
+  color: var(--text-muted, inherit);
+}

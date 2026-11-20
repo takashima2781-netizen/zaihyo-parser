@@ -56,6 +56,38 @@ function appendTextWithHeadingMarkers(container, text) {
 }
 EVv2.appendTextWithHeadingMarkers = appendTextWithHeadingMarkers;
 
+// v2-70: 原文の参照（rawSpan）に下線の範囲（marks: [{start, end, kind: "underline"|"underline-label", text}]）が
+// あれば、その範囲に下線を引く（「上記下線部(a)」の問い。札「(a)」は小さく出す）。文字は変えない。
+// 範囲の文字が今の文と合わない（アプリで問題文を編集した後など）ときは、下線を付けずにそのまま出す。
+function appendMarkedText(container, span) {
+  var text = span && typeof span.text === "string" ? span.text : "";
+  var marks = (span && span.marks) || [];
+  var valid =
+    marks.length > 0 &&
+    marks.every(function (m) {
+      return typeof m.start === "number" && typeof m.end === "number" && text.slice(m.start, m.end) === m.text;
+    });
+  if (!valid) {
+    appendTextWithHeadingMarkers(container, text);
+    return;
+  }
+  var sorted = marks.slice().sort(function (a, b) {
+    return a.start - b.start;
+  });
+  var pos = 0;
+  sorted.forEach(function (m) {
+    if (m.start < pos) return;
+    if (m.start > pos) appendTextWithHeadingMarkers(container, text.slice(pos, m.start));
+    var el = document.createElement("span");
+    el.className = m.kind === "underline-label" ? "text-underline-label" : "text-underline";
+    el.textContent = text.slice(m.start, m.end);
+    container.appendChild(el);
+    pos = m.end;
+  });
+  if (pos < text.length) appendTextWithHeadingMarkers(container, text.slice(pos));
+}
+EVv2.appendMarkedText = appendMarkedText;
+
 // v2-7(単一穴埋めの対象マーカー強調)。single_blankの対象空欄が本文中のどのマーカー
 // (①②③...)に対応するかをEVv2.buildBlankMarkerIndex(html-v2/js/blankMarkerIndex.js)の
 // 索引で特定し、対象マーカーだけを強調して表示する。索引に無い場合(該当する
@@ -73,7 +105,7 @@ function appendQuestionBody(container, ex, context, questionSpan) {
       : null;
   var entry = targetBlankUnitId && context && context.blankMarkerIndex ? context.blankMarkerIndex[targetBlankUnitId] : null;
   if (!entry) {
-    appendTextWithHeadingMarkers(container, questionSpan.text);
+    appendMarkedText(container, questionSpan);
     return false;
   }
   var reconstructed = entry.segments
@@ -448,7 +480,7 @@ EVv2.createExerciseCard = function (ex, context, onNext) {
   if (ex.instructionRaw) {
     var instructionLine = document.createElement("p");
     instructionLine.className = "instruction-line";
-    instructionLine.textContent = ex.instructionRaw.text;
+    appendMarkedText(instructionLine, ex.instructionRaw);
     metaSection.appendChild(instructionLine);
   }
 

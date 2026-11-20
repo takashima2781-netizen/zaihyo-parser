@@ -17,6 +17,7 @@ import {
 } from "../src/exam/patterns.mjs";
 import { blanksInPassageRow, buildProblemTree, headingEvents } from "../src/exam/problem.mjs";
 import { buildAnswerKey, circleMarks, classifyUnit, sheetUnits } from "../src/exam/answerKey.mjs";
+import { rowUnderlines, underlineSegments } from "../src/exam/underlines.mjs";
 import { buildGuidance } from "../src/exam/guidance.mjs";
 import { formCandidates } from "../src/exam/forms.mjs";
 import { runStructureChecks } from "../src/gateChecks/gateChecks.mjs";
@@ -269,4 +270,28 @@ test("「いずれかを〇で囲みなさい」: 解答にだけある〇の中
   const slot = key.daimons[0].units[0].slots[0];
   assert.equal(slot.text, "乙法");
   assert.deepEqual(slot.candidates, ["甲法", "乙法"]);
+});
+
+test("下線: 行のすぐ下の細い横線の下の文字を範囲にする。両端が縦線とつながる横線（表の罫線）は下線にしない", () => {
+  const d = {
+    docId: "A",
+    pages: [
+      {
+        page: 1,
+        width: 600,
+        height: 850,
+        lines: [{ block: 0, bbox: [100, 100, 160, 110], spans: [{ text: "甲乙丙丁", bbox: [100, 100, 140, 110], size: 10, chars: [[100, 110], [110, 120], [120, 130], [130, 140]] }] }],
+        drawings: [
+          { rect: [110, 111, 130, 111.5], kinds: ["re"] }, // 乙丙 の下線
+          { rect: [100, 200, 300, 200.5], kinds: ["re"] }, // 表の罫線（両端に縦線）
+          { rect: [100, 190, 100.5, 210], kinds: ["re"] },
+          { rect: [299.5, 190, 300, 210], kinds: ["re"] },
+        ],
+      },
+    ],
+  };
+  const segs = underlineSegments(d);
+  assert.equal(segs.get(1).length, 1);
+  const [row] = pageRows(d, d.pages[0]);
+  assert.deepEqual(rowUnderlines(row, segs).map((u) => [u.start, u.end, u.text]), [[1, 3, "乙丙"]]);
 });

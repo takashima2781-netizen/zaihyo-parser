@@ -49,7 +49,8 @@ export function buildText({ bookId, doc }) {
   for (const page of doc.pages) {
     // ページ付属物（柱・ページ番号・著作権表示）を除いた行
     let lines = page.lines
-      .map((l, i) => ({ text: lineText(l), spans: l.spans, bbox: l.bbox, block: l.block, role: null, source: { doc: doc.docId, page: page.page, line: i, bbox: l.bbox } }))
+      // 文字ごとの位置（chars）は答練の下線にだけ使うので、テキストの教材構造には残さない
+      .map((l, i) => ({ text: lineText(l), spans: l.spans.map(({ chars, ...s }) => s), bbox: l.bbox, block: l.block, role: null, source: { doc: doc.docId, page: page.page, line: i, bbox: l.bbox } }))
       .filter((l) => l.text.trim() !== "")
       .filter((l) => !(l.bbox[1] < 45 && textSize(l) <= 10))
       .filter((l) => !/Copyright|TAC Co\.,?\s*Ltd|All Rights Reserved/.test(l.text))
