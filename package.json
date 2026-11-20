@@ -7,6 +7,7 @@
   "scripts": {
     "parse": "node src/cli/run.mjs",
     "app:sync-data": "node src/cli/sync-exercise-view-to-app.mjs",
-    "app:serve": "node html-v2/serve.mjs"
+    "app:serve": "node html-v2/serve.mjs",
+    "app:copy-to-drive": "sh tools/copy-data-to-drive.sh"
   }
 }
