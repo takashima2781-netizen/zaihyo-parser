@@ -10,6 +10,12 @@
 > （`src/parser/extract.mjs`）。仮想環境を作り直すときは PyMuPDF を 1.28.2 にそろえる
 > （1.26 系では分数の位置合わせのテストが1件落ちることを確認済み）。
 
+> **承認（2026-11-20）**: ユーザー「簿記論の承認は、他の教材が不要としているなら不要で構いません」。
+> 財表・消費税は問題ごとの人の承認を挟まないので、Knowledge 候補も1件ずつの承認は要らない。
+> 新しい候補を作ったら `node scripts/approve-all-candidates.mjs` で一括承認し、`run-teigakuho-exercise.mjs` →
+> `export-exercise-view.mjs` → `../html-v2/data/boki/exercise_view.json` へ置く。同じ仕訳の型の候補が2つ以上ある
+> （同一性の判断が要る）ものと、承認の操作が受け付けないもの（複数のケースの原文をまとめた Knowledge）は、スクリプトが承認せずに名前を出す。
+
 ## Mission
 
 boki-app は、簿記論教材(教科書)を解析し、
