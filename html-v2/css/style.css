@@ -2724,6 +2724,22 @@ details.rich-block[open] > summary.rich-block-label {
   width: 100%;
   height: auto;
 }
+/* v2-71: ダークでは図の白い紙が眩しいので、白黒を入れ替えて暗い地に明るい文字にする
+   （hue-rotate で色味はおおよそ元のまま） */
+:root[data-theme="dark"] .reading-figure {
+  background: var(--surface-raised);
+}
+:root[data-theme="dark"] .reading-figure img {
+  filter: invert(.88) hue-rotate(180deg);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .reading-figure {
+    background: var(--surface-raised);
+  }
+  :root:not([data-theme="light"]) .reading-figure img {
+    filter: invert(.88) hue-rotate(180deg);
+  }
+}
 .reading-done-btn {
   width: 100%;
 }
