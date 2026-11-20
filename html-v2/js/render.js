@@ -169,7 +169,8 @@ EVv2.createRichBlock = function (lines, label, collapsible) {
       p.lastChild.textContent = p.lastChild.textContent.replace(/[ 　]+$/, "");
     }
     // v2-66: 同じ高さの右隣の文字（表のような2列）は、全角の空白を挟んで1行にする
-    if (joinPrev && line.rowJoin) {
+    // v2-72: 「売　掛　金」のように1文字ずつ離して書いた語の続き（rowJoinTight）は、空白を挟まない
+    if (joinPrev && line.rowJoin && !line.rowJoinTight) {
       var gap = document.createElement("span");
       gap.className = "rich-row-gap";
       gap.textContent = "　";

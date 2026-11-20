@@ -88,3 +88,52 @@ test("読む: 1行だけの段落が、近くの段落の左端から1文字下�
   assert.equal(out[3].depth, out[1].depth);
   assert.equal(out[3].indent, "first");
 });
+
+test("読む: 「語 ……説明」の一覧は1項目ずつ新しい行。1文字ずつ離した語（売　掛　金）は空白を挟まずにつなぐ", () => {
+  const out = layoutReadingLines([
+    L("あいうえお ……かきくけこさしすせそたちつてと（なにぬねの。）", 69, 100, 456),
+    L("はひふへ ……まみむめも", 69, 110, 300),
+    L("売", 69, 120, 78),
+    L("掛", 87, 120, 96),
+    L("金 ……やゆよ", 105, 120, 300),
+    L("らりるれろわをんあいうえおかきくけこさしすせそ", 69, 130, 456),
+    L("たちつてと。", 69, 140, 200),
+  ]);
+  assert.deepEqual(out.map((o) => o.continues), [false, false, false, true, true, false, true]);
+  assert.deepEqual(out.map((o) => o.rowJoinTight), [false, false, false, true, true, false, false]);
+});
+
+test("読む: 1文字ずつ離した語の後ろに、間隔の違う次の列があれば、そこは空白を挟む", () => {
+  const out = layoutReadingLines([
+    L("表", 69, 100, 78),
+    L("示", 87, 100, 96),
+    L("目", 105, 100, 114),
+    L("表示区分", 150, 100, 186),
+  ]);
+  assert.deepEqual(out.map((o) => o.rowJoinTight), [false, true, true, false]);
+  assert.equal(out[3].rowJoin, true);
+});
+
+test("読む: 1文字ずつ離した見出しの右の欄（提　出　先　税務署長）は、空白を挟む", () => {
+  const out = layoutReadingLines([
+    L("提", 69, 100, 78),
+    L("出", 87, 100, 96),
+    L("先", 105, 100, 114),
+    L("税務署長", 123, 100, 159),
+  ]);
+  assert.deepEqual(out.map((o) => o.rowJoinTight), [false, true, true, false]);
+});
+
+test("読む: 「語 ……説明」の語は、広く離して書いてあっても（商　　品）空白を挟まずにつなぐ", () => {
+  const out = layoutReadingLines([L("商", 69, 100, 78), L("品 ……あいう", 114, 100, 200)]);
+  assert.equal(out[1].rowJoinTight, true);
+});
+
+test("読む: 「語 ……説明」の説明が右端で折り返し、説明の書き出しにそろえて下がった行は続き", () => {
+  const out = layoutReadingLines([
+    L("あいうえお ……かきくけこさしすせそたちつてとなにぬね", 69, 100, 456),
+    L("のはひふへほ", 150, 110, 200),
+    L("まみむ ……めも", 69, 120, 200),
+  ]);
+  assert.deepEqual(out.map((o) => o.continues), [false, true, false]);
+});

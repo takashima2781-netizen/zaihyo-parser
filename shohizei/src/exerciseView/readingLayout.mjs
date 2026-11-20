@@ -7,6 +7,10 @@
 //                終わっている。ただし行頭が (1)・①・※・・ などの記号なら、必ず新しい段落にする
 //   rowJoin   … 前の行と同じ高さにある右隣の文字（表のような2列の並び）。表示では全角の空白で
 //                つないで1行にする
+//   rowJoinTight … rowJoin のうち、「売　掛　金」のように1文字ずつ離して書いた語の続き。空白を挟まずにつなぐ
+//                （ユーザーの要望 2026-11-20: 「科目 ……説明」の並びが読みにくい）
+// 「現金及び預金 ……説明」のように、短い語のすぐ後ろに「……」が続く行は、語と説明の一覧の1項目とみなし、
+// 前の行が右端まで届いていても新しい段落にする。
 //   depth     … 段落の字下げの深さ（ページの本文の左端からの距離を、ほぼ1文字＝9ptで数える。0〜4）
 //   indent    … "first"（1行目だけ1文字下げる、ふつうの段落）／"hanging"（記号だけ左に出し、
 //                2行目以降をそろえる。※の注など）／null
@@ -15,6 +19,9 @@
 
 const CHAR = 9; // 本文の1文字の幅（pt）
 const MARKER = /^[\s　]*(?:[(（][0-9０-９]{1,2}[)）]|[①-⑳]|[❶-❿➊-➓]|[(（][イロハニホヘトチリヌルｲﾛﾊﾆﾎﾍﾄﾁﾘﾇﾙ][)）]|[イロハニホヘトチリヌル][\s　]|[※・●○◆◇■□▶▷★☆【〔]|[(（]注[0-9０-９]*[)）]|注[0-9０-９]*[\s　.．]|[0-9０-９]{1,2}[.．][\s　]|[0-9０-９]{1,2}[\s　](?=\S))/;
+
+// 語と説明の一覧の1項目: 行頭から12文字以内の語（間の空白は除く）のあとに「……」
+const LEADER_ENTRY = /^[\s　]*(?:[^\s　…][\s　]*){1,12}…{2,}/;
 
 const bboxOf = (l) => l.source.bbox;
 const pageKey = (l) => `${l.source.doc}:${l.source.page}`;
@@ -71,27 +78,51 @@ export function layoutReadingLines(lines) {
   };
 
   // 1) 行のつながり
-  const out = lines.map(() => ({ continues: false, rowJoin: false, depth: 0, indent: null }));
+  const out = lines.map(() => ({ continues: false, rowJoin: false, rowJoinTight: false, depth: 0, indent: null }));
+  // 同じ高さで右隣（表のような2列）かどうかを先に決めておく（行の頭から見て、1行分の文字を知るため）
+  const sameRow = lines.map((l, i) => {
+    const prev = i > 0 ? lines[i - 1] : null;
+    if (!prev || l.style === "heading" || prev.style === "heading" || pageKey(prev) !== pageKey(l)) return false;
+    const [, py0, px1, py1] = bboxOf(prev);
+    const [x0, y0, , y1] = bboxOf(l);
+    return y0 < py1 - 3 && py0 < y1 - 3 && x0 > px1;
+  });
+  const rowTextFrom = (i) => {
+    let t = textOf(lines[i]);
+    for (let k = i + 1; k < lines.length && sameRow[k]; k += 1) t += textOf(lines[k]);
+    return t;
+  };
   let parenDepth = 0;
   let paraStart = -1;
+  let paraIsTerm = false;
   lines.forEach((l, i) => {
     const text = textOf(l);
     const prev = i > 0 ? lines[i - 1] : null;
     const heading = l.style === "heading";
-    if (prev && !heading && prev.style !== "heading" && pageKey(prev) === pageKey(l)) {
-      const [px0, py0, px1, py1] = bboxOf(prev);
-      const [x0, y0] = bboxOf(l);
-      // 同じ高さで右隣（表のような2列）
-      if (y0 < py1 - 3 && py0 < bboxOf(l)[3] - 3 && x0 > px1) {
-        out[i].continues = true;
-        out[i].rowJoin = true;
-        parenDepth = openParens(textOfRange(lines, paraStart, i));
-        return;
+    if (sameRow[i]) {
+      out[i].continues = true;
+      out[i].rowJoin = true;
+      // 1文字ずつ離して書いた語（前のかたまりが漢字・かな1文字で、すぐ右に1〜2文字分の間をあけて続く）
+      // 続く側も1文字（「金 ……」「金××」のように、後ろが漢字・かなでなければよい。「先税務署長」のような表の欄は除く）。
+      // 語の中の間隔はどれも同じなので、2つ目からは前の間隔とほぼ同じときだけ（表の次の列へは続けない）
+      const gap = bboxOf(l)[0] - bboxOf(prev)[2];
+      const prevGap = out[i - 1].rowJoinTight ? bboxOf(prev)[0] - bboxOf(lines[i - 2])[2] : null;
+      // 「語 ……説明」の行の語（「商　　品」のように、長い語に幅をそろえて広く離したもの）は、間隔を問わない
+      let rowStart = i;
+      while (rowStart > 0 && sameRow[rowStart]) rowStart -= 1;
+      const inTermEntry = LEADER_ENTRY.test(rowTextFrom(rowStart));
+      const gapFits = inTermEntry || (prevGap == null ? gap <= 2.5 * CHAR : Math.abs(gap - prevGap) <= 3);
+      if (/^[\s　]*[\u3040-\u30ff\u3400-\u9fff][\s　]*$/.test(textOf(prev)) && /^[\u3040-\u30ff\u3400-\u9fff](?![\u3040-\u30ff\u3400-\u9fff])/.test(text) && gapFits) {
+        out[i].rowJoinTight = true;
       }
+      parenDepth = openParens(textOfRange(lines, paraStart, i));
+      return;
     }
-    const canContinue = prev && !heading && prev.style !== "heading" && !startsWithMarker(text) && paraStart >= 0;
+    const termEntry = LEADER_ENTRY.test(rowTextFrom(i));
+    const canContinue = prev && !heading && prev.style !== "heading" && !startsWithMarker(text) && !termEntry && paraStart >= 0;
     // 折り返しの続きは、段落の1行目より大きく右へは下がらない（※の注の2行目は1文字ほど右）
-    const notFarRight = paraStart >= 0 && bboxOf(l)[0] <= bboxOf(lines[paraStart])[0] + 1.5 * CHAR;
+    // 「語 ……説明」の説明の折り返しは、説明の書き出し（「……」の後ろ）にそろえて右へ下がっていてよい
+    const notFarRight = paraStart >= 0 && (bboxOf(l)[0] <= bboxOf(lines[paraStart])[0] + 1.5 * CHAR || paraIsTerm);
     // 前の行が「。」で終わるとき: 次の行が1文字ほど下がって始まる（段落の1行目の字下げ）か、前の行が
     // 狭い所の右端に届いただけなら、文がちょうど右端で終わった段落の終わりとみなす
     const prevEndsSentence = prev && /。[\s　]*$/.test(textOf(prev));
@@ -101,6 +132,7 @@ export function layoutReadingLines(lines) {
       out[i].continues = true;
     } else {
       paraStart = i;
+      paraIsTerm = termEntry;
     }
     // 段落の頭からこの行までで、閉じていない括弧の数
     parenDepth = openParens(textOfRange(lines, paraStart, i));

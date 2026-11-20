@@ -56,6 +56,7 @@ function readingContentOf(blocks, figuresById, diag) {
           ...richLine(b, layout[i].depth),
           continues: layout[i].continues,
           ...(layout[i].rowJoin ? { rowJoin: true } : {}),
+          ...(layout[i].rowJoinTight ? { rowJoinTight: true } : {}),
           ...(layout[i].indent ? { indent: layout[i].indent } : {}),
           heading: b.style === "heading",
         })),
