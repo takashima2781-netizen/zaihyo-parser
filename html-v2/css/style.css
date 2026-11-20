@@ -2555,6 +2555,8 @@ details.rich-block[open] > summary.rich-block-label {
 }
 .calc-check-btn {
   width: 100%;
+  /* v2-70: 問題文が長いと答えの欄が縦に伸び、ボタンが楕円に膨らんでいた */
+  flex: 0 0 auto;
 }
 
 /* v2-59: 計算問題の判定の選択 */

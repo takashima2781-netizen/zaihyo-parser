@@ -871,7 +871,8 @@ var recallTextHandler = {
 // ---- calculation_steps（計算問題。v2-57、消費税のトレーニング） ----
 //
 // ユーザーの選択（2026-11-17）: 段階ごとに金額を入力して自動で答え合わせ。全部合って正解。
-// ex.calculationSteps: [{ groupLabel, labelRaw, expected: {raw, value} | null, answerTextRaw, workRich }]
+// ex.calculationSteps: [{ groupLabel, labelRaw, expected: {raw, value, unit?} | null, answerTextRaw, workRich }]
+// unit は入力欄の後ろに出す単位（省略時は「円」。財表は「千円」など）
 // expected が null の段階は採点せず、答え合わせの後に answerTextRaw と計算式を見せるだけ。
 
 // 入力された金額を数にする。カンマ・空白・「円」・全角数字を許し、先頭の△か-はマイナス。読めなければnull。
@@ -992,7 +993,8 @@ var calculationStepsHandler = {
         wrap.appendChild(input);
         var unit = document.createElement("span");
         unit.className = "calc-step-unit";
-        unit.textContent = "円";
+        // v2-70: 財表の計算は「千円」など。単位の指定が無ければ消費税どおり「円」
+        unit.textContent = st.expected.unit != null ? st.expected.unit : "円";
         wrap.appendChild(unit);
         row.appendChild(wrap);
       } else if (!(st.judgement && st.judgement.options)) {
@@ -1079,7 +1081,7 @@ var calculationStepsHandler = {
           var ok = v !== null && v === st.expected.value;
           if (!ok) stepOk = false;
           r.input.disabled = true;
-          msgs.push(ok ? "○ 金額 正解" : "× 金額の正解は " + st.expected.raw + " 円");
+          msgs.push(ok ? "○ 金額 正解" : "× 金額の正解は " + st.expected.raw + " " + (st.expected.unit != null ? st.expected.unit : "円"));
           yourAnswers.push((st.labelRaw || "") + " " + (r.input.value || "（空欄）"));
         }
         if (r.judge) {

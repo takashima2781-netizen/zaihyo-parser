@@ -11,7 +11,7 @@
 //   語句・名称を書く → multi_blank
 //   定義・説明を書く → recall_text
 //   並べ替える       → ordering
-//   計算する         → まだ作らない
+//   計算する         → calculation_steps（解答の欄ごとに金額を入力。金額でない欄は答えを見せるだけ）
 //   1つの文の正誤    → true_false（解答の正誤欄の〇×と理由欄）
 
 import { CIRCLED, parseWordBankLine } from "../exam/patterns.mjs";
@@ -35,8 +35,26 @@ function rawSpan(text, source, nodeId) {
 
 const PARAGRAPH_START = /^[\s　]*([0-9０-９]+[.．]|[（(][0-9０-９]+[）)]|[①-⑳]|[Ａ-Ｚ][\s　]|【|〔|※)/;
 
-/** PDF の行の並び → 段落ごとにつないだ文。新しい段落は、行頭の項番号・字下げで見分ける。 */
-export function joinRows(rows) {
+// 表の行: 文字のあいだに3つ以上の空白がある（「科   目 金  額」「諸 資 産 68,000   諸 負 債 47,000」）
+const TABLE_ROW = /\S[\s　]{3,}\S/;
+
+/** 計算の資料で、前の行につながずに新しい行にするか（表の行・列の位置が大きく違う行・金額で終わった行の次・「３ …」「通貨：…」の項目）。 */
+function isDataRowBreak(r, prev) {
+  return (
+    TABLE_ROW.test(r.text) ||
+    TABLE_ROW.test(prev.text) ||
+    Math.abs(r.x - prev.x) > 30 ||
+    /[\d０-９](千円|百万円|円|%|％)?[\s　]*$/.test(prev.text) ||
+    /^[\s　]*[0-9０-９]{1,2}[\s　]+\S/.test(r.text) ||
+    /^[\s　]*[^\s　：:。、]{1,16}[：:]/.test(r.text)
+  );
+}
+
+/**
+ * PDF の行の並び → 段落ごとにつないだ文。新しい段落は、行頭の項番号・字下げで見分ける。
+ * opts.keepTableRows のときは、表の行（前の行か自分が表の行・左端が大きく違う行・金額で終わる行の次）もつながない（計算の資料）。
+ */
+export function joinRows(rows, { keepTableRows = false } = {}) {
   const paras = [];
   let prev = null;
   for (const r of rows) {
@@ -46,6 +64,7 @@ export function joinRows(rows) {
       !prev ||
       r.paragraphStart ||
       PARAGRAPH_START.test(r.text) ||
+      (keepTableRows && isDataRowBreak(r, prev)) ||
       (/[。」）)]$/.test(displayText(prev.text)) && r.x > prev.x + 4);
     if (startsNew) paras.push(t);
     else paras[paras.length - 1] += t;
@@ -54,8 +73,8 @@ export function joinRows(rows) {
   return paras.join("\n");
 }
 
-function richFromRows(rows) {
-  const text = joinRows(rows);
+function richFromRows(rows, opts) {
+  const text = joinRows(rows, opts);
   return text.split("\n").map((t) => ({ segments: [{ kind: "text", text: t }], frame: "none", depth: 0, continues: false }));
 }
 
@@ -151,9 +170,9 @@ export function buildExamExercises(structure, { diag = [] } = {}) {
     const forms = q.formCandidates.map((c) => c.form);
     const before = out.length;
     if (!q.answer) diag.push({ reason: "no-answer", question: q.id });
-    else if (forms.includes("calculate")) diag.push({ reason: "calculation-not-yet", question: q.id, forms });
+    else if (forms.includes("calculate")) out.push(...calculationExercises(ctx, diag, "calculate"));
     // 指示文に「計算」とは書いていなくても、答えに金額がある問いは計算の問い（語句の穴埋めにはしない）
-    else if (q.answer.segments.some((s) => s.type === "slot" && AMOUNT.test(s.text.trim()))) diag.push({ reason: "calculation-not-yet", question: q.id, forms, evidence: "amount-in-answer" });
+    else if (q.answer.segments.some((s) => s.type === "slot" && AMOUNT.test(s.text.trim()))) out.push(...calculationExercises(ctx, diag, "amount-in-answer"));
     else if (slotsOf(q).length === 1 && slotsOf(q)[0].evidence === "circled-in-answer") out.push(...circledChoiceExercises(ctx, diag));
     else if (forms.includes("judge_statement")) out.push(...judgeStatementExercises(ctx, diag));
     else if (forms.includes("choose_from_word_bank")) out.push(...wordBankExercises(ctx, diag));
@@ -410,6 +429,66 @@ function recallExercises(ctx, diag) {
   // 欄が2つ以上（「名称」「目的」など）→ 答案用紙の欄の名前も含めて、解答の並びのまま1つの模範解答にする
   const text = slots.length === 1 ? singleSlotAnswer(s) : answerWithTemplate(q.answer.segments);
   ex.expectedAnswer = [{ answerText: rawSpan(text, sourceOf(s), q.id) }];
+  return [ex];
+}
+
+/** 金額の答え「5,500 千円」「△100」→ { raw, value, unit }。金額でなければ null。単位は答えの中か、すぐ後ろの定型の文（「千円」）から。 */
+function parseAmount(text, nextText) {
+  const t = displayText(text);
+  const m = t.match(/^([△▲]?)([\d０-９][\d０-９,，.．]*)\s*(千円|円|百万円|%|％)?$/);
+  if (!m) return null;
+  const digits = m[2].replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0)).replace(/[,，]/g, "").replace(/．/g, ".");
+  const value = Number(digits) * (m[1] ? -1 : 1);
+  if (!Number.isFinite(value)) return null;
+  const after = displayText(nextText ?? "").match(/^(千円|円|百万円|%|％)/);
+  const unit = m[3] ?? after?.[1] ?? null;
+  return { raw: `${m[1]}${m[2]}`, value, unit: unit === "％" ? "%" : unit };
+}
+
+/**
+ * 計算の問い → calculation_steps。解答の欄ごとに1つの段階（欄の名前か、直前の定型の文を見出しに）。
+ * 金額の欄は入力して採点し、名称など金額でない欄は答え合わせの後に答えを見せるだけ。金額の欄が1つも無ければ作らない。
+ */
+function calculationExercises(ctx, diag, evidence) {
+  const q = ctx.q;
+  const segs = q.answer.segments;
+  const steps = [];
+  let pendingLabel = [];
+  segs.forEach((seg, k) => {
+    if (seg.type === "break") return;
+    if (seg.type === "text") {
+      const t = displayText(seg.text);
+      if (t && !/^(千円|円|百万円|%|％)$/.test(t)) pendingLabel.push(t);
+      return;
+    }
+    const next = segs.slice(k + 1).find((x) => x.type !== "break");
+    const amount = parseAmount(seg.text, next?.type === "text" ? next.text : null);
+    const label = seg.label && !pendingLabel.includes(seg.label) ? [seg.label, ...pendingLabel] : pendingLabel;
+    steps.push({
+      groupLabel: null,
+      labelRaw: label.join(" ") || (steps.length ? `答え${steps.length + 1}` : "答え"),
+      expected: amount,
+      answerTextRaw: amount ? null : seg.lines.map((l) => displayText(l.text)).join(""),
+      judgement: null,
+      workRich: [],
+    });
+    pendingLabel = [];
+  });
+  if (!steps.some((st) => st.expected)) {
+    diag.push({ reason: "calculation-without-amount", question: q.id });
+    return [];
+  }
+  // 答えに単位が無い欄: 問題文の「(単位：千円)」か、問題文の金額がすべて同じ単位ならそれ。決まらなければ単位を出さない（""）
+  const context = joinRows(contextRows(ctx.chain));
+  const stated = context.match(/単位[：:]\s*(千円|百万円|円)/)?.[1];
+  const used = new Set([...context.matchAll(/\d\s*(千円|百万円|円)/g)].map((m) => m[1]));
+  const contextUnit = stated ?? (used.size === 1 ? [...used][0] : "");
+  for (const st of steps) if (st.expected && st.expected.unit === null) st.expected.unit = contextUnit;
+  const stable = `zexam:${q.id}`;
+  const ex = baseExercise(ctx, { id: `${stable}:calc`, type: "calculation_steps", stableIds: [stable], prompt: promptOf(ctx) });
+  ex.promptRich = richFromRows(contextRows(ctx.chain), { keepTableRows: true });
+  ex.calculationSteps = steps;
+  ex.calculationMeta = { fromForm: evidence };
   return [ex];
 }
 
