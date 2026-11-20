@@ -98,6 +98,8 @@ const toHalf = (t) => t.replace(/[０-９]/g, (c) => String.fromCharCode(c.charC
  * 解答の〇×を問題番号ごとに集める。教材には2つの書き方がある:
  *   1) 1問1行: 「(n)  ○」「(n)  × 理由…」（理由は次の行へ折り返すことがある）
  *   2) まとめ書き: 「○ …… (1)、(4)、…」「× …… (2)、(3)、…」（番号の並びは次の行へ続くことがある）
+ *   3) 表: 「(1) (2) … (10)」の行のすぐ下に「× ○ …」の行（真下の記号がその番号の答え）。
+ *      表の後ろに「(1) …」で始まる説明があれば、その番号の理由にする
  * 同じ番号が○にも×にも出る場合は、その番号を使わない（diag に残す）。
  */
 function answerJudgements(problem, diag) {
@@ -111,6 +113,9 @@ function answerJudgements(problem, diag) {
     else current = null;
   }
   if (out.size > 0) return out;
+
+  const table = tableJudgements(problem.answer.lines);
+  if (table.size > 0) return table;
 
   const grouped = new Map();
   let symbol = null;
@@ -142,6 +147,63 @@ function answerJudgements(problem, diag) {
     }
   }
   return grouped;
+}
+
+const ITEM_NO_ONLY = /^[（(]\s*([0-9０-９]+)\s*[）)]$/;
+const MARK_ONLY = /^[○〇×]$/;
+
+/** 3) 表の形の〇×（番号の行と、その真下の記号の行）。表が無ければ空の Map。 */
+function tableJudgements(lines) {
+  const bboxOf = (l) => l.source?.bbox ?? l.bbox;
+  // 同じ高さ（上端の差が2pt以内）の行を1段にまとめる
+  const tiers = [];
+  for (const l of lines) {
+    const b = bboxOf(l);
+    if (!b) return new Map();
+    const t = tiers.at(-1);
+    if (t && Math.abs(bboxOf(t[0])[1] - b[1]) <= 2) t.push(l);
+    else tiers.push([l]);
+  }
+  const out = new Map();
+  let lastTableTier = -1;
+  for (let i = 0; i + 1 < tiers.length; i++) {
+    const nos = tiers[i];
+    const marks = tiers[i + 1];
+    if (!nos.every((l) => ITEM_NO_ONLY.test(l.text.trim())) || !marks.every((l) => MARK_ONLY.test(l.text.trim()))) continue;
+    for (const m of marks) {
+      const mb = bboxOf(m);
+      const mc = (mb[0] + mb[2]) / 2;
+      const hit = nos.filter((n) => {
+        const nb = bboxOf(n);
+        return Math.abs((nb[0] + nb[2]) / 2 - mc) <= Math.max(8, (nb[2] - nb[0]) / 2);
+      });
+      if (hit.length !== 1) continue;
+      const no = Number(toHalf(hit[0].text.trim().match(ITEM_NO_ONLY)[1]));
+      const symbol = m.text.trim() === "〇" ? "○" : m.text.trim();
+      out.set(no, { judgement: { itemNo: no, symbol, symbolRaw: m.text.trim(), reasonRaw: null }, lines: [m], grouped: true });
+    }
+    lastTableTier = i + 1;
+  }
+  if (!out.size) return out;
+  // 表の後ろの説明「(1) 個人事業者が…」（次の「(n)」の行までが1つの理由）。
+  // 番号は小さい順にだけ進み、「◆」で始まる参考（条文の抜き書き）に入ったら終わり
+  let current = null;
+  let lastNo = 0;
+  for (const l of tiers.slice(lastTableTier + 1).flat()) {
+    const t = l.text.trim();
+    if (/^◆/.test(t)) break;
+    const m = t.match(/^[（(]\s*([0-9０-９]+)\s*[）)]\s*(.+)$/);
+    const no = m ? Number(toHalf(m[1])) : null;
+    if (m && out.has(no) && no > lastNo) {
+      current = out.get(no);
+      current.reasonText = m[2];
+      lastNo = no;
+      continue;
+    }
+    if (m && no <= lastNo) break;
+    if (current) current.reasonText += t;
+  }
+  return out;
 }
 
 function trainingExercises(structure, diag, bookTitles) {
@@ -192,7 +254,7 @@ function trainingExercises(structure, diag, bookTitles) {
             symbolRaw: rawSpan(a.judgement.symbol, a.lines[0].source, p.id),
             answerBodyRaw: rawSpan(a.grouped ? a.judgement.symbol : a.lines.map((l) => l.text.trim()).join(""), a.lines[0].source, p.id),
           };
-          const reason = a.grouped ? "" : [a.judgement.reasonRaw, ...a.lines.slice(1).map((l) => l.text.trim())].filter(Boolean).join("");
+          const reason = a.reasonText ?? (a.grouped ? "" : [a.judgement.reasonRaw, ...a.lines.slice(1).map((l) => l.text.trim())].filter(Boolean).join(""));
           ex.explanation = reason ? { raw: rawSpan(reason, a.lines[0].source, p.id), role: "reason" } : null;
           ex.guidanceRich = guidanceRich;
           exercises.push(ex);

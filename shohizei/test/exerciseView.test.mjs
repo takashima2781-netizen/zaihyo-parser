@@ -62,6 +62,26 @@ test("〇×: まとめ書き（○ …… (1)、× …… (2)）も読む", () =
   );
 });
 
+test("〇×: 表の形（番号の行の真下に記号の行）も読み、表の後ろの「(n) …」を理由にする", () => {
+  const at = (text, x, y) => ({ text, source: { doc: "d", page: 2, line: 0, bbox: [x, y, x + 18, y + 9] } });
+  const view = buildShohizeiExerciseView({
+    trainings: [
+      training([
+        at("(1)", 69, 86),
+        at("(2)", 106, 86),
+        at("○", 71, 105),
+        at("×", 108, 105),
+        { text: "(2) 甲は乙ではないため", source: { doc: "d", page: 2, line: 5, bbox: [66, 130, 400, 139] } },
+        { text: "誤りである。", source: { doc: "d", page: 2, line: 6, bbox: [75, 148, 200, 157] } },
+      ]),
+    ],
+  });
+  const tf = view.exercises.filter((e) => e.exerciseType === "true_false");
+  assert.deepEqual(tf.map((e) => e.judgement.symbolRaw.text), ["○", "×"]);
+  assert.equal(tf[0].explanation, null);
+  assert.equal(tf[1].explanation.raw.text, "甲は乙ではないため誤りである。");
+});
+
 test("〇×: 同じ番号が○にも×にもあれば作らない", () => {
   const view = buildShohizeiExerciseView({
     trainings: [training([L("○ ………… (1)、(2)", 2, 0), L("× ………… (2)", 2, 1)])],
