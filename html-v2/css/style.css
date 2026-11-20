@@ -968,6 +968,11 @@ header h1 {
   display: block;
   width: 100%;
 }
+/* v2-70: 問題文が長いと答えの欄が縦に伸び、ボタンが楕円に膨らんでいた
+   （後ろの .choice-btn の flex: 1 1 auto に負けないよう、両方のクラスで指定する） */
+.choice-btn.reveal-btn {
+  flex: 0 0 auto;
+}
 /* v2-22: 問題文も箱で囲わず、指示文と同じ文字サイズにして横線だけで回答欄と区切る
    （囲みを重ねず、画面を広く保つ）。 */
 .question-text {
