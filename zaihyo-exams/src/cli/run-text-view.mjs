@@ -6,6 +6,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildReadingExercises, READING_GENERATOR } from "../exerciseView/buildReading.mjs";
+import { replaceFontSymbolsDeep } from "../exerciseView/displayText.mjs";
 import { SCHEMA_VERSION } from "../exerciseView/buildExerciseView.mjs";
 import { runExerciseViewChecks } from "../gateChecks/gateChecks.mjs";
 import { TEXTS } from "../texts.mjs";
@@ -25,7 +26,7 @@ for (const id of ids) {
   const figures = JSON.parse(readFileSync(out(`${id}.figures.json`), "utf8"));
   const diag = [];
   const ex = buildReadingExercises(structure, figures, TEXTS[id].title, { diag });
-  exercises.push(...ex);
+  exercises.push(...ex.map(replaceFontSymbolsDeep));
   diagnostics.push(...diag.map((d) => ({ text: id, ...d })));
   perText[id] = { pages: ex.length, diagnostics: diag.length };
 }

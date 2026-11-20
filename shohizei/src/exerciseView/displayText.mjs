@@ -98,3 +98,46 @@ export function removeAlignmentSpacesInSegments(segments) {
     })
     .filter((s) => s.kind === "fraction" || s.text !== "");
 }
+
+// 教材の書体にだけある記号（私用領域の文字。iPhone では別の記号に化ける）を、表示用の文字で置き換える
+// （ユーザー指示、2026-11-20: B/S などは普通の文字に、見出しの頭の飾りの絵は消す）。
+// どの文字が何かは、教材PDFの字形を拡大して確かめたもの。表に無い文字は、推測せずそのまま残す。
+const FONT_SYMBOLS = new Map([
+  // 略語の合字
+  ["", "a/c"],
+  ["", "P/L"],
+  ["", "B/S"],
+  ["", "F/S"],
+  ["", "T/B"],
+  ["", "C/R"],
+  // 文字の印
+  ["", "Q"],
+  ["", "A"],
+  ["", "●"],
+  ["", "⇨"],
+  ["", "⇧"],
+  // 見出しの頭の飾り（設例・解説・参考・研究・留意点・プラス・ポイント・このテーマ・トレーニング・時計 など）→ 消す
+  ...["", "", "", "", "", "", "", "", "", "", "", "", "", "", ""].map((c) => [c, ""]),
+]);
+const FONT_SYMBOL_RE = new RegExp(`([${[...FONT_SYMBOLS.keys()].join("")}])([ 　]*)`, "g");
+
+/** 1つの文字列の中の書体の記号を置き換える。消す飾りの直後の空白も一緒に消す。 */
+export function replaceFontSymbols(text) {
+  if (typeof text !== "string") return text;
+  return text.replace(FONT_SYMBOL_RE, (_, c, sp) => {
+    const to = FONT_SYMBOLS.get(c);
+    return to === "" ? "" : to + sp;
+  });
+}
+
+/** 問題データ（オブジェクト）の中の文字列すべてに replaceFontSymbols をかける。画像（src）はそのまま。 */
+export function replaceFontSymbolsDeep(value) {
+  if (typeof value === "string") return replaceFontSymbols(value);
+  if (Array.isArray(value)) return value.map(replaceFontSymbolsDeep);
+  if (value && typeof value === "object") {
+    const out = {};
+    for (const [k, v] of Object.entries(value)) out[k] = k === "src" ? v : replaceFontSymbolsDeep(v);
+    return out;
+  }
+  return value;
+}

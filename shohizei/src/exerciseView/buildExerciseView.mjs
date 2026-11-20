@@ -12,7 +12,7 @@
 import { buildCalculationSteps } from "./calculation.mjs";
 import { layoutReadingLines } from "./readingLayout.mjs";
 import { categoryLegend, parseGroupedAnswer, parseSelectedAnswer, parseInlineValueAnswers } from "./choiceItems.mjs";
-import { removeAlignmentSpaces, removeAlignmentSpacesMultiline, removeAlignmentSpacesInSegments } from "./displayText.mjs";
+import { removeAlignmentSpaces, removeAlignmentSpacesMultiline, removeAlignmentSpacesInSegments, replaceFontSymbolsDeep } from "./displayText.mjs";
 
 const SCHEMA_VERSION = "exercise-view-schema-v1.8.0";
 const SUBJECT = "shohizei";
@@ -943,7 +943,8 @@ export function buildShohizeiExerciseView({ trainings = [], theories = [], docto
   // 並べ替えは、元の暗記カードのすぐ後ろに置く（範囲の中で教材の順に並ぶように）。
   const exercises = base
     .flatMap((ex) => (ex.exerciseType === "recall_text" && !ex.recallMeta?.noOrdering ? [ex, ...orderingFromRecall(ex, diagnostics, phraseSplit)] : [ex]))
-    .map(withMaterial);
+    .map(withMaterial)
+    .map(replaceFontSymbolsDeep);
   return {
     meta: {
       schemaVersion: SCHEMA_VERSION,
