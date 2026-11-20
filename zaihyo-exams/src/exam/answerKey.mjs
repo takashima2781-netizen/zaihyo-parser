@@ -162,7 +162,49 @@ function mergeSlots(segments) {
 /**
  * 答案用紙・解答の理論の大問 → 単位ごとの答え。
  */
-export function buildAnswerKey({ sheetRows, answerRows, daimonNos }) {
+/** ページごとの「〇で囲む」印（曲線の図形で、1行ぶんほどの高さのもの）。 */
+export function circleMarks(doc) {
+  const out = new Map();
+  for (const p of doc?.pages ?? []) {
+    const rects = (p.drawings ?? [])
+      .filter((d) => d.kinds?.includes("c") && d.rect[3] - d.rect[1] <= 30 && d.rect[2] - d.rect[0] <= 200)
+      .map((d) => d.rect);
+    if (rects.length) out.set(p.page, rects);
+  }
+  return out;
+}
+
+function marksOnRows(unitRows, marks) {
+  return unitRows.flatMap((u) => {
+    const b = u.row.source.bbox;
+    return (marks.get(u.row.source.page) ?? []).filter((m) => m[1] < b[3] && m[3] > b[1]).map((m) => ({ m, u }));
+  });
+}
+
+/**
+ * 「いずれかを〇で囲みなさい」: 答案用紙と解答の文字は同じで、解答にだけ〇の図形がある。
+ * 〇の中にある語（「・」や空白で区切った語の、文字の幅から見積もった中心が〇の中）が1つだけなら、それを答えとする。
+ */
+function circledAnswer(answerUnit, sheetUnit, marks) {
+  if (marksOnRows(sheetUnit?.rows ?? [], marks.sheet).length) return null; // 答案用紙に元から印刷されている〇
+  const found = [];
+  for (const { m, u } of marksOnRows(answerUnit.rows, marks.answer)) {
+    for (const sp of u.spans) {
+      if (sp.fromHeading) continue;
+      const chars = [...sp.text];
+      const w = (sp.bbox[2] - sp.bbox[0]) / chars.length;
+      const tokens = [...sp.text.matchAll(/[^\s　・／/]+/g)];
+      for (const t of tokens) {
+        const start = [...sp.text.slice(0, t.index)].length;
+        const center = sp.bbox[0] + (start + [...t[0]].length / 2) * w;
+        if (center > m[0] && center < m[2]) found.push({ text: t[0], candidates: tokens.map((x) => x[0]), source: { ...u.row.source, bbox: [m[0], m[1], m[2], m[3]] } });
+      }
+    }
+  }
+  return found.length === 1 ? found[0] : null;
+}
+
+export function buildAnswerKey({ sheetRows, answerRows, daimonNos, marks = { sheet: new Map(), answer: new Map() } }) {
   const sheetSections = new Map(daimonSections(sheetRows, daimonNos).map((s) => [s.d.parsed.no, s]));
   const result = [];
   const diag = [];
@@ -176,6 +218,10 @@ export function buildAnswerKey({ sheetRows, answerRows, daimonNos }) {
       const sheetUnit = sheetByKey.get(u.key) ?? null;
       if (!sheetUnit) diag.push({ reason: "sheet-unit-not-found", key: u.key });
       const c = classifyUnit(u, sheetUnit);
+      if (!c.segments.some((x) => x.type === "slot")) {
+        const circled = circledAnswer(u, sheetUnit, marks);
+        if (circled) c.segments.push({ type: "slot", label: null, lines: [{ text: circled.text }], sources: [circled.source], text: circled.text, evidence: "circled-in-answer", candidates: circled.candidates });
+      }
       return {
         key: u.key,
         path: u.path,

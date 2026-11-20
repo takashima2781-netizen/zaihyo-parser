@@ -236,8 +236,17 @@ function splitContent(n) {
   for (const r of n.contentRows) {
     if (mode === "wordBank") {
       const entries = parseWordBankLine(r.text);
-      if (entries) {
+      const last = wordBank.entries.at(-1);
+      // 1行に1つの語群は、長い語句が次の行へ折り返す（記号より右から始まる記号の無い行）
+      const lastRow = wordBank.rows.at(-1);
+      const single = entries?.length === 1 && last ? entries : null;
+      if (entries && (!last || entries.length > 1 || isNextOption(last.symbol, entries[0].symbol))) {
         for (const e of entries) wordBank.entries.push({ ...e, source: r.source });
+        wordBank.rows.push(rowRef(r));
+        continue;
+      }
+      if (!single && last && lastRow && r.x > lastRow.x + 4 && !parseOptionLine(r.text) && !parseLabeledStatement(r.text)) {
+        last.text += r.text.trim();
         wordBank.rows.push(rowRef(r));
         continue;
       }

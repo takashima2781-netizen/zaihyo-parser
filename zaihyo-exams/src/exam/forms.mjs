@@ -2,6 +2,8 @@
 // どれにも当てはまらなければ空の配列（＝unknown）。新しい問い方はここに足す。
 
 const RULES = [
+  // 1つの文の正誤を答える（「正しければ〇、間違っていれば×と理由」）
+  { form: "judge_statement", re: /正誤欄|正しければ.{0,40}間違って|正しければ.{0,40}誤って/ },
   { form: "choose_from_word_bank", re: /語群.{0,12}選|空欄.{0,40}(?:選び|選択し)/ },
   // 選ぶ数: 「２つ選び」「３つ選択し」→ その数、「すべて選び」→ "all"、数の無い「選び」「選択し」→ 1
   { form: "choose_options", re: /([１-９1-9一二三四五])つ(?:を)?(?:選び|選択)/, count: (m) => toNumber(m[1]) },
@@ -10,7 +12,7 @@ const RULES = [
   { form: "order", re: /並[び べ]替え|並び替え|並べ替え|順序に並/ },
   { form: "calculate", re: /計算しなさい|計算して|金額を求め|金額を答案用紙に示/ },
   // 「方法（名称）を指摘しなさい」は名称を書く問い（write_terms）なので、ここでは「指摘」から除く
-  { form: "write_text", re: /定義を答え|説明しなさい|述べなさい|理由を答え|明らかにしなさい|(?<!名称[)）]?を)指摘しなさい/ },
+  { form: "write_text", re: /定義を答え|説明しなさい|述べなさい|理由を答え|明らかにしなさい|記載しなさい|(?<!名称[)）]?を)指摘しなさい/ },
   { form: "write_terms", re: /語句を答え|語句を記入|名称を答え|カタカナで答え|用語を答え|名称[)）]?を指摘|記入しなさい|示しなさい|挙げなさい|答えなさい/ },
 ];
 
@@ -37,6 +39,8 @@ export function formCandidates(instruction) {
     if (rule.count) c.count = rule.count(m);
     out.push(c);
   }
+  // 正誤の問いの「〇を記入」「理由を記載」は、正誤の答え方の一部
+  if (out.some((c) => c.form === "judge_statement")) return out.filter((c) => c.form === "judge_statement");
   // 「語群から選び」と「１つ選び」が両方あるときは語群の方だけ（語群の記号を選ぶ問題）
   if (out.some((c) => c.form === "choose_from_word_bank")) return out.filter((c) => c.form !== "choose_options" && c.form !== "write_terms");
   return out;

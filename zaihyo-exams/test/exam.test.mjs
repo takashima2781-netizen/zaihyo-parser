@@ -16,7 +16,7 @@ import {
   parseOptionJudgement,
 } from "../src/exam/patterns.mjs";
 import { blanksInPassageRow, buildProblemTree, headingEvents } from "../src/exam/problem.mjs";
-import { classifyUnit, sheetUnits } from "../src/exam/answerKey.mjs";
+import { buildAnswerKey, circleMarks, classifyUnit, sheetUnits } from "../src/exam/answerKey.mjs";
 import { buildGuidance } from "../src/exam/guidance.mjs";
 import { formCandidates } from "../src/exam/forms.mjs";
 import { runStructureChecks } from "../src/gateChecks/gateChecks.mjs";
@@ -225,4 +225,48 @@ test("問い方の候補: 選択肢から選ぶ・選択し・すべて選択・
   assert.deepEqual(forms("最も適切なものを選択し、記号で答えなさい。"), ["choose_options(1)"]);
   assert.deepEqual(forms("その理由を２つ指摘しなさい。"), ["write_text"]);
   assert.deepEqual(forms("方法（名称）を指摘しなさい。"), ["write_terms"]);
+});
+
+test("【選択肢】の語が次の行へ折り返す・イロハの並び: 折り返しは前の語の続き、後ろの語も語群に入れる", () => {
+  const p = page(1, [
+    [span("〔第一問〕 －25点－", 77, 70)],
+    [span("１ 誤っているものを【選択肢】の中から１つ選び、記号で答えなさい。", 77, 90)],
+    [span("【選択肢】", 82, 108)],
+    [span("イ 一つ目の長い文で", 92, 126)],
+    [span("続く文。", 104, 144)],
+    [span("ロ 二つ目", 92, 162)],
+    [span("ハ 三つ目", 92, 180)],
+    [span(" Ａ 財産   Ｂ 価値", 92, 198)],
+  ]);
+  const rows = pageRows(doc("A", []), p);
+  const { nodes } = buildProblemTree({ setId: "x", rows, daimonNos: [1] });
+  const s1 = nodes.find((n) => n.id === "x:d1:s1");
+  assert.deepEqual(s1.wordBank.entries.map((e) => `${e.symbol}${e.text}`), ["イ一つ目の長い文で続く文。", "ロ二つ目", "ハ三つ目", "Ａ財産", "Ｂ価値"]);
+  assert.equal(s1.passage.length, 0);
+});
+
+test("問い方の候補: 1つの文の正誤・記載しなさい", () => {
+  assert.deepEqual(
+    formCandidates("次の文章が正しければ正誤欄に「〇」を記入し、間違っていれば「×」を記入するとともに理由を記載しなさい。").map((c) => c.form),
+    ["judge_statement"],
+  );
+  assert.deepEqual(formCandidates("その理由を理由欄に記載しなさい。").map((c) => c.form), ["write_text"]);
+});
+
+test("「いずれかを〇で囲みなさい」: 解答にだけある〇の中の語を答えにする", () => {
+  const sheet = sheetUnits(pageRows(doc("B", []), page(1, [[span("〔第一問〕", 77, 70)], [span("１", 85, 90)], [span("甲法 ・ 乙法", 120, 110, 180)]])), 1);
+  const ans = sheetUnits(pageRows(doc("C", []), page(1, [[span("〔第一問〕", 77, 70)], [span("１", 85, 90)], [span("甲法 ・ 乙法", 120, 110, 180)]])), 1);
+  assert.equal(classifyUnit(ans[0], sheet[0]).segments.filter((s) => s.type === "slot").length, 0);
+  // 曲線の〇は「乙法」の上（x 155〜185）
+  const answerDoc = { pages: [{ page: 1, drawings: [{ rect: [155, 105, 185, 125], kinds: ["c"] }] }] };
+  const marks = { sheet: new Map(), answer: circleMarks(answerDoc) };
+  const key = buildAnswerKey({
+    sheetRows: pageRows(doc("B", []), page(1, [[span("〔第一問〕", 77, 70)], [span("１", 85, 90)], [span("甲法 ・ 乙法", 120, 110, 180)]])),
+    answerRows: pageRows(doc("C", []), page(1, [[span("〔第一問〕", 77, 70)], [span("１", 85, 90)], [span("甲法 ・ 乙法", 120, 110, 180)]])),
+    daimonNos: [1],
+    marks,
+  });
+  const slot = key.daimons[0].units[0].slots[0];
+  assert.equal(slot.text, "乙法");
+  assert.deepEqual(slot.candidates, ["甲法", "乙法"]);
 });

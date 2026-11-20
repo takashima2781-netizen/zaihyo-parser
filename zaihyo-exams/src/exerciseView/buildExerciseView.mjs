@@ -12,8 +12,9 @@
 //   定義・説明を書く → recall_text
 //   並べ替える       → ordering
 //   計算する         → まだ作らない
+//   1つの文の正誤    → true_false（解答の正誤欄の〇×と理由欄）
 
-import { CIRCLED } from "../exam/patterns.mjs";
+import { CIRCLED, parseWordBankLine } from "../exam/patterns.mjs";
 
 export const SCHEMA_VERSION = "exercise-view-schema-v1.8.0";
 export const GENERATOR = "zaihyo-exams-exercise-view-0.1";
@@ -153,6 +154,8 @@ export function buildExamExercises(structure, { diag = [] } = {}) {
     else if (forms.includes("calculate")) diag.push({ reason: "calculation-not-yet", question: q.id, forms });
     // 指示文に「計算」とは書いていなくても、答えに金額がある問いは計算の問い（語句の穴埋めにはしない）
     else if (q.answer.segments.some((s) => s.type === "slot" && AMOUNT.test(s.text.trim()))) diag.push({ reason: "calculation-not-yet", question: q.id, forms, evidence: "amount-in-answer" });
+    else if (slotsOf(q).length === 1 && slotsOf(q)[0].evidence === "circled-in-answer") out.push(...circledChoiceExercises(ctx, diag));
+    else if (forms.includes("judge_statement")) out.push(...judgeStatementExercises(ctx, diag));
     else if (forms.includes("choose_from_word_bank")) out.push(...wordBankExercises(ctx, diag));
     else if (forms.includes("choose_options")) {
       const count = q.formCandidates.find((c) => c.form === "choose_options").count;
@@ -210,47 +213,91 @@ function findWordBank(chain) {
   for (let i = chain.length - 1; i >= 0; i--) if (chain[i].wordBank?.entries.length) return chain[i].wordBank;
   // 【語群】の見出しが無く、選択肢が1行に1つずつ並ぶ教材 → その選択肢を語群として使う
   const opts = optionsOf(chain);
-  return opts.length ? { entries: opts.map((o) => ({ symbol: o.symbol, text: o.text, source: o.rows[0].source })), fromOptions: true } : null;
+  if (opts.length) return { entries: opts.map((o) => ({ symbol: o.symbol, text: o.text, source: o.rows[0].source })), fromOptions: true };
+  // 見出しも無く、本文の中に「ア 管理 イ 享受 ウ 行使 …」の行がある（「次の語句から選び」）
+  for (let i = chain.length - 1; i >= 0; i--) {
+    const entries = (chain[i].passage ?? []).flatMap((r) => {
+      const e = parseWordBankLine(r.text);
+      return e && e.length >= 2 ? e.map((x) => ({ ...x, source: r.source })) : [];
+    });
+    if (entries.length >= 2 && new Set(entries.map((e) => e.symbol)).size === entries.length) return { entries, fromPassage: true };
+  }
+  return null;
 }
 
-/** 選択肢（ア…・イロハ…）。無ければ記号つきの文（Ａ…）。小問に無ければ上の節のもの。 */
+/** 選択肢（ア…・イロハ…）。無ければ【選択肢】【語群】の語、記号つきの文（Ａ…）。小問に無ければ上の節のもの。 */
 function optionsOf(chain) {
   for (let i = chain.length - 1; i >= 0; i--) if (chain[i].options?.length) return chain[i].options;
+  for (let i = chain.length - 1; i >= 0; i--)
+    if (chain[i].wordBank?.entries.length)
+      return chain[i].wordBank.entries.map((e) => ({ symbol: e.symbol, text: e.text, rows: [{ text: e.text, source: e.source }], fromWordBank: true }));
   for (let i = chain.length - 1; i >= 0; i--)
     if (chain[i].labeledItems?.length) return chain[i].labeledItems.map((l) => ({ symbol: l.label, text: l.text, rows: l.rows, fromLabeled: true }));
   return [];
 }
 
-function wordBankExercises(ctx, diag) {
-  const wb = findWordBank(ctx.chain);
+function wordBankExercises(ctx, diag, wb = findWordBank(ctx.chain)) {
   if (!wb) {
     diag.push({ reason: "word-bank-not-found", question: ctx.q.id });
     return [];
   }
   const symbols = new Set(wb.entries.map((e) => e.symbol));
   const options = wb.entries.map((e) => ({ value: e.symbol, label: `${e.symbol} ${displayText(e.text)}` }));
+  const slots = slotsOf(ctx.q);
   const labels = slotLabels(ctx.q);
+  let picks = slots.map((slot, i) => ({ label: labels[i] ?? null, answer: displayText(slot.text), source: slot.sources[0] }));
+  if (picks.some((p) => !symbols.has(p.answer))) {
+    // 解答の欄の名前と記号が答案用紙の枠とずれて、「①オ ②エ」「イＣ ロＩ」と1つの欄に読めたとき → 空欄の名前と記号の組に分ける
+    const pairs = labelSymbolPairs(ctx.q, symbols);
+    if (pairs) picks = pairs;
+    else if (slots.length === 1 && splitSymbols(slots[0].text).every((x) => symbols.has(x))) {
+      // 「２つ選び」で答えが「ウ、オ」→ 語群つきの問いと答えの記号の暗記カード
+      return chooseAsRecall(ctx, diag, "word-bank-answer-many");
+    }
+  }
   const prompt = promptOf(ctx);
   const out = [];
-  slotsOf(ctx.q).forEach((slot, i) => {
-    const answer = displayText(slot.text);
-    if (!symbols.has(answer)) {
+  picks.forEach((p, i) => {
+    if (!symbols.has(p.answer)) {
       diag.push({ reason: "word-bank-answer-not-in-bank", question: ctx.q.id, slot: i });
       return;
     }
-    const tag = labels[i] ?? String(i + 1);
+    const tag = p.label ?? String(i + 1);
     const stable = `zexam:${ctx.q.id}:slot-${tag}`;
     const ex = baseExercise(ctx, {
       id: `${stable}:choice`,
       type: "choice_item",
       stableIds: [stable],
-      prompt: { ...prompt, text: `${prompt.text}\n空欄 ${labels[i] ?? ""}`.trimEnd() },
+      prompt: { ...prompt, text: `${prompt.text}\n空欄 ${p.label ?? ""}`.trimEnd() },
     });
     ex.choiceOptions = options;
-    ex.correctChoice = answer;
-    ex.choiceMeta = { kind: "word-bank", blank: labels[i] ?? null, answerSource: slot.sources[0] };
+    ex.correctChoice = p.answer;
+    ex.choiceMeta = { kind: "word-bank", blank: p.label, answerSource: p.source };
     out.push(ex);
   });
+  return out;
+}
+
+function splitSymbols(text) {
+  return displayText(text).split(/[、,，\s]+/).filter(Boolean);
+}
+
+/**
+ * 解答の単位の文字（定型の文も答えも）をつないで、「空欄の名前＋記号」の組の並びとして読めれば、その組を返す。
+ * 空欄の名前は丸数字か、語群の記号に無いかな（「空欄イ～ヘ」に記号Ａ～Ｊで答える教材）。全体が組の並びでなければ null。
+ */
+function labelSymbolPairs(q, symbols) {
+  const segs = q.answer.segments.filter((s) => s.type !== "break");
+  const text = segs.map((s) => s.text).join("").replace(/[\s　]+/g, "");
+  const out = [];
+  for (let i = 0; i < text.length; i += 2) {
+    const label = text[i];
+    const symbol = text[i + 1];
+    const isLabel = CIRCLED.includes(label) || (/[ア-ンぁ-ん]/.test(label) && !symbols.has(label));
+    if (!isLabel || !symbols.has(symbol)) return null;
+    out.push({ label, answer: symbol, source: segs.find((s) => s.type === "slot")?.sources[0] ?? null });
+  }
+  if (out.length < 2 || new Set(out.map((p) => p.label)).size !== out.length) return null;
   return out;
 }
 
@@ -259,9 +306,14 @@ function chooseOneExercises(ctx, diag) {
   const slots = slotsOf(q);
   const answer = slots.length === 1 ? displayText(slots[0].text).trim() : null;
   const options = optionsOf(ctx.chain);
+  const symbols = new Set(options.map((o) => o.symbol));
+  // 「表の①～⑥に当てはまるものを【選択肢】から選び」: 欄ごとに記号が1つ → 欄ごとの選択問題
+  if (slots.length > 1 && slots.every((s) => symbols.has(displayText(s.text)))) {
+    return wordBankExercises(ctx, diag, { entries: options.map((o) => ({ symbol: o.symbol, text: o.text, source: o.rows[0].source })) });
+  }
   if (!options.length || !answer || !options.some((o) => o.symbol === answer)) {
-    // 答えが記号2つ以上（「２つ」と書いていない複数選択）など → 選択肢を見せて答える暗記カード
-    if (options.length && answer) return chooseAsRecall(ctx, diag, "choose-one-answer-shape");
+    // 答えが記号2つ以上（「２つ」と書いていない複数選択）・記号と説明の両方を答える など → 選択肢を見せて答える暗記カード
+    if (options.length && slots.length) return chooseAsRecall(ctx, diag, "choose-one-answer-shape");
     diag.push({ reason: "choose-one-answer-not-in-options", question: q.id });
     return [];
   }
@@ -339,7 +391,7 @@ function chooseAsRecall(ctx, diag, reason) {
   diag.push({ reason, question: q.id, builtAs: "recall_text" });
   const stable = `zexam:${q.id}`;
   const ex = baseExercise(ctx, { id: `${stable}:recall`, type: "recall_text", stableIds: [stable], prompt: promptOf(ctx, { withOptions: true }) });
-  const text = slots.length === 1 ? slots[0].lines.map((l) => displayText(l.text)).join("") : answerWithTemplate(q.answer.segments);
+  const text = slots.length === 1 ? singleSlotAnswer(slots[0]) : answerWithTemplate(q.answer.segments);
   ex.expectedAnswer = [{ answerText: rawSpan(text, sourceOf(slots[0]), q.id) }];
   ex.recallMeta = { derivedFrom: "choose-options" };
   return [ex];
@@ -356,9 +408,75 @@ function recallExercises(ctx, diag) {
   const ex = baseExercise(ctx, { id: `${stable}:recall`, type: "recall_text", stableIds: [stable], prompt: promptOf(ctx) });
   const s = slots[0];
   // 欄が2つ以上（「名称」「目的」など）→ 答案用紙の欄の名前も含めて、解答の並びのまま1つの模範解答にする
-  const text = slots.length === 1 ? s.lines.map((l) => displayText(l.text)).join("") : answerWithTemplate(q.answer.segments);
+  const text = slots.length === 1 ? singleSlotAnswer(s) : answerWithTemplate(q.answer.segments);
   ex.expectedAnswer = [{ answerText: rawSpan(text, sourceOf(s), q.id) }];
   return [ex];
+}
+
+/** 「いずれかを〇で囲みなさい」→ 〇で囲む候補の語から選ぶ choice_item。 */
+function circledChoiceExercises(ctx, diag) {
+  const q = ctx.q;
+  const slot = slotsOf(q)[0];
+  const candidates = [...new Set(slot.candidates ?? [])];
+  if (candidates.length < 2 || !candidates.includes(slot.text)) {
+    diag.push({ reason: "circled-answer-shape", question: q.id });
+    return [];
+  }
+  const stable = `zexam:${q.id}`;
+  const ex = baseExercise(ctx, { id: `${stable}:choice`, type: "choice_item", stableIds: [stable], prompt: promptOf(ctx) });
+  ex.choiceOptions = candidates.map((c) => ({ value: c, label: c }));
+  ex.correctChoice = slot.text;
+  ex.choiceMeta = { kind: "circled", answerSource: slot.sources[0] };
+  return [ex];
+}
+
+/**
+ * 答えの欄が「記号欄 理由欄」「正誤欄 理由欄」と横に並ぶ解答: 1行目が欄の名前だけで、記号はほかの行の中に1文字だけ離れて書かれている。
+ * → 「記号欄 Ａ」「理由欄 …」に並べ直す。この形でなければ null。
+ */
+export function columnAnswer(lines) {
+  const header = (lines[0] ?? "").trim().split(/[\s　]+/);
+  if (header.length !== 2 || !header.every((h) => /^\S{1,4}欄$/.test(h))) return null;
+  const rest = lines.slice(1);
+  const marks = rest.flatMap((l) => [...l.matchAll(/(?:^|[\s　])([Ａ-Ｚア-ン〇○×])(?=[\s　]|$)/g)].map((m) => m[1]));
+  if (marks.length !== 1) return null;
+  const reason = rest.map((l) => l.replace(/(^|[\s　])[Ａ-Ｚア-ン〇○×](?=[\s　]|$)/, "$1").trim()).join("");
+  return `${header[0]} ${marks[0]}\n${header[1]} ${displayText(reason)}`;
+}
+
+/**
+ * 1つの文の正誤（「正しければ正誤欄に〇、間違っていれば×と理由」）→ true_false。
+ * 解答の欄から、ひとつだけ離れて書かれた 〇/× を正誤、残りを理由とする（「正誤欄」「理由欄」の札は除く）。
+ */
+function judgeStatementExercises(ctx, diag) {
+  const q = ctx.q;
+  const slots = slotsOf(q);
+  const lines = slots.flatMap((s) => s.lines.map((l) => l.text));
+  const marks = lines.flatMap((l) => [...l.matchAll(/(?:^|[\s　])([〇○×])(?=[\s　]|$)/g)].map((m) => m[1]));
+  if (!q.passage.length || marks.length !== 1) {
+    diag.push({ reason: "judge-statement-answer-shape", question: q.id, marks: marks.length });
+    return [];
+  }
+  const reason = lines
+    .map((l) => l.replace(/(^|[\s　])[〇○×](?=[\s　]|$)/, "$1").replace(/正誤欄|理由欄/g, "").trim())
+    .join("");
+  const stable = `zexam:${q.id}`;
+  const ex = baseExercise(ctx, {
+    id: `${stable}:tf`,
+    type: "true_false",
+    stableIds: [stable],
+    body: rawSpan(joinRows(q.passage), q.passage[0].source, q.id),
+    instructionRaw: rawSpan(joinRows(contextRows(ctx.chain, { withOwnPassage: false })), q.instruction[0]?.source, q.id),
+  });
+  const mark = marks[0] === "×" ? "×" : "○";
+  ex.judgement = { symbolRaw: rawSpan(mark, slots[0].sources[0], q.id), answerBodyRaw: reason ? rawSpan(displayText(reason), slots[0].sources[0], q.id) : null };
+  ex.explanation = reason ? { raw: rawSpan(displayText(reason), slots[0].sources[0], q.id), role: null } : null;
+  ex.trueFalseMeta = { derivedFrom: "judge-statement", markRaw: marks[0] };
+  return [ex];
+}
+
+function singleSlotAnswer(slot) {
+  return columnAnswer(slot.lines.map((l) => l.text)) ?? slot.lines.map((l) => displayText(l.text)).join("");
 }
 
 function sourceOf(slot) {
@@ -385,20 +503,25 @@ function termsExercises(ctx, diag) {
   if (passageOwner) {
     // 教材の本文の空欄（①…）にそのまま答えを入れる
     const text = joinRows(passageOwner.passage);
-    segments = [];
-    let rest = text;
+    // 空欄は本文に出てくる順に置く（表では「⑧」が「⑦」より先に出ることがある）
+    const found = [];
     for (const u of units) {
-      const re = new RegExp(`[\\s\\u3000]*${u.label}[\\s\\u3000]*`);
-      const m = rest.match(re);
+      const m = text.match(new RegExp(`[\\s\\u3000]*${u.label}[\\s\\u3000]*`));
       if (!m) {
         diag.push({ reason: "terms-blank-not-in-passage", question: q.id, label: u.label });
         return [];
       }
-      segments.push({ type: "text", text: rest.slice(0, m.index) + " " });
-      segments.push({ type: "blank", blankId: u.id, label: u.label, blankUnitId: u.id, order: segments.filter((s) => s.type === "blank").length + 1 });
-      rest = " " + rest.slice(m.index + m[0].length);
+      found.push({ u, start: m.index, end: m.index + m[0].length });
     }
-    segments.push({ type: "text", text: rest });
+    found.sort((a, b) => a.start - b.start);
+    segments = [];
+    let pos = 0;
+    for (const f of found) {
+      segments.push({ type: "text", text: (pos ? " " : "") + text.slice(pos, f.start) + " " });
+      segments.push({ type: "blank", blankId: f.u.id, label: f.u.label, blankUnitId: f.u.id, order: segments.filter((s) => s.type === "blank").length + 1 });
+      pos = f.end;
+    }
+    segments.push({ type: "text", text: " " + text.slice(pos) });
     bodyText = text;
     bodySource = passageOwner.passage[0]?.source;
   } else {

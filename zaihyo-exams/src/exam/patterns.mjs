@@ -51,12 +51,13 @@ export function parseOptionLine(text) {
 }
 
 // 選択肢の記号の並び。ア・イ・ウ… のほか、イ・ロ・ハ…、い・ろ・は… の教材がある
-export const OPTION_SERIES = [KANA_ORDER, "イロハニホヘトチリヌルヲ", "いろはにほへとちりぬるを"];
+export const OPTION_SERIES = [KANA_ORDER, "イロハニホヘトチリヌルヲ", "いろはにほへとちりぬるを", "ＡＢＣＤＥＦＧＨＩＪＫＬＭＮＯＰＱＲＳＴＵＶＷＸＹＺ"];
 /** 前の選択肢の記号（無ければ null）の次に来てよい記号か。並びの最初は、どの並びの先頭でもよい。 */
 export function isNextOption(prevSymbol, symbol, series = null) {
   if (prevSymbol === null) return OPTION_SERIES.some((ser) => ser[0] === symbol);
-  const ser = series ?? OPTION_SERIES.find((x) => x.includes(prevSymbol));
-  return ser ? ser.indexOf(symbol) === ser.indexOf(prevSymbol) + 1 : false;
+  // 並びが決まっていなければ、どれかの並びで次の記号ならよい（「イ」はアイウ…にもイロハ…にもある）
+  const sers = series ? [series] : OPTION_SERIES.filter((x) => x.includes(prevSymbol));
+  return sers.some((ser) => ser.indexOf(symbol) === ser.indexOf(prevSymbol) + 1);
 }
 
 export function isWordBankHeading(text) {
@@ -64,9 +65,10 @@ export function isWordBankHeading(text) {
 }
 
 // 語群の行「ア 収益力   イ 純資産計算  …」: 記号＋語句が1行に複数。全体がこの形でなければ null。
+// 記号は ア…・イロハ…・いろは… のほか、Ａ～Ｊ の教材がある（空欄がイ～ヘのとき）。
 export function parseWordBankLine(text) {
   const t = text.replace(/[\s　]+$/, "");
-  const re = /(?:^|[\s　]+)([ア-ワい-ん])[\s　]+(.+?)(?=[\s　]+[ア-ワい-ん][\s　]+|$)/gy;
+  const re = /(?:^|[\s　]+)([ア-ワい-んＡ-Ｚ])[\s　]+(.+?)(?=[\s　]+[ア-ワい-んＡ-Ｚ][\s　]+|$)/gy;
   const entries = [];
   let last = 0;
   re.lastIndex = 0;

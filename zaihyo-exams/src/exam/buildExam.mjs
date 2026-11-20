@@ -4,7 +4,7 @@
 // 大問・問・小問・枝問の番号（nodeKey / unitKey）でつなぐ。つながらないものは推測で埋めず unresolved に残す。
 
 import { documentRows } from "../common/rows.mjs";
-import { buildAnswerKey } from "./answerKey.mjs";
+import { buildAnswerKey, circleMarks } from "./answerKey.mjs";
 import { formCandidates } from "./forms.mjs";
 import { buildGuidance } from "./guidance.mjs";
 import { buildProblemTree, nodeKey, unitKey } from "./problem.mjs";
@@ -20,7 +20,12 @@ export const STRUCTURE_VERSION = "zaihyo-exam-structure-0.1";
  */
 export function buildExam({ set, problemDoc, sheetDoc, answerDoc }) {
   const unresolved = [];
-  const key = buildAnswerKey({ sheetRows: documentRows(sheetDoc), answerRows: documentRows(answerDoc), daimonNos: set.daimonNos });
+  const key = buildAnswerKey({
+    sheetRows: documentRows(sheetDoc),
+    answerRows: documentRows(answerDoc),
+    daimonNos: set.daimonNos,
+    marks: { sheet: circleMarks(sheetDoc), answer: circleMarks(answerDoc) },
+  });
   // 問題の見出しは、解答に出てくる見出しの並びと照らして見つける（字下げの位置は回ごとにまちまち）
   const expectedPaths = new Map(key.daimons.map((d) => [d.daimon, d.units.map((u) => u.path)]));
   const problem = buildProblemTree({ setId: set.id, rows: documentRows(problemDoc), daimonNos: set.daimonNos, expectedPaths });
@@ -84,7 +89,15 @@ export function buildExam({ set, problemDoc, sheetDoc, answerDoc }) {
     const formText = (n.instructionText ?? "") + (isLeaf ? n.passage.map((r) => r.text.trim()).join("") : "");
     n.formCandidates = formCandidates(formText);
     if (isLeaf && !n.answer) unresolved.push({ reason: "question-without-answer", id: n.id, source: n.heading.source });
-    if (isLeaf && n.formCandidates.length === 0) unresolved.push({ reason: "form-unknown", id: n.id, source: n.heading.source });
+  }
+  // 末端の問いに問い方の言い回しが無い（「(1) 同一種類…の場合」だけ）→ 上の節の指示文の問い方を使う（どこから来たかを残す）
+  const nodeById = new Map(nodes.map((n) => [n.id, n]));
+  for (const n of nodes) {
+    if (n.kind === "daimon" || n.outOfScope || n.children.length !== 0 || n.kind === "toi") continue;
+    for (let p = nodeById.get(n.parent); n.formCandidates.length === 0 && p && p.kind !== "daimon"; p = nodeById.get(p.parent)) {
+      n.formCandidates = (p.formCandidates ?? []).map((c) => ({ ...c, inheritedFrom: p.id }));
+    }
+    if (n.formCandidates.length === 0) unresolved.push({ reason: "form-unknown", id: n.id, source: n.heading.source });
   }
 
   return {

@@ -148,3 +148,68 @@ test("合流: 前回の答練の問題は入れ替え、土台の問題は残し
   assert.equal(base.exercises[0].structure.book, undefined); // 土台のオブジェクトは書き換えない
   assert.throws(() => mergeExerciseViews({ meta: { subject: "boki" }, exercises: [] }, [exams]));
 });
+
+test("語群の答えが「①オ ②エ」と1つの欄に読めたとき: 空欄の名前と記号の組に分ける。「ウ、オ」は暗記カード", () => {
+  const bank = { entries: ["ア", "イ", "ウ", "エ", "オ"].map((s) => ({ symbol: s, text: `語${s}` })) };
+  const q = node("x:d1:t1:s1", "shomon", 1, null, {
+    instructionText: "空欄 ① 及び ② に入る語句を語群から選択し",
+    formCandidates: [{ form: "choose_from_word_bank" }],
+    wordBank: bank,
+    answer: answer([slot("①オ ②エ")]),
+  });
+  const ex = buildExamExercises(structureWith(q));
+  assert.deepEqual(ex.map((e) => [e.choiceMeta.blank, e.correctChoice]), [["①", "オ"], ["②", "エ"]]);
+
+  const q2 = node("x:d1:t1:s1", "shomon", 1, null, {
+    instructionText: "次の語句から２つ選び",
+    formCandidates: [{ form: "choose_from_word_bank" }],
+    passage: [row("ア 語甲 イ 語乙 ウ 語丙", 2)],
+    answer: answer([slot("ア、ウ")]),
+  });
+  const diag = [];
+  const ex2 = buildExamExercises(structureWith(q2), { diag });
+  assert.equal(ex2[0].exerciseType, "recall_text");
+  assert.equal(ex2[0].expectedAnswer[0].answerText.text, "ア、ウ");
+  assert.deepEqual(diag.map((d) => d.reason), ["word-bank-answer-many"]);
+});
+
+test("【選択肢】から1つ選ぶ・表の欄ごとに選ぶ: 語群の語を選択肢にする", () => {
+  const wordBank = { entries: [{ symbol: "ア", text: "語甲" }, { symbol: "イ", text: "語乙" }] };
+  const q = node("x:d1:t1:s1", "shomon", 1, null, { formCandidates: [{ form: "choose_options", count: 1 }], wordBank, answer: answer([slot("イ")]) });
+  assert.equal(buildExamExercises(structureWith(q))[0].correctChoice, "イ");
+  const q2 = node("x:d1:t1:s1", "shomon", 1, null, {
+    formCandidates: [{ form: "choose_options", count: 1 }],
+    wordBank,
+    answer: answer([{ type: "text", text: "①" }, slot("ア", "①"), { type: "text", text: "②" }, slot("イ", "②")]),
+  });
+  assert.deepEqual(buildExamExercises(structureWith(q2)).map((e) => [e.choiceMeta.blank, e.correctChoice]), [["①", "ア"], ["②", "イ"]]);
+});
+
+test("1つの文の正誤: 離れて書かれた〇×を正誤、残りを理由にする。「記号欄 理由欄」の解答は並べ直す", () => {
+  const q = node("x:d1:t1:s1", "shomon", 1, null, {
+    formCandidates: [{ form: "judge_statement" }],
+    passage: [row("甲は乙である。", 2)],
+    answer: answer([{ type: "slot", label: null, text: "", lines: [{ text: "正誤欄 理由欄" }, { text: " 甲は乙ではなく、" }, { text: " × 丙だからである。" }], sources: [src(1, 1, "C")] }]),
+  });
+  const [tf] = buildExamExercises(structureWith(q));
+  assert.equal(tf.exerciseType, "true_false");
+  assert.equal(tf.body.text, "甲は乙である。");
+  assert.equal(tf.judgement.symbolRaw.text, "×");
+  assert.equal(tf.judgement.answerBodyRaw.text, "甲は乙ではなく、丙だからである。");
+
+  const q2 = node("x:d1:t1:s1", "shomon", 1, null, {
+    formCandidates: [{ form: "write_text" }],
+    answer: answer([{ type: "slot", label: null, text: "", lines: [{ text: "記号欄 理由欄" }, { text: " 理由の前半" }, { text: " Ａ 理由の後半。" }], sources: [src(1, 1, "C")] }]),
+  });
+  assert.equal(buildExamExercises(structureWith(q2))[0].expectedAnswer[0].answerText.text, "記号欄 Ａ\n理由欄 理由の前半理由の後半。");
+});
+
+test("本文の空欄が表の中で番号の順に並んでいなくても、出てくる順に置く", () => {
+  const q = node("x:d1:t1:s1", "shomon", 1, null, {
+    formCandidates: [{ form: "write_terms" }],
+    answer: answer([{ type: "text", text: "①" }, slot("語甲", "①"), { type: "text", text: "②" }, slot("語乙", "②")]),
+  });
+  const [ex] = buildExamExercises(structureWith(q, { toi: { passage: [row("表 ② の欄", 2), row("表 ① の欄", 3)], blankLabels: ["②", "①"] } }));
+  assert.equal(ex.exerciseType, "multi_blank");
+  assert.deepEqual(ex.bodySegments.filter((s) => s.type === "blank").map((s) => s.label), ["②", "①"]);
+});
